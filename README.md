@@ -3,7 +3,7 @@ modern c++11, simple, easy to use rpc framework.
 
 It's so easy to love RPC.
 
-Modern C++开发到RPC库就是这么简单好用！
+Modern C++开发的RPC库就是这么简单好用！
 
 # quick example
 
@@ -101,7 +101,7 @@ client code
 		return 0;
 	}
 
-
+除了简单好用，没什么多余的要说的。
 
 # future
 
