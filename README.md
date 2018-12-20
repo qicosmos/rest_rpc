@@ -60,7 +60,7 @@ client code
 	
 			auto result = client.call<int>("add", 1, 2);
 	
-			std::cout << result << std::endl;
+			std::cout << result << std::endl; //output 3
 		}
 		catch (const std::exception& e){
 			std::cout << e.what() << std::endl;
@@ -74,7 +74,7 @@ client code
 			client.connect("127.0.0.1", "9000");
 	
 			auto result = client.call<std::string>("translate", "hello");
-			std::cout << result << std::endl;
+			std::cout << result << std::endl; //output HELLO
 		}
 		catch (const std::exception& e) {
 			std::cout << e.what() << std::endl;
