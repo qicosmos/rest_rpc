@@ -27,9 +27,6 @@
     <ClInclude Include="io_service_pool.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="of_serving.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="router.h">
       <Filter>头文件</Filter>
     </ClInclude>

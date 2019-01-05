@@ -2,6 +2,7 @@
 #define REST_RPC_RPC_SERVER_H_
 
 #include <thread>
+#include <mutex>
 #include "connection.h"
 #include "io_service_pool.h"
 #include "router.h"

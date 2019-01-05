@@ -126,7 +126,6 @@
     <ClInclude Include="cplusplus_14.h" />
     <ClInclude Include="io_service_pool.h" />
     <ClInclude Include="meta_util.hpp" />
-    <ClInclude Include="of_serving.h" />
     <ClInclude Include="router.h" />
     <ClInclude Include="rpc_server.h" />
   </ItemGroup>

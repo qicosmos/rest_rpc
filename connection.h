@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <memory>
+#include <array>
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
 #include "router.h"
@@ -111,7 +112,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
     if (timeout_seconds_ == 0) { return; }
 
     auto self(this->shared_from_this());
-    timer_.expires_from_now(std::chrono::seconds(timeout_seconds_));
+    timer_.expires_from_now(boost::posix_time::seconds(timeout_seconds_));
     timer_.async_wait([this, self](const boost::system::error_code& ec) {
       if (has_closed()) { return; }
 
@@ -142,7 +143,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   char head_[HEAD_LEN];
   std::vector<char> data_;
   std::array<boost::asio::mutable_buffer, 2> message_;
-  boost::asio::steady_timer timer_;
+  boost::asio::deadline_timer timer_;
   std::size_t timeout_seconds_;
   int64_t conn_id_ = 0;
   std::atomic_bool has_closed_;
