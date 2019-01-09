@@ -18,6 +18,18 @@ void hello(connection* conn, const std::string& str) {
 	std::cout << "hello " << str << std::endl;
 }
 
+struct person {
+	int id;
+	std::string name;
+	int age;
+
+	MSGPACK_DEFINE(id, name, age);
+};
+
+std::string get_person_name(connection* conn, const person& p) {
+	return p.name;
+}
+
 int main() {
 	rpc_server server(9000, 4);
 
@@ -25,6 +37,7 @@ int main() {
 	server.register_handler("add", &dummy::add, &d);
 	server.register_handler("translate", translate);
 	server.register_handler("hello", hello);
+	server.register_handler("get_person_name", get_person_name);
 
 	server.run();
 
