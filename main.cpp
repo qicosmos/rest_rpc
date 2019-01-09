@@ -30,6 +30,10 @@ std::string get_person_name(connection* conn, const person& p) {
 	return p.name;
 }
 
+person get_person(connection* conn) {
+	return { 1, "tom", 20 };
+}
+
 int main() {
 	rpc_server server(9000, 4);
 
@@ -38,6 +42,7 @@ int main() {
 	server.register_handler("translate", translate);
 	server.register_handler("hello", hello);
 	server.register_handler("get_person_name", get_person_name);
+	server.register_handler("get_person", get_person);
 
 	server.run();
 
