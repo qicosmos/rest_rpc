@@ -5,11 +5,6 @@
 #include <vector>
 #include <memory>
 #include <boost/noncopyable.hpp>
-//#include <boost/shared_ptr.hpp>
-//#include <stdexcept>
-//#include <boost/thread/thread.hpp>
-//#include <boost/bind.hpp>
-//#include <boost/shared_ptr.hpp>
 
 namespace rest_rpc {
 namespace rpc_service {
@@ -26,8 +21,6 @@ class io_service_pool : private boost::noncopyable {
     }
   }
 
-  ~io_service_pool() { stop(); }
-
   void run() {
     std::vector<std::shared_ptr<std::thread>> threads;
     for (std::size_t i = 0; i < io_services_.size(); ++i) {
@@ -41,7 +34,6 @@ class io_service_pool : private boost::noncopyable {
   void stop() {
     for (std::size_t i = 0; i < io_services_.size(); ++i) {
       io_services_[i]->stop();
-      io_services_[i]->reset();
     }
   }
 

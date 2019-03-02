@@ -26,6 +26,8 @@ class rpc_server : private boost::noncopyable {
   }
 
   ~rpc_server() {
+	stop_check_ = true;
+	check_thread_->join();
     io_service_pool_.stop();
     thd_->join();
   }
@@ -68,7 +70,7 @@ class rpc_server : private boost::noncopyable {
   }
 
   void clean() {
-    while (true) {
+    while (!stop_check_) {
       std::this_thread::sleep_for(std::chrono::seconds(check_seconds_));
 
       std::unique_lock<std::mutex> lock(mtx_);
@@ -98,6 +100,7 @@ class rpc_server : private boost::noncopyable {
   std::mutex mtx_;
   std::shared_ptr<std::thread> check_thread_;
   size_t check_seconds_;
+  bool stop_check_ = false;
 };
 }  // namespace rpc_service
 }  // namespace rest_rpc
