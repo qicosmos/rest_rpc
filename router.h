@@ -42,7 +42,7 @@ class router : boost::noncopyable {
     try {
       msgpack_codec codec;
       auto p = codec.unpack<std::tuple<std::string>>(data, size);
-      auto func_name = std::get<0>(p);
+      auto& func_name = std::get<0>(p);
       auto it = map_invokers_.find(func_name);
       if (it == map_invokers_.end()) {
         result = codec.pack_args_str(result_code::FAIL, "unknown function: " + func_name);
