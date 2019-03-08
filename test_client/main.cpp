@@ -88,6 +88,8 @@ void test_async_client() {
 	async_client client("127.0.0.1", 9000);
 	client.connect();
 
+	client.call("hello", "world");
+
 	std::string str;
 	std::cin >> str;
 }
