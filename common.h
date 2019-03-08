@@ -36,7 +36,7 @@ enum class error_code {
 
 static const size_t MAX_BUF_LEN = 1048576 * 10;
 static const size_t HEAD_LEN = 4;
-static const size_t PAGE_SIZE = 1024 * 1024;
+static const size_t PAGE_SIZE = 2 * 1024;
 }  // namespace rpc_service
 }  // namespace rest_rpc
 

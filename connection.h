@@ -15,9 +15,8 @@ class connection : public std::enable_shared_from_this<connection>, private boos
  public:
   connection(boost::asio::io_service& io_service, std::size_t timeout_seconds)
       : socket_(io_service),
-        strand_(io_service),
-        data_(PAGE_SIZE),
-        message_{boost::asio::buffer(head_), boost::asio::buffer(data_.data(), data_.size())},
+        body_(PAGE_SIZE),
+        write_buffers_{boost::asio::buffer(head_), boost::asio::buffer(body_.data(), body_.size())},
         timer_(io_service),
         timeout_seconds_(timeout_seconds),
         has_closed_(false) {}
@@ -31,12 +30,12 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   bool has_closed() const { return has_closed_; }
 
   void response(const char* data, size_t len) {
-    message_[0] = boost::asio::buffer(&len, sizeof(int32_t));
-    message_[1] = boost::asio::buffer((char*)data, len);
+    write_buffers_[0] = boost::asio::buffer(&len, sizeof(int32_t));
+    write_buffers_[1] = boost::asio::buffer((char*)data, len);
     reset_timer();
     auto self = this->shared_from_this();
     boost::asio::async_write(
-        socket_, message_,
+        socket_, write_buffers_,
         [this, self](boost::system::error_code ec, std::size_t length) {
           cancel_timer();
           if (has_closed()) { return; }
@@ -67,7 +66,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
           if (!ec) {
             const int body_len = *((int*)(head_));
             if (body_len > 0 && body_len < MAX_BUF_LEN) {
-              if (data_.size() < body_len) { data_.resize(body_len); }
+              if (body_.size() < body_len) { body_.resize(body_len); }
               read_body(body_len);
               return;
             }
@@ -89,7 +88,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   void read_body(std::size_t size) {
     auto self(this->shared_from_this());
     boost::asio::async_read(
-        socket_, boost::asio::buffer(data_.data(), size),
+        socket_, boost::asio::buffer(body_.data(), size),
         [this, self](boost::system::error_code ec, std::size_t length) {
           cancel_timer();
 
@@ -100,7 +99,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
 
           if (!ec) {
             router& _router = router::get();
-            _router.route(data_.data(), length, this);
+            _router.route(body_.data(), length, this);
           } else {
             //LOG(INFO) << ec.message();
           }
@@ -111,7 +110,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
     if (timeout_seconds_ == 0) { return; }
 
     auto self(this->shared_from_this());
-    timer_.expires_from_now(boost::posix_time::seconds(timeout_seconds_));
+    timer_.expires_from_now(boost::posix_time::seconds((long)timeout_seconds_));
     timer_.async_wait([this, self](const boost::system::error_code& ec) {
       if (has_closed()) { return; }
 
@@ -138,10 +137,9 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   }
 
   tcp::socket socket_;
-  boost::asio::io_service::strand strand_;
   char head_[HEAD_LEN];
-  std::vector<char> data_;
-  std::array<boost::asio::mutable_buffer, 2> message_;
+  std::vector<char> body_;
+  std::array<boost::asio::mutable_buffer, 2> write_buffers_;
   boost::asio::deadline_timer timer_;
   std::size_t timeout_seconds_;
   int64_t conn_id_ = 0;
