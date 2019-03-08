@@ -3,6 +3,7 @@
 #include <deque>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
+#include <boost/noncopyable.hpp>
 using boost::asio::ip::tcp;
 #include "../codec.h"
 using namespace rest_rpc;
@@ -55,17 +56,11 @@ public:
 		});
 	}
 
-	void write(std::string&& message)
-	{
-		strand_.post([this, msg = std::move(message)] {
-			outbox_.emplace_back(std::move(msg));
-			if (outbox_.size() > 1) {
-				// outstanding async_write
-				return;
-			}
-
-			this->write();
-		});
+	template<typename T = void, typename... Args>
+	typename std::enable_if<std::is_void<T>::value>::type call(std::string rpc_name, Args&&... args) {
+		msgpack_codec codec;
+		auto ret = codec.pack_args(std::move(rpc_name), std::forward<Args>(args)...);
+		write(std::move(ret));
 	}
 
 	bool has_connected() const {
@@ -90,11 +85,28 @@ private:
 		});
 	}
 
-	void write()
-	{
-		const std::string& message = outbox_[0];
-		boost::asio::async_write(socket_,boost::asio::buffer(message.c_str(), message.size()),
-			strand_.wrap([this](const boost::system::error_code& ec, const size_t bytesTransferred) {
+	void write(buffer_type&& message) {
+		size_t size = message.size();
+		std::string_view s(message.release(), size);
+		strand_.post([this, msg = std::move(s)]{
+			outbox_.emplace_back(std::move(msg));
+			if (outbox_.size() > 1) {
+				// outstanding async_write
+				return;
+			}
+
+			this->write();
+			});
+	}
+
+	void write(){
+		auto msg = outbox_[0];
+		size_t size = msg.length();
+		write_buffers_[0] = boost::asio::buffer(&size, sizeof(int32_t));
+		write_buffers_[1] = boost::asio::buffer((char*)msg.data(), size);
+		boost::asio::async_write(socket_, write_buffers_,
+			strand_.wrap([this](const boost::system::error_code& ec, const size_t length) {
+				::free((char*)outbox_.front().data());
 				outbox_.pop_front();
 
 				if (ec) {
@@ -124,5 +136,7 @@ private:
 
 	boost::asio::deadline_timer deadline_;
 
-	std::deque<std::string> outbox_;
+	std::deque<std::string_view> outbox_;
+
+	std::array<boost::asio::mutable_buffer, 2> write_buffers_;
 };
