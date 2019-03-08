@@ -1,5 +1,6 @@
 #include <iostream>
 #include "test_client.hpp"
+#include "async_client.hpp"
 #include "../codec.h"
 
 using namespace rest_rpc;
@@ -61,7 +62,7 @@ void test_get_person_name() {
 		test_client client(io_service);
 		client.connect("127.0.0.1", "9000");
 
-		auto result = client.call<std::string>("get_person_name", person{1, "tom", 20});
+		auto result = client.call<std::string>("get_person_name", person{ 1, "tom", 20 });
 		std::cout << result << std::endl;
 	}
 	catch (const std::exception& e) {
@@ -83,7 +84,16 @@ void test_get_person() {
 	}
 }
 
+void test_async_client() {
+	async_client client("127.0.0.1", 9000);
+	client.connect();
+
+	std::string str;
+	std::cin >> str;
+}
+
 int main() {
+	test_async_client();
 	test_get_person();
 	test_get_person_name();
 	test_hello();

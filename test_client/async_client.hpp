@@ -9,12 +9,18 @@ using namespace rest_rpc::rpc_service;
 class async_client : private boost::noncopyable {
 public:
 	async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), 
-		connect_timer_(ios_), host_(host), port_(port) {
+		deadline_(ios_), host_(host), port_(port) {
+		thd_ = std::make_shared<std::thread>([this] {
+			ios_.run();
+		});
 	}
 
-	void set_timeout(int milliseconds) {
-		assert(milliseconds > 0);
-		timeout_ = milliseconds;
+	~async_client() {
+		stop();
+	}
+
+	void set_connect_timeout(size_t seconds) {
+		timeout_ = seconds;
 	}
 
 	void set_reconnect_count(int reconnect_count) {
@@ -41,23 +47,28 @@ public:
 			}
 			else {
 				has_connected_ = true;
+				deadline_.cancel();
 				std::cout << "connect "<< host_<<" "<<port_ << std::endl;
 			}
 		});
-	}
-
-	void run() {
-		ios_.run();
 	}
 
 	bool has_connected() const {
 		return has_connected_;
 	}
 
+	void stop() {
+		if (thd_ != nullptr) {
+			ios_.stop();
+			thd_->join();
+			thd_ = nullptr;
+		}
+	}
+
 private:
 	void reset_connect_timer() {
-		connect_timer_.expires_from_now(boost::posix_time::milliseconds(timeout_));
-		connect_timer_.async_wait([this](const boost::system::error_code& ec) {
+		deadline_.expires_from_now(boost::posix_time::seconds((long)timeout_));
+		deadline_.async_wait([this](const boost::system::error_code& ec) {
 			if (!ec) {
 				socket_.close();
 			}
@@ -68,11 +79,12 @@ private:
 	boost::asio::io_service ios_;
 	tcp::socket socket_;
 	boost::asio::io_service::work work_;
+	std::shared_ptr<std::thread> thd_ = nullptr;
 
 	std::string host_;
 	unsigned short port_;
-	int timeout_=1000;//ms
+	int timeout_=1;//s
 	int reconnect_cnt_ = -1;
 
-	boost::asio::deadline_timer connect_timer_;
+	boost::asio::deadline_timer deadline_;
 };
