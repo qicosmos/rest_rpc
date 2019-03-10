@@ -6,13 +6,16 @@
 #include <boost/noncopyable.hpp>
 using boost::asio::ip::tcp;
 #include "../codec.h"
+#include "../const_vars.h"
 using namespace rest_rpc;
 using namespace rest_rpc::rpc_service;
 
 class async_client : private boost::noncopyable {
 public:
 	async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
-		deadline_(ios_), host_(host), port_(port) {
+		deadline_(ios_), host_(host), port_(port), body_(PAGE_SIZE){
+		read_buffers_[0] = boost::asio::buffer(head_);
+		read_buffers_[1] = boost::asio::buffer(body_);
 		thd_ = std::make_shared<std::thread>([this] {
 			ios_.run();
 		});
@@ -122,6 +125,81 @@ private:
 		);
 	}
 
+	void do_read() {
+		boost::asio::async_read(socket_, read_buffers_, boost::asio::transfer_at_least(HEAD_LEN),
+			[this](const boost::system::error_code& ec, const size_t length) {
+			if (!socket_.is_open()) {
+				//LOG(INFO) << "socket already closed";
+				return;
+			}
+
+			if (!ec) {
+				const int body_len = *((int*)(head_));
+				if (body_len < 0) {
+					//LOG(INFO) << "invalid body len";
+					close();
+					return;
+				}
+
+				if (body_len == 0) {  // nobody, just head, maybe as heartbeat.
+					//cancel_timer();
+					do_read();
+					return;
+				}
+				
+				if (body_len > MAX_BUF_LEN) {
+					//that depends, the user decide to close or continue read
+					//LOG(INFO)<<body len is greater than MAX_BUF_LEN
+					return;
+				}
+
+				if (body_len <= body_.size()) {
+					//entire body: (body_, body_len)
+					do_read();
+				}
+				else {
+					body_.resize(body_len);
+					read_body(length - HEAD_LEN, body_len);
+				}
+			}
+			else {
+				//LOG(INFO) << ec.message();
+				close();
+			}
+		});
+	}
+
+	void read_body(size_t start, size_t body_len) {
+		boost::asio::async_read(
+			socket_, boost::asio::buffer(body_.data()+ start, body_len - start),
+			[this](boost::system::error_code ec, std::size_t length) {
+			//cancel_timer();
+
+			if (!socket_.is_open()) {
+				//LOG(INFO) << "socket already closed";
+				return;
+			}
+
+			if (!ec) {
+				//entier body
+				std::cout << length << std::endl;
+				do_read();
+			}
+			else {
+				//LOG(INFO) << ec.message();
+			}
+		});
+	}
+
+	void close() {
+		has_connected_ = true;
+		if (socket_.is_open()) {
+			boost::system::error_code ignored_ec;
+			socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
+			socket_.close(ignored_ec);
+		}
+	}
+
 	bool has_connected_ = false;
 	boost::asio::io_service ios_;
 	tcp::socket socket_;
@@ -138,5 +216,9 @@ private:
 
 	std::deque<std::string_view> outbox_;
 
-	std::array<boost::asio::mutable_buffer, 2> write_buffers_;
+	std::array<boost::asio::const_buffer, 2> write_buffers_;
+
+	char head_[HEAD_LEN] = {};
+	std::vector<char> body_;
+	std::array<boost::asio::mutable_buffer, 2> read_buffers_;
 };
