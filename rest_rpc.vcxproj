@@ -124,8 +124,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="codec.h" />
-    <ClInclude Include="common.h" />
     <ClInclude Include="connection.h" />
+    <ClInclude Include="const_vars.h" />
     <ClInclude Include="cplusplus_14.h" />
     <ClInclude Include="io_service_pool.h" />
     <ClInclude Include="meta_util.hpp" />

@@ -6,6 +6,7 @@
 #include <array>
 #include <boost/asio.hpp>
 #include <boost/asio/deadline_timer.hpp>
+#include "const_vars.h"
 #include "router.h"
 using boost::asio::ip::tcp;
 

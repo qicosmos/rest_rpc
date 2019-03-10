@@ -18,9 +18,6 @@
     <ClInclude Include="codec.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="common.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="connection.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -37,6 +34,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="meta_util.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="const_vars.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
