@@ -3,7 +3,6 @@
 
 #include <boost/asio.hpp>
 #include <boost/noncopyable.hpp>
-#include "common.h"
 #include "codec.h"
 #include "meta_util.hpp"
 
