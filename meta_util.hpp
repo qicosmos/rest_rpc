@@ -80,6 +80,21 @@ namespace rest_rpc{
         detail::tuple_switch(i, std::forward<Tuple>(t), std::forward<F>(f),
                              std::make_index_sequence<N>{});
     }
+
+	template <class F, class, class... Args>
+	struct is_invokable_impl : std::false_type {};
+	template <class F, class... Args>
+	struct is_invokable_impl<F, std::void_t<std::invoke_result_t<F, Args...>>, Args...>
+		: std::true_type {};
+
+	template <class F, class... Args>
+	using is_invokable = typename is_invokable_impl<F, void, Args...>::type;
+
+	template<class T, class...Args>
+	static constexpr auto is_invokable_v = is_invokable<T, Args...>::value;
+
+	template<int N, typename... Ts>
+	using nth_type_of = typename std::tuple_element<N, std::tuple<Ts...>>::type;
 }
 
 #endif //REST_RPC_META_UTIL_HPP
