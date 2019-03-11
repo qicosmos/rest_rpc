@@ -54,6 +54,7 @@ public:
 			else {
 				has_connected_ = true;
 				deadline_.cancel();
+				do_read();
 				std::cout << "connect "<< host_<<" "<<port_ << std::endl;
 			}
 		});
@@ -61,6 +62,10 @@ public:
 
 	template<typename T = void, typename... Args>
 	typename std::enable_if<std::is_void<T>::value>::type call(std::string rpc_name, Args&&... args) {
+		if (!has_connected_) {
+			return;
+		}
+
 		msgpack_codec codec;
 		auto ret = codec.pack_args(std::move(rpc_name), std::forward<Args>(args)...);
 		write(std::move(ret));
@@ -155,6 +160,12 @@ private:
 
 				if (body_len <= body_.size()) {
 					//entire body: (body_, body_len)
+					//msgpack_codec codec;
+					//auto tp = codec.unpack<std::tuple<int>>(body_.data(), body_.size());
+					//if (std::get<0>(tp) != 0) {
+					//	std::cout << "error" << std::endl;
+					//}
+
 					do_read();
 				}
 				else {
