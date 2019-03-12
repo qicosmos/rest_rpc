@@ -15,13 +15,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="test_client.hpp">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="async_client.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="client_util.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="test_client.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

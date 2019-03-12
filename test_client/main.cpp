@@ -1,5 +1,5 @@
 #include <iostream>
-#include "test_client.hpp"
+#include "sync_client.hpp"
 #include "async_client.hpp"
 #include "../codec.h"
 
