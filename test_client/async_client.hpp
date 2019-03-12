@@ -5,7 +5,7 @@
 #include <boost/bind.hpp>
 #include <boost/noncopyable.hpp>
 using boost::asio::ip::tcp;
-#include "../codec.h"
+#include "client_util.hpp"
 #include "../const_vars.h"
 using namespace rest_rpc;
 using namespace rest_rpc::rpc_service;

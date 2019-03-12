@@ -96,14 +96,23 @@ void test_async_client() {
 	});
 
 	client.set_callback("hello", [](std::string_view data) {
+		if (has_error(data)) {
+			return;
+		}
+
 		std::cout << "hello" << std::endl;
 	});
 
 	client.set_callback("get_person", [](std::string_view data) {
 		std::cout << "hello" << std::endl;
+		if (!has_error(data)) {
+			auto p = get_result<person>(data);
+			std::cout << p.name << std::endl;
+		}
 	});
 
 	client.call("hello", "purecpp");
+	client.call("get_person");
 
 	std::string str;
 	std::cin >> str;

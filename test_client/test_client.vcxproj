@@ -129,6 +129,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="async_client.hpp" />
+    <ClInclude Include="client_util.hpp" />
     <ClInclude Include="test_client.hpp" />
   </ItemGroup>
   <ItemGroup>
