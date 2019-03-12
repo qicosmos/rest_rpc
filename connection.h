@@ -66,7 +66,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
           }
 
           if (!ec) {
-            const int body_len = *((int*)(head_));
+            const uint32_t body_len = *((int*)(head_));
 			req_id_ = *((std::uint64_t*)(head_+sizeof(int32_t)));
             if (body_len > 0 && body_len < MAX_BUF_LEN) {
               if (body_.size() < body_len) { body_.resize(body_len); }

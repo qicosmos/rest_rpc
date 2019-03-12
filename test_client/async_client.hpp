@@ -154,8 +154,8 @@ private:
 			}
 
 			if (!ec) {
-				const int body_len = *((int*)(head_));
-				if (body_len <= 0|| body_len > MAX_BUF_LEN) {
+				const uint32_t body_len = *((uint32_t*)(head_));
+				if (body_len == 0|| body_len > MAX_BUF_LEN) {
 					//LOG(INFO) << "invalid body len";
 					err_cb_(errc::make_error_code(errc::invalid_argument));
 					close();
@@ -172,7 +172,7 @@ private:
 
 				auto& callback = cb_map_[req_id];
 				if (callback) {
-					callback(body_.data(), body_len);
+					callback({ body_.data(), body_len });
 				}
 
 				do_read();
@@ -203,7 +203,7 @@ private:
 				std::cout << length << std::endl;
 				auto& callback = cb_map_[req_id];
 				if (callback) {
-					callback(body_.data(), body_.size());
+					callback({ body_.data(), body_.size() });
 				}
 
 				do_read();
@@ -239,7 +239,7 @@ private:
 	boost::asio::deadline_timer deadline_;
 
 	std::deque<message_type> outbox_;
-	std::unordered_map<std::uint64_t, std::function<void(const char*, size_t)>> cb_map_;
+	std::unordered_map<std::uint64_t, std::function<void(std::string_view)>> cb_map_;
 	std::function<void(boost::system::error_code)> err_cb_;
 
 	char head_[HEAD_LEN] = {};

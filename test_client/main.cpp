@@ -95,11 +95,11 @@ void test_async_client() {
 		std::cout << ec.message() << std::endl;
 	});
 
-	client.set_callback("hello", [](const char* data, size_t size) {
+	client.set_callback("hello", [](std::string_view data) {
 		std::cout << "hello" << std::endl;
 	});
 
-	client.set_callback("get_person", [](const char* data, size_t size) {
+	client.set_callback("get_person", [](std::string_view data) {
 		std::cout << "hello" << std::endl;
 	});
 
