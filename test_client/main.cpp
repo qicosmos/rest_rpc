@@ -9,7 +9,7 @@ using namespace rest_rpc::rpc_service;
 void test_add() {
 	try{
 		boost::asio::io_service io_service;
-		test_client client(io_service);
+		sync_client client(io_service);
 		client.connect("127.0.0.1", "9000");
 
 		auto result = client.call<int>("add", 1, 2);
@@ -24,7 +24,7 @@ void test_add() {
 void test_translate() {
 	try {
 		boost::asio::io_service io_service;
-		test_client client(io_service);
+		sync_client client(io_service);
 		client.connect("127.0.0.1", "9000");
 
 		auto result = client.call<std::string>("translate", "hello");
@@ -38,7 +38,7 @@ void test_translate() {
 void test_hello() {
 	try {
 		boost::asio::io_service io_service;
-		test_client client(io_service);
+		sync_client client(io_service);
 		client.connect("127.0.0.1", "9000");
 
 		client.call("hello", "purecpp");
@@ -59,7 +59,7 @@ struct person {
 void test_get_person_name() {
 	try {
 		boost::asio::io_service io_service;
-		test_client client(io_service);
+		sync_client client(io_service);
 		client.connect("127.0.0.1", "9000");
 
 		auto result = client.call<std::string>("get_person_name", person{ 1, "tom", 20 });
@@ -73,7 +73,7 @@ void test_get_person_name() {
 void test_get_person() {
 	try {
 		boost::asio::io_service io_service;
-		test_client client(io_service);
+		sync_client client(io_service);
 		client.connect("127.0.0.1", "9000");
 
 		auto result = client.call<person>("get_person");
