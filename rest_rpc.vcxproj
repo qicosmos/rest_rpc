@@ -128,6 +128,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="codec.h" />
+    <ClInclude Include="common.h" />
     <ClInclude Include="connection.h" />
     <ClInclude Include="const_vars.h" />
     <ClInclude Include="cplusplus_14.h" />

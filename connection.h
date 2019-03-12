@@ -16,8 +16,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
  public:
   connection(boost::asio::io_service& io_service, std::size_t timeout_seconds)
       : socket_(io_service),
-        body_(PAGE_SIZE),
-        write_buffers_{boost::asio::buffer(head_), boost::asio::buffer(body_.data(), body_.size())},
+        body_(INIT_BUF_SIZE),
         timer_(io_service),
         timeout_seconds_(timeout_seconds),
         has_closed_(false) {}
@@ -31,12 +30,14 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   bool has_closed() const { return has_closed_; }
 
   void response(const char* data, size_t len) {
-    write_buffers_[0] = boost::asio::buffer(&len, sizeof(int32_t));
-    write_buffers_[1] = boost::asio::buffer((char*)data, len);
+	std::array<boost::asio::const_buffer, 3> write_buffers;
+	write_buffers[0] = boost::asio::buffer(&len, sizeof(uint32_t));
+	write_buffers[1] = boost::asio::buffer(&req_id_, sizeof(uint64_t));
+	write_buffers[2] = boost::asio::buffer((char*)data, len);
     reset_timer();
     auto self = this->shared_from_this();
     boost::asio::async_write(
-        socket_, write_buffers_,
+        socket_, write_buffers,
         [this, self](boost::system::error_code ec, std::size_t length) {
           cancel_timer();
           if (has_closed()) { return; }
@@ -66,6 +67,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
 
           if (!ec) {
             const int body_len = *((int*)(head_));
+			req_id_ = *((std::uint64_t*)(head_+sizeof(int32_t)));
             if (body_len > 0 && body_len < MAX_BUF_LEN) {
               if (body_.size() < body_len) { body_.resize(body_len); }
               read_body(body_len);
@@ -140,7 +142,8 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   tcp::socket socket_;
   char head_[HEAD_LEN];
   std::vector<char> body_;
-  std::array<boost::asio::mutable_buffer, 2> write_buffers_;
+  std::uint64_t req_id_;
+
   boost::asio::deadline_timer timer_;
   std::size_t timeout_seconds_;
   int64_t conn_id_ = 0;

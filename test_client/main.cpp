@@ -87,8 +87,23 @@ void test_get_person() {
 void test_async_client() {
 	async_client client("127.0.0.1", 9000);
 	client.connect();
+	std::string str1;
+	std::cin >> str1;
 
-	client.call("hello", "world");
+	//call contract,firstly set all callback functions
+	client.set_error_callback([] (auto ec){
+		std::cout << ec.message() << std::endl;
+	});
+
+	client.set_callback("hello", [](const char* data, size_t size) {
+		std::cout << "hello" << std::endl;
+	});
+
+	client.set_callback("get_person", [](const char* data, size_t size) {
+		std::cout << "hello" << std::endl;
+	});
+
+	client.call("hello", "purecpp");
 
 	std::string str;
 	std::cin >> str;
