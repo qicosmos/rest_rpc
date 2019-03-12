@@ -127,7 +127,7 @@ private:
 				outbox_.pop_front();
 
 				if (ec) {
-					std::cerr << "could not write: " << ec.message() << std::endl;
+					if (err_cb_) err_cb_(ec);
 					return;
 				}
 
@@ -149,7 +149,7 @@ private:
 			[this](const boost::system::error_code& ec, const size_t length) {
 			if (!socket_.is_open()) {
 				//LOG(INFO) << "socket already closed";
-				err_cb_(errc::make_error_code(errc::connection_aborted));
+				if (err_cb_) err_cb_(errc::make_error_code(errc::connection_aborted));
 				return;
 			}
 
@@ -157,7 +157,7 @@ private:
 				const uint32_t body_len = *((uint32_t*)(head_));
 				if (body_len == 0|| body_len > MAX_BUF_LEN) {
 					//LOG(INFO) << "invalid body len";
-					err_cb_(errc::make_error_code(errc::invalid_argument));
+					if (err_cb_) err_cb_(errc::make_error_code(errc::invalid_argument));
 					close();
 					return;
 				}
@@ -179,7 +179,7 @@ private:
 			}
 			else {
 				//LOG(INFO) << ec.message();
-				err_cb_(ec);
+				if (err_cb_) err_cb_(ec);
 				close();
 			}
 		});
@@ -194,7 +194,7 @@ private:
 
 			if (!socket_.is_open()) {
 				//LOG(INFO) << "socket already closed";
-				err_cb_(errc::make_error_code(errc::connection_aborted));
+				if (err_cb_) err_cb_(errc::make_error_code(errc::connection_aborted));
 				return;
 			}
 
@@ -210,7 +210,7 @@ private:
 			}
 			else {
 				//LOG(INFO) << ec.message();
-				err_cb_(ec);
+				if(err_cb_) err_cb_(ec);
 			}
 		});
 	}
