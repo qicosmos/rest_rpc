@@ -81,8 +81,11 @@ namespace rest_rpc{
                              std::make_index_sequence<N>{});
     }
 
-	template<int N, typename... Ts>
-	using nth_type_of = typename std::tuple_element<N, std::tuple<Ts...>>::type;
+	template<int N, typename... Args>
+	using nth_type_of = std::tuple_element_t<N, std::tuple<Args...>>;
+
+	template<typename... Args>
+	using last_type_of = nth_type_of<sizeof...(Args)-1, Args...>;
 }
 
 #endif //REST_RPC_META_UTIL_HPP

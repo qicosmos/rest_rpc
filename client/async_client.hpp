@@ -7,10 +7,54 @@
 using boost::asio::ip::tcp;
 #include "client_util.hpp"
 #include "../const_vars.h"
+#include "../meta_util.hpp"
 
 using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
+	using namespace boost::system;
+	class call_helper {
+	public:
+		call_helper(boost::asio::io_service& ios, std::function<void(uint64_t)>& callback,
+			uint64_t req_id, std::function<void(boost::system::error_code, std::string_view)> user_callback,
+			size_t timeout = 3000) : timer_(ios), callback_(callback), req_id_(req_id), user_callback_(std::move(user_callback)) {
+			timer_.expires_from_now(std::chrono::milliseconds(timeout));
+			timer_.async_wait([this] (boost::system::error_code ec){
+				if (ec) {
+					return;
+				}
+
+				has_timeout_ = true;
+				user_callback_(errc::make_error_code(errc::timed_out), {});
+				callback_(req_id_);
+			});
+		}
+
+		void callback(boost::system::error_code ec, std::string_view data) {
+			user_callback_(ec, data);
+		}
+
+		bool has_timeout() const {
+			return has_timeout_;
+		}
+
+		void cancel() {
+			boost::system::error_code ec;
+			timer_.cancel(ec);
+		}
+
+		~call_helper() {
+			cancel();
+		}
+
+	private:
+		boost::asio::steady_timer timer_;
+		std::function<void(uint64_t)>& callback_;
+		uint64_t req_id_;
+		std::function<void(boost::system::error_code, std::string_view)> user_callback_;		
+		bool has_timeout_ = false;
+	};
+
 	class async_client : private boost::noncopyable {
 	public:
 		async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
@@ -20,6 +64,9 @@ namespace rest_rpc {
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
 			});
+			callback_ = [this](uint64_t req_id) {
+				erase(req_id);
+			};
 		}
 
 		~async_client() {
@@ -61,21 +108,56 @@ namespace rest_rpc {
 			});
 		}
 
-		template<typename F>
-		void set_callback(const std::string& rpc_name, F f) {
-			cb_map_[std::hash<std::string>{}(rpc_name)] = std::move(f);
-		}
-
 		void set_error_callback(std::function<void(boost::system::error_code)> f) {
 			err_cb_ = std::move(f);
 		}
 
 		template<typename... Args>
 		void call(const std::string& rpc_name, Args&&... args) {
-			std::uint64_t req_id = std::hash<std::string>{}(rpc_name);
+			req_id_++;
+			constexpr const size_t SIZE = sizeof...(Args);
+			if constexpr (sizeof...(Args) > 0) {
+				using last_type = last_type_of<Args...>;
+				if constexpr (std::is_invocable_v<last_type, boost::system::error_code, std::string_view>) {
+					call_with_cb(rpc_name, std::make_index_sequence<SIZE - 1>{},
+						std::forward_as_tuple(std::forward<Args>(args)...));
+				}
+				else {
+					if constexpr (SIZE > 1 && 
+						std::is_invocable_v<nth_type_of<SIZE-2, Args...>, boost::system::error_code, std::string_view>) {
+						call_with_cb<true>(rpc_name, std::make_index_sequence<SIZE - 2>{},
+							std::forward_as_tuple(std::forward<Args>(args)...));
+					}
+					else {
+						call_impl(rpc_name, std::forward<Args>(args)...);
+					}
+				}
+			}
+			else {
+				call_impl(rpc_name, std::forward<Args>(args)...);
+			}
+		}
+
+		template<typename... Args>
+		void call_impl(const std::string& rpc_name, Args&&... args) {
 			msgpack_codec codec;
 			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
-			write(req_id, std::move(ret));
+			write(req_id_, std::move(ret));
+		}
+
+		template<bool has_timeout = false, size_t... idx, typename Tuple>
+		void call_with_cb(const std::string& rpc_name, std::index_sequence<idx...>, Tuple&& tp) {
+			if constexpr (has_timeout) {
+				cb_map_.emplace(req_id_, std::make_unique<call_helper>(ios_, callback_,
+					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp))),
+					std::get<sizeof...(idx) + 1>(std::forward<Tuple>(tp))));
+			}
+			else {
+				cb_map_.emplace(req_id_, std::make_unique<call_helper>(ios_, callback_,
+					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp)))));
+			}
+
+			call_impl(rpc_name, std::get<idx>(std::forward<Tuple>(tp))...);
 		}
 
 		bool has_connected() const {
@@ -156,25 +238,23 @@ namespace rest_rpc {
 
 				if (!ec) {
 					const uint32_t body_len = *((uint32_t*)(head_));
+					auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
-						if (err_cb_) err_cb_(errc::make_error_code(errc::invalid_argument));
+						call_back(req_id, errc::make_error_code(errc::invalid_argument), {});
 						close();
 						return;
 					}
 
-					auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
-
 					if (body_len > body_.size()) {
 						body_.resize(body_len);
+						read_buffers_[1] = boost::asio::buffer(body_);
 						read_body(req_id, length - HEAD_LEN, body_len);
 						return;
 					}
 
-					auto& callback = cb_map_[req_id];
-					if (callback) {
-						callback({ body_.data(), body_len });
-					}
+					call_back(req_id, ec, { body_.data(), body_len });
 
 					do_read();
 				}
@@ -186,32 +266,43 @@ namespace rest_rpc {
 			});
 		}
 
+		void call_back(uint64_t req_id, const boost::system::error_code& ec, std::string_view data) {
+			auto& call_helper = cb_map_[req_id];
+			if (call_helper&&!call_helper->has_timeout()) {
+				call_helper->cancel();
+				call_helper->callback(ec, data);
+			}
+
+			erase(req_id);
+		}
+
+		void erase(uint64_t req_id) {
+			strand_.post([this, req_id]() { cb_map_.erase(req_id); });
+		}
+
 		void read_body(std::uint64_t req_id, size_t start, size_t body_len) {
 			using namespace boost::system;
 			boost::asio::async_read(
 				socket_, boost::asio::buffer(body_.data() + start, body_len - start),
-				[this, req_id](boost::system::error_code ec, std::size_t length) {
+				[this, req_id, body_len](boost::system::error_code ec, std::size_t length) {
 				//cancel_timer();
 
 				if (!socket_.is_open()) {
 					//LOG(INFO) << "socket already closed";
-					if (err_cb_) err_cb_(errc::make_error_code(errc::connection_aborted));
+					call_back(req_id, errc::make_error_code(errc::connection_aborted), {});
 					return;
 				}
 
 				if (!ec) {
 					//entier body
 					std::cout << length << std::endl;
-					auto& callback = cb_map_[req_id];
-					if (callback) {
-						callback({ body_.data(), body_.size() });
-					}
+					call_back(req_id, ec, {body_.data(), body_len });
 
 					do_read();
 				}
 				else {
 					//LOG(INFO) << ec.message();
-					if (err_cb_) err_cb_(ec);
+					call_back(req_id, ec, {});
 				}
 			});
 		}
@@ -240,8 +331,11 @@ namespace rest_rpc {
 		boost::asio::deadline_timer deadline_;
 
 		std::deque<message_type> outbox_;
-		std::unordered_map<std::uint64_t, std::function<void(std::string_view)>> cb_map_;
+		uint64_t req_id_ = 0;
 		std::function<void(boost::system::error_code)> err_cb_;
+
+		std::unordered_map<std::uint64_t, std::unique_ptr<call_helper>> cb_map_;
+		std::function<void(uint64_t)> callback_;
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;
