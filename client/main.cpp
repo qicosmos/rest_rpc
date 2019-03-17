@@ -90,28 +90,42 @@ void test_async_client() {
 	std::string str1;
 	std::cin >> str1;
 
-	//call contract,firstly set all callback functions
-	client.set_error_callback([] (auto ec){
+	client.set_error_callback([] (boost::system::error_code ec){
 		std::cout << ec.message() << std::endl;
 	});
 
-	client.set_callback("hello", [](std::string_view data) {
-		if (has_error(data)) {
+	client.call("hello", "purecpp", [](auto ec, auto data) {
+		if (ec) {
+			std::cout << "ec" << std::endl;
 			return;
 		}
+		std::cout << data.size() << std::endl;
+	}, 2000);
 
-		std::cout << "hello" << std::endl;
-	});
-
-	client.set_callback("get_person", [](std::string_view data) {
-		std::cout << "hello" << std::endl;
-		if (!has_error(data)) {
-			auto p = get_result<person>(data);
-			std::cout << p.name << std::endl;
+	client.call("hello", "purecpp", [](auto ec, auto data) {
+		if (ec) {
+			std::cout << "ec" << std::endl;
+			return;
 		}
+		std::cout << data.size() << std::endl;
 	});
 
-	client.call("hello", "purecpp");
+	client.call("get_person", [](auto ec, auto data) {
+		if (ec) {
+			std::cout << "ec" << std::endl;
+			return;
+		}
+		std::cout << data.size() << std::endl;
+	});
+
+	client.call("get_person", [](auto ec, auto data) {
+		if (ec) {
+			std::cout << "ec" << std::endl;
+			return;
+		}
+		std::cout << data.size() << std::endl;
+	}, 2000);
+
 	client.call("get_person");
 
 	std::string str;
