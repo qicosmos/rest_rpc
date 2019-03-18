@@ -13,48 +13,7 @@ using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
 	using namespace boost::system;
-	class call_t {
-	public:
-		call_t(boost::asio::io_service& ios, std::function<void(uint64_t)>& callback,
-			uint64_t req_id, std::function<void(boost::system::error_code, std::string_view)> user_callback,
-			size_t timeout = 3000) : timer_(ios), callback_(callback), req_id_(req_id), user_callback_(std::move(user_callback)) {
-			timer_.expires_from_now(std::chrono::milliseconds(timeout));
-			timer_.async_wait([this] (boost::system::error_code ec){
-				if (ec) {
-					return;
-				}
-
-				has_timeout_ = true;
-				user_callback_(errc::make_error_code(errc::timed_out), {});
-				callback_(req_id_);
-			});
-		}
-
-		void callback(boost::system::error_code ec, std::string_view data) {
-			user_callback_(ec, data);
-		}
-
-		bool has_timeout() const {
-			return has_timeout_;
-		}
-
-		void cancel() {
-			boost::system::error_code ec;
-			timer_.cancel(ec);
-		}
-
-		~call_t() {
-			cancel();
-		}
-
-	private:
-		boost::asio::steady_timer timer_;
-		std::function<void(uint64_t)>& callback_;
-		uint64_t req_id_;
-		std::function<void(boost::system::error_code, std::string_view)> user_callback_;		
-		bool has_timeout_ = false;
-	};
-
+	
 	class async_client : private boost::noncopyable {
 	public:
 		async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
@@ -64,9 +23,6 @@ namespace rest_rpc {
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
 			});
-			callback_ = [this](uint64_t req_id) {
-				erase(req_id);
-			};
 		}
 
 		~async_client() {
@@ -151,6 +107,48 @@ namespace rest_rpc {
 		}
 
 	private:
+		class call_t {
+		public:
+			call_t(boost::asio::io_service& ios, async_client* client,
+				uint64_t req_id, std::function<void(boost::system::error_code, std::string_view)> user_callback,
+				size_t timeout = 3000) : timer_(ios), client_(client), req_id_(req_id), user_callback_(std::move(user_callback)) {
+				timer_.expires_from_now(std::chrono::milliseconds(timeout));
+				timer_.async_wait([this](boost::system::error_code ec) {
+					if (ec) {
+						return;
+					}
+
+					has_timeout_ = true;
+					user_callback_(errc::make_error_code(errc::timed_out), {});
+					client_->erase(req_id_);
+				});
+			}
+
+			void callback(boost::system::error_code ec, std::string_view data) {
+				user_callback_(ec, data);
+			}
+
+			bool has_timeout() const {
+				return has_timeout_;
+			}
+
+			void cancel() {
+				boost::system::error_code ec;
+				timer_.cancel(ec);
+			}
+
+			~call_t() {
+				cancel();
+			}
+
+		private:
+			boost::asio::steady_timer timer_;
+			async_client* client_;
+			uint64_t req_id_;
+			std::function<void(boost::system::error_code, std::string_view)> user_callback_;
+			bool has_timeout_ = false;
+		};
+
 		using message_type = std::pair<std::string_view, std::uint64_t>;
 		void reset_deadline_timer(size_t timeout) {
 			deadline_.expires_from_now(boost::posix_time::seconds((long)timeout));
@@ -253,12 +251,12 @@ namespace rest_rpc {
 		template<bool has_timeout = false, size_t... idx, typename Tuple>
 		void call_with_cb(const std::string& rpc_name, std::index_sequence<idx...>, Tuple&& tp) {
 			if constexpr (has_timeout) {
-				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
+				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, this,
 					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp))),
 					std::get<sizeof...(idx) + 1>(std::forward<Tuple>(tp))));
 			}
 			else {
-				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
+				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, this,
 					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp)))));
 			}
 
@@ -333,7 +331,6 @@ namespace rest_rpc {
 		std::function<void(boost::system::error_code)> err_cb_;
 
 		std::unordered_map<std::uint64_t, std::unique_ptr<call_t>> cb_map_;
-		std::function<void(uint64_t)> callback_;
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;
