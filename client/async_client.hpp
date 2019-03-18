@@ -13,9 +13,9 @@ using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
 	using namespace boost::system;
-	class call_helper {
+	class call_t {
 	public:
-		call_helper(boost::asio::io_service& ios, std::function<void(uint64_t)>& callback,
+		call_t(boost::asio::io_service& ios, std::function<void(uint64_t)>& callback,
 			uint64_t req_id, std::function<void(boost::system::error_code, std::string_view)> user_callback,
 			size_t timeout = 3000) : timer_(ios), callback_(callback), req_id_(req_id), user_callback_(std::move(user_callback)) {
 			timer_.expires_from_now(std::chrono::milliseconds(timeout));
@@ -43,7 +43,7 @@ namespace rest_rpc {
 			timer_.cancel(ec);
 		}
 
-		~call_helper() {
+		~call_t() {
 			cancel();
 		}
 
@@ -148,12 +148,12 @@ namespace rest_rpc {
 		template<bool has_timeout = false, size_t... idx, typename Tuple>
 		void call_with_cb(const std::string& rpc_name, std::index_sequence<idx...>, Tuple&& tp) {
 			if constexpr (has_timeout) {
-				cb_map_.emplace(req_id_, std::make_unique<call_helper>(ios_, callback_,
+				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
 					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp))),
 					std::get<sizeof...(idx) + 1>(std::forward<Tuple>(tp))));
 			}
 			else {
-				cb_map_.emplace(req_id_, std::make_unique<call_helper>(ios_, callback_,
+				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
 					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp)))));
 			}
 
@@ -223,7 +223,6 @@ namespace rest_rpc {
 		}
 
 		void do_read() {
-			using namespace boost::system;
 			std::array<boost::asio::mutable_buffer, 2> read_buffers;
 			read_buffers[0] = boost::asio::buffer(head_);
 			read_buffers[1] = boost::asio::buffer(body_);
@@ -281,7 +280,6 @@ namespace rest_rpc {
 		}
 
 		void read_body(std::uint64_t req_id, size_t start, size_t body_len) {
-			using namespace boost::system;
 			boost::asio::async_read(
 				socket_, boost::asio::buffer(body_.data() + start, body_len - start),
 				[this, req_id, body_len](boost::system::error_code ec, std::size_t length) {
@@ -334,7 +332,7 @@ namespace rest_rpc {
 		uint64_t req_id_ = 0;
 		std::function<void(boost::system::error_code)> err_cb_;
 
-		std::unordered_map<std::uint64_t, std::unique_ptr<call_helper>> cb_map_;
+		std::unordered_map<std::uint64_t, std::unique_ptr<call_t>> cb_map_;
 		std::function<void(uint64_t)> callback_;
 
 		char head_[HEAD_LEN] = {};
