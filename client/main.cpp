@@ -84,6 +84,16 @@ void test_get_person() {
 	}
 }
 
+struct dummy {
+	void foo(boost::system::error_code ec, std::string_view data) {
+		if (ec) {
+			std::cout << "ec" << std::endl;
+			return;
+		}
+		std::cout << data.size() << std::endl;
+	}
+};
+
 void test_async_client() {
 	async_client client("127.0.0.1", 9000);
 	client.connect();
@@ -94,11 +104,21 @@ void test_async_client() {
 		std::cout << ec.message() << std::endl;
 	});
 
+	dummy dm;
+	client.call("hello", "purecpp", std::bind(&dummy::foo, &dm, std::placeholders::_1, 
+		std::placeholders::_2), 2000);
+
 	client.call("hello", "purecpp", [](auto ec, auto data) {
 		if (ec) {
 			std::cout << "ec" << std::endl;
 			return;
 		}
+
+		if (has_error(data)) {
+			std::cout << "rpc error" << std::endl;
+			return;
+		}
+
 		std::cout << data.size() << std::endl;
 	}, 2000);
 
