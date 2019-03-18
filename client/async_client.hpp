@@ -13,7 +13,22 @@ using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
 	using namespace boost::system;
-	
+	class req_result {
+	public:
+		req_result() = default;
+		req_result(std::string_view data): data_(data) {}
+		bool success() const {
+			return !has_error(data_);
+		}
+
+		template<typename T>
+		T as() {
+			return get_result<T>(data_);
+		}
+	private:
+		std::string_view data_;
+	};
+
 	class async_client : private boost::noncopyable {
 	public:
 		async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
@@ -69,7 +84,7 @@ namespace rest_rpc {
 		}
 
 		template<typename... Args>
-		void call(const std::string& rpc_name, Args&&... args) {
+		auto call(const std::string& rpc_name, Args&&... args) {
 			req_id_++;
 			constexpr const size_t SIZE = sizeof...(Args);
 			if constexpr (sizeof...(Args) > 0) {
@@ -85,12 +100,16 @@ namespace rest_rpc {
 							std::forward_as_tuple(std::forward<Args>(args)...));
 					}
 					else {
+						auto future = get_future();
 						call_impl(rpc_name, std::forward<Args>(args)...);
+						return future;
 					}
 				}
 			}
 			else {
+				auto future = get_future();
 				call_impl(rpc_name, std::forward<Args>(args)...);
+				return future;
 			}
 		}
 
@@ -263,14 +282,28 @@ namespace rest_rpc {
 			call_impl(rpc_name, std::get<idx>(std::forward<Tuple>(tp))...);
 		}
 
-		void call_back(uint64_t req_id, const boost::system::error_code& ec, std::string_view data) {
-			auto& call_helper = cb_map_[req_id];
-			if (call_helper&&!call_helper->has_timeout()) {
-				call_helper->cancel();
-				call_helper->callback(ec, data);
-			}
+		std::future<req_result> get_future() {
+			auto p = std::promise<req_result>();
+			auto future = p.get_future();
+			future_map_.emplace(req_id_, std::move(p));
+			return future;
+		}
 
-			erase(req_id);
+		void call_back(uint64_t req_id, const boost::system::error_code& ec, std::string_view data) {
+			if (!cb_map_.empty()) {
+				auto& call_helper = cb_map_[req_id];
+				if (call_helper && !call_helper->has_timeout()) {
+					call_helper->cancel();
+					call_helper->callback(ec, data);
+				}
+
+				erase(req_id);
+			}
+			else {
+				auto& f = future_map_[req_id];
+				f.set_value(req_result{data});
+				strand_.post([this, req_id]() { future_map_.erase(req_id); });
+			}
 		}
 
 		void erase(uint64_t req_id) {
@@ -331,6 +364,7 @@ namespace rest_rpc {
 		std::function<void(boost::system::error_code)> err_cb_;
 
 		std::unordered_map<std::uint64_t, std::unique_ptr<call_t>> cb_map_;
+		std::unordered_map<std::uint64_t, std::promise<req_result>> future_map_;
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;

@@ -2,6 +2,7 @@
 #include "sync_client.hpp"
 #include "async_client.hpp"
 #include "../codec.h"
+using namespace std::chrono_literals;
 
 using namespace rest_rpc;
 using namespace rest_rpc::rpc_service;
@@ -146,7 +147,14 @@ void test_async_client() {
 		std::cout << data.size() << std::endl;
 	}, 2000);
 
-	client.call("get_person");
+	auto f = client.call("get_person");
+	if (f.wait_for(50ms) == std::future_status::timeout) {
+		std::cout << "timeout" << std::endl;
+	}
+	else {
+		auto p = f.get().as<person>();
+		std::cout << p.name << std::endl;
+	}
 
 	std::string str;
 	std::cin >> str;
