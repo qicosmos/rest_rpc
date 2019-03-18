@@ -138,28 +138,6 @@ namespace rest_rpc {
 			}
 		}
 
-		template<typename... Args>
-		void call_impl(const std::string& rpc_name, Args&&... args) {
-			msgpack_codec codec;
-			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
-			write(req_id_, std::move(ret));
-		}
-
-		template<bool has_timeout = false, size_t... idx, typename Tuple>
-		void call_with_cb(const std::string& rpc_name, std::index_sequence<idx...>, Tuple&& tp) {
-			if constexpr (has_timeout) {
-				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
-					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp))),
-					std::get<sizeof...(idx) + 1>(std::forward<Tuple>(tp))));
-			}
-			else {
-				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
-					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp)))));
-			}
-
-			call_impl(rpc_name, std::get<idx>(std::forward<Tuple>(tp))...);
-		}
-
 		bool has_connected() const {
 			return has_connected_;
 		}
@@ -263,6 +241,28 @@ namespace rest_rpc {
 					close();
 				}
 			});
+		}
+
+		template<typename... Args>
+		void call_impl(const std::string& rpc_name, Args&&... args) {
+			msgpack_codec codec;
+			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
+			write(req_id_, std::move(ret));
+		}
+
+		template<bool has_timeout = false, size_t... idx, typename Tuple>
+		void call_with_cb(const std::string& rpc_name, std::index_sequence<idx...>, Tuple&& tp) {
+			if constexpr (has_timeout) {
+				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
+					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp))),
+					std::get<sizeof...(idx) + 1>(std::forward<Tuple>(tp))));
+			}
+			else {
+				cb_map_.emplace(req_id_, std::make_unique<call_t>(ios_, callback_,
+					req_id_, std::move(std::get<sizeof...(idx)>(std::forward<Tuple>(tp)))));
+			}
+
+			call_impl(rpc_name, std::get<idx>(std::forward<Tuple>(tp))...);
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, std::string_view data) {
