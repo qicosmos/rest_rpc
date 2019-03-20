@@ -156,6 +156,9 @@ void test_async_client() {
 		std::cout << p.name << std::endl;
 	}
 
+	auto fu = client.call("hello", "purecpp");
+	fu.get().as(); //no return
+
 	std::string str;
 	std::cin >> str;
 }

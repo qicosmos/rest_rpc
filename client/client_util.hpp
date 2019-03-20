@@ -13,6 +13,10 @@ namespace rest_rpc {
 	template<typename T>
 	inline T get_result(std::string_view result) {
 		msgpack_codec codec;
+		auto tp = codec.unpack<std::tuple<int>>(result.data(), result.size());
+		if (std::get<0>(tp) != 0)
+			throw std::logic_error("rpc error");
+
 		auto err_tp = codec.unpack<std::tuple<int, T>>(result.data(), result.size());
 		return std::get<1>(err_tp);
 	}

@@ -25,6 +25,12 @@ namespace rest_rpc {
 		T as() {
 			return get_result<T>(data_);
 		}
+
+		void as() {
+			if (has_error(data_)) {
+				throw std::logic_error("rpc error");
+			}
+		}
 	private:
 		std::string_view data_;
 	};
@@ -94,10 +100,11 @@ namespace rest_rpc {
 						std::forward_as_tuple(std::forward<Args>(args)...));
 				}
 				else {
-					if constexpr (SIZE > 1 && 
-						std::is_invocable_v<nth_type_of<SIZE-2, Args...>, boost::system::error_code, std::string_view>) {
-						call_with_cb<true>(rpc_name, std::make_index_sequence<SIZE - 2>{},
-							std::forward_as_tuple(std::forward<Args>(args)...));
+					if constexpr (sizeof...(Args) > 1){
+						if constexpr (std::is_invocable_v<nth_type_of<SIZE - 2, Args...>, boost::system::error_code, std::string_view>) {
+							call_with_cb<true>(rpc_name, std::make_index_sequence<SIZE - 2>{},
+								std::forward_as_tuple(std::forward<Args>(args)...));
+						}
 					}
 					else {
 						auto future = get_future();
