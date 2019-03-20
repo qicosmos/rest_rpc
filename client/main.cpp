@@ -98,8 +98,8 @@ struct dummy {
 void test_async_client() {
 	async_client client("127.0.0.1", 9000);
 	client.connect();
-	std::string str1;
-	std::cin >> str1;
+//	std::string str1;
+//	std::cin >> str1;
 
 	client.set_error_callback([] (boost::system::error_code ec){
 		std::cout << ec.message() << std::endl;

@@ -1,6 +1,8 @@
 #pragma once
 #include <string>
 #include <deque>
+#include <future>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 #include <boost/noncopyable.hpp>
@@ -64,7 +66,7 @@ namespace rest_rpc {
 
 		void connect() {
 			reset_deadline_timer(connect_timeout_);
-			auto addr = boost::asio::ip::make_address_v4(host_);
+			auto addr = boost::asio::ip::address::from_string(host_);
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
 				if (ec) {
 					std::cout << ec.message() << std::endl;
@@ -96,7 +98,7 @@ namespace rest_rpc {
 		//sync call
 		template<typename T=void, typename... Args>
 		auto call(const std::string& rpc_name, Args&&... args) {
-			auto future = async_call(rpc_name, std::forward<Args>(args)...);
+			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
 			if (future.wait_for(std::chrono::seconds(wait_timeout_)) == std::future_status::timeout) {
 				throw std::out_of_range("timeout");
 			}
