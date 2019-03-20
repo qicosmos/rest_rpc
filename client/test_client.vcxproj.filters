@@ -21,7 +21,7 @@
     <ClInclude Include="client_util.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="test_client.hpp">
+    <ClInclude Include="sync_client.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

@@ -130,7 +130,7 @@
   <ItemGroup>
     <ClInclude Include="async_client.hpp" />
     <ClInclude Include="client_util.hpp" />
-    <ClInclude Include="test_client.hpp" />
+    <ClInclude Include="sync_client.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
