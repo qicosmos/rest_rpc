@@ -58,6 +58,10 @@ namespace rest_rpc {
 			reconnect_cnt_ = reconnect_count;
 		}
 
+		void set_wait_timeout(size_t seconds) {
+			wait_timeout_ = seconds;
+		}
+
 		void connect() {
 			reset_deadline_timer(connect_timeout_);
 			auto addr = boost::asio::ip::make_address_v4(host_);
@@ -89,8 +93,24 @@ namespace rest_rpc {
 			err_cb_ = std::move(f);
 		}
 
-		template<typename... Args>
+		//sync call
+		template<typename T=void, typename... Args>
 		auto call(const std::string& rpc_name, Args&&... args) {
+			auto future = async_call(rpc_name, std::forward<Args>(args)...);
+			if (future.wait_for(std::chrono::seconds(wait_timeout_)) == std::future_status::timeout) {
+				throw std::out_of_range("timeout");
+			}
+
+			if constexpr (std::is_void_v<T>) {
+				future.get().as();
+			}
+			else {
+				return future.get().as<T>();
+			}
+		}
+
+		template<typename... Args>
+		auto async_call(const std::string& rpc_name, Args&&... args) {
 			req_id_++;
 			constexpr const size_t SIZE = sizeof...(Args);
 			if constexpr (sizeof...(Args) > 0) {
@@ -361,7 +381,8 @@ namespace rest_rpc {
 
 		std::string host_;
 		unsigned short port_;
-		size_t connect_timeout_ = 1;//s
+		size_t connect_timeout_ = 2;//s
+		size_t wait_timeout_ = 2;//s
 		int reconnect_cnt_ = -1;
 
 		boost::asio::deadline_timer deadline_;

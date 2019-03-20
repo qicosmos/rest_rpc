@@ -106,10 +106,10 @@ void test_async_client() {
 	});
 
 	dummy dm;
-	client.call("hello", "purecpp", std::bind(&dummy::foo, &dm, std::placeholders::_1, 
+	client.async_call("hello", "purecpp", std::bind(&dummy::foo, &dm, std::placeholders::_1,
 		std::placeholders::_2), 2000);
 
-	client.call("hello", "purecpp", [](auto ec, auto data) {
+	client.async_call("hello", "purecpp", [](auto ec, auto data) {
 		if (ec) {
 			std::cout << "ec" << std::endl;
 			return;
@@ -123,7 +123,7 @@ void test_async_client() {
 		std::cout << data.size() << std::endl;
 	}, 2000);
 
-	client.call("hello", "purecpp", [](auto ec, auto data) {
+	client.async_call("hello", "purecpp", [](auto ec, auto data) {
 		if (ec) {
 			std::cout << "ec" << std::endl;
 			return;
@@ -131,7 +131,7 @@ void test_async_client() {
 		std::cout << data.size() << std::endl;
 	});
 
-	client.call("get_person", [](auto ec, auto data) {
+	client.async_call("get_person", [](auto ec, auto data) {
 		if (ec) {
 			std::cout << "ec" << std::endl;
 			return;
@@ -139,7 +139,7 @@ void test_async_client() {
 		std::cout << data.size() << std::endl;
 	});
 
-	client.call("get_person", [](auto ec, auto data) {
+	client.async_call("get_person", [](auto ec, auto data) {
 		if (ec) {
 			std::cout << "ec" << std::endl;
 			return;
@@ -147,7 +147,7 @@ void test_async_client() {
 		std::cout << data.size() << std::endl;
 	}, 2000);
 
-	auto f = client.call("get_person");
+	auto f = client.async_call("get_person");
 	if (f.wait_for(50ms) == std::future_status::timeout) {
 		std::cout << "timeout" << std::endl;
 	}
@@ -156,8 +156,12 @@ void test_async_client() {
 		std::cout << p.name << std::endl;
 	}
 
-	auto fu = client.call("hello", "purecpp");
+	auto fu = client.async_call("hello", "purecpp");
 	fu.get().as(); //no return
+
+	//sync call
+	client.call("hello", "purecpp");
+	auto p = client.call<person>("get_person");
 
 	std::string str;
 	std::cin >> str;
