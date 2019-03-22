@@ -8,8 +8,8 @@
 #include <boost/noncopyable.hpp>
 using boost::asio::ip::tcp;
 #include "client_util.hpp"
-#include "../const_vars.h"
-#include "../meta_util.hpp"
+#include "const_vars.h"
+#include "meta_util.hpp"
 
 using namespace rest_rpc::rpc_service;
 

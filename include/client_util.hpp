@@ -1,6 +1,6 @@
 #pragma once
 #include <string_view>
-#include "../codec.h"
+#include "codec.h"
 
 namespace rest_rpc {
 	inline bool has_error(std::string_view result) {

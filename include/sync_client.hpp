@@ -2,7 +2,7 @@
 #include <string>
 #include <boost/asio.hpp>
 using boost::asio::ip::tcp;
-#include "../codec.h"
+#include "codec.h"
 
 using namespace rest_rpc::rpc_service;
 
