@@ -127,6 +127,11 @@ namespace rest_rpc {
 							call_with_cb<true>(rpc_name, std::make_index_sequence<SIZE - 2>{},
 								std::forward_as_tuple(std::forward<Args>(args)...));
 						}
+						else {
+							auto future = get_future();
+							call_impl(rpc_name, std::forward<Args>(args)...);
+							return future;
+						}
 					}
 					else {
 						auto future = get_future();
