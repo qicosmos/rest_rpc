@@ -86,9 +86,21 @@ namespace rest_rpc {
 					has_connected_ = true;
 					deadline_.cancel();
 					do_read();
+					conn_cond_.notify_one();
 					std::cout << "connect " << host_ << " " << port_ << std::endl;
 				}
 			});
+		}
+
+		bool wait_conn(size_t timeout) {
+			if (has_connected_) {
+				return true;
+			}
+
+			std::unique_lock lock(conn_mtx_);
+			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout), 
+				[this] {return has_connected_; });
+			return result;
 		}
 
 		void set_error_callback(std::function<void(boost::system::error_code)> f) {
@@ -379,7 +391,6 @@ namespace rest_rpc {
 			}
 		}
 
-		bool has_connected_ = false;
 		boost::asio::io_service ios_;
 		tcp::socket socket_;
 		boost::asio::io_service::work work_;
@@ -391,6 +402,9 @@ namespace rest_rpc {
 		size_t connect_timeout_ = 2;//s
 		size_t wait_timeout_ = 2;//s
 		int reconnect_cnt_ = -1;
+		bool has_connected_ = false;
+		std::mutex conn_mtx_;
+		std::condition_variable conn_cond_;
 
 		boost::asio::deadline_timer deadline_;
 
