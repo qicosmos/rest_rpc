@@ -41,8 +41,6 @@ namespace rest_rpc {
 	public:
 		async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
 			deadline_(ios_), host_(host), port_(port), body_(INIT_BUF_SIZE) {
-			read_buffers_[0] = boost::asio::buffer(head_);
-			read_buffers_[1] = boost::asio::buffer(body_);
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
 			});
@@ -226,6 +224,7 @@ namespace rest_rpc {
 
 		void write(std::uint64_t req_id, buffer_type&& message) {
 			size_t size = message.size();
+			assert(size < MAX_BUF_LEN);
 			message_type msg{ {message.release(), size}, req_id };
 			strand_.post([this, msg] {
 				outbox_.emplace_back(std::move(msg));
@@ -264,11 +263,7 @@ namespace rest_rpc {
 		}
 
 		void do_read() {
-			std::array<boost::asio::mutable_buffer, 2> read_buffers;
-			read_buffers[0] = boost::asio::buffer(head_);
-			read_buffers[1] = boost::asio::buffer(body_);
-
-			boost::asio::async_read(socket_, read_buffers, boost::asio::transfer_at_least(HEAD_LEN),
+			boost::asio::async_read(socket_, boost::asio::buffer(head_),
 				[this](const boost::system::error_code& ec, const size_t length) {
 				if (!socket_.is_open()) {
 					//LOG(INFO) << "socket already closed";
@@ -279,6 +274,11 @@ namespace rest_rpc {
 				if (!ec) {
 					const uint32_t body_len = *((uint32_t*)(head_));
 					auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+					if (body_len > 0 && body_len < MAX_BUF_LEN) {
+						if (body_.size() < body_len) { body_.resize(body_len); }
+						read_body(req_id, body_len);
+						return;
+					}
 
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
@@ -286,22 +286,36 @@ namespace rest_rpc {
 						close();
 						return;
 					}
+				}
+				else {
+					//LOG(INFO) << ec.message();
+					if (err_cb_) err_cb_(ec);
+					close();
+				}
+			});
+		}
 
-					if (body_len > body_.size()) {
-						body_.resize(body_len);
-						read_buffers_[1] = boost::asio::buffer(body_);
-						read_body(req_id, length - HEAD_LEN, body_len);
-						return;
-					}
+		void read_body(std::uint64_t req_id, size_t body_len) {
+			boost::asio::async_read(
+				socket_, boost::asio::buffer(body_.data(), body_len),
+				[this, req_id, body_len](boost::system::error_code ec, std::size_t length) {
+				//cancel_timer();
 
+				if (!socket_.is_open()) {
+					//LOG(INFO) << "socket already closed";
+					call_back(req_id, errc::make_error_code(errc::connection_aborted), {});
+					return;
+				}
+
+				if (!ec) {
+					//entier body
 					call_back(req_id, ec, { body_.data(), body_len });
 
 					do_read();
 				}
 				else {
 					//LOG(INFO) << ec.message();
-					if (err_cb_) err_cb_(ec);
-					close();
+					call_back(req_id, ec, {});
 				}
 			});
 		}
@@ -356,32 +370,6 @@ namespace rest_rpc {
 			strand_.post([this, req_id]() { cb_map_.erase(req_id); });
 		}
 
-		void read_body(std::uint64_t req_id, size_t start, size_t body_len) {
-			boost::asio::async_read(
-				socket_, boost::asio::buffer(body_.data() + start, body_len - start),
-				[this, req_id, body_len](boost::system::error_code ec, std::size_t length) {
-				//cancel_timer();
-
-				if (!socket_.is_open()) {
-					//LOG(INFO) << "socket already closed";
-					call_back(req_id, errc::make_error_code(errc::connection_aborted), {});
-					return;
-				}
-
-				if (!ec) {
-					//entier body
-					std::cout << length << std::endl;
-					call_back(req_id, ec, {body_.data(), body_len });
-
-					do_read();
-				}
-				else {
-					//LOG(INFO) << ec.message();
-					call_back(req_id, ec, {});
-				}
-			});
-		}
-
 		void close() {
 			has_connected_ = true;
 			if (socket_.is_open()) {
@@ -417,6 +405,5 @@ namespace rest_rpc {
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;
-		std::array<boost::asio::mutable_buffer, 2> read_buffers_;
 	};
 }

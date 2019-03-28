@@ -7,7 +7,7 @@ namespace rest_rpc {
 namespace rpc_service {
 
   using buffer_type = msgpack::sbuffer;
-struct msgpack_codec {
+  struct msgpack_codec {
   const static size_t init_size = 2 * 1024;
 
   template<typename... Args>

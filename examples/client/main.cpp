@@ -1,6 +1,7 @@
 #include <iostream>
 #include <sync_client.hpp>
 #include <async_client.hpp>
+#include <fstream>
 #include "codec.h"
 using namespace std::chrono_literals;
 
@@ -170,7 +171,71 @@ void test_async_client() {
 	std::cin >> str;
 }
 
+void test_upload() {
+	async_client client("127.0.0.1", 9000);
+	client.connect();
+	bool r = client.wait_conn(1);
+	if (!r) {
+		std::cout << "connect timeout" << std::endl;
+		return;
+	}
+
+	std::ifstream file("E:/acl.7z", std::ios::binary);
+	file.seekg(0, std::ios::end);
+	size_t file_len = file.tellg();
+	file.seekg(0, std::ios::beg);
+	std::string conent;
+	conent.resize(file_len);
+	file.read(&conent[0], file_len);
+	std::cout << file_len << std::endl;
+
+	{
+		auto f = client.async_call("upload", "test", conent);
+		if (f.wait_for(500ms) == std::future_status::timeout) {
+			std::cout << "timeout" << std::endl;
+		}
+		else {
+			f.get().as();
+			std::cout << "ok" << std::endl;
+		}
+	}
+	{
+		auto f = client.async_call("upload", "test1", conent);
+		if (f.wait_for(500ms) == std::future_status::timeout) {
+			std::cout << "timeout" << std::endl;
+		}
+		else {
+			f.get().as();
+			std::cout << "ok" << std::endl;
+		}
+	}
+}
+
+void test_download() {
+	async_client client("127.0.0.1", 9000);
+	client.connect();
+	bool r = client.wait_conn(1);
+	if (!r) {
+		std::cout << "connect timeout" << std::endl;
+		return;
+	}
+
+	auto f = client.async_call("download", "test");
+	if (f.wait_for(500ms) == std::future_status::timeout) {
+		std::cout << "timeout" << std::endl;
+	}
+	else {
+		auto content = f.get().as<std::string>();
+		std::cout << content.size() << std::endl;
+		std::ofstream file("test", std::ios::binary);
+		file.write(content.data(), content.size());
+	}
+}
+
 int main() {
+	//test_upload();
+	//test_download();
+	
 	test_async_client();
 	test_get_person();
 	test_get_person_name();

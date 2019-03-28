@@ -31,7 +31,7 @@ class router : boost::noncopyable {
 
   void remove_handler(std::string const& name) { this->map_invokers_.erase(name); }
 
-  void set_callback(const std::function<void(const std::string&, const std::string&, connection*,
+  void set_callback(const std::function<void(const std::string&, std::string&&, connection*,
                                              bool)>& callback) {
     callback_to_server_ = callback;
   }
@@ -46,19 +46,24 @@ class router : boost::noncopyable {
       auto it = map_invokers_.find(func_name);
       if (it == map_invokers_.end()) {
         result = codec.pack_args_str(result_code::FAIL, "unknown function: " + func_name);
-        callback_to_server_(func_name, result, conn, true);
+        callback_to_server_(func_name, std::move(result), conn, true);
         return;
       }
 
       ExecMode model;
       it->second(conn, data, size, result, model);
       if (model == ExecMode::sync && callback_to_server_) {
-        callback_to_server_(func_name, result, conn, false);
+		if (result.size() >= MAX_BUF_LEN) {
+		  result = codec.pack_args_str(result_code::FAIL, "the response result is out of range: more than 10M " + func_name);
+		  callback_to_server_(func_name, std::move(result), conn, true);
+		  return;
+		}
+        callback_to_server_(func_name, std::move(result), conn, false);
       }
     } catch (const std::exception& ex) {
       msgpack_codec codec;
       result = codec.pack_args_str(result_code::FAIL, ex.what());
-      callback_to_server_("", result, conn, true);
+      callback_to_server_("", std::move(result), conn, true);
     }
   }
 
@@ -173,7 +178,7 @@ class router : boost::noncopyable {
   std::map<std::string,
            std::function<void(connection*, const char*, size_t, std::string&, ExecMode& model)>>
       map_invokers_;
-  std::function<void(const std::string&, const std::string&, connection*, bool)>
+  std::function<void(const std::string&, std::string&&, connection*, bool)>
       callback_to_server_;
 };
 }  // namespace rpc_service

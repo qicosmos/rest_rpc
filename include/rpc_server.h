@@ -19,8 +19,7 @@ class rpc_server : private boost::noncopyable {
         timeout_seconds_(timeout_seconds),
         check_seconds_(check_seconds) {
     router::get().set_callback(std::bind(&rpc_server::callback, this, std::placeholders::_1,
-                                         std::placeholders::_2, std::placeholders::_3,
-                                         std::placeholders::_4));
+                                         std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
     do_accept();
     check_thread_ = std::make_shared<std::thread>([this] { clean(); });
   }
@@ -46,10 +45,10 @@ class rpc_server : private boost::noncopyable {
     router::get().register_handler<model>(name, f, self);
   }
 
-  void response(int64_t conn_id, const char* data, size_t size) {
+  void response(int64_t conn_id, std::string&& result) {
     std::unique_lock<std::mutex> lock(mtx_);
     auto it = connections_.find(conn_id);
-    if (it != connections_.end()) { it->second->response(data, size); }
+    if (it != connections_.end()) { it->second->response(std::move(result)); }
   }
 
  private:
@@ -84,9 +83,9 @@ class rpc_server : private boost::noncopyable {
     }
   }
 
-  void callback(const std::string& topic, const std::string& result, connection* conn,
+  void callback(const std::string& topic, std::string&& result, connection* conn,
                 bool has_error = false) {
-    response(conn->conn_id(), result.data(), result.size());
+    response(conn->conn_id(), std::move(result));
   }
 
   io_service_pool io_service_pool_;

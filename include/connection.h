@@ -29,21 +29,30 @@ class connection : public std::enable_shared_from_this<connection>, private boos
 
   bool has_closed() const { return has_closed_; }
 
-  void response(const char* data, size_t len) {
+  void response(std::string data) {
+	auto len = data.size();
+	assert(len < MAX_BUF_LEN);
 	std::array<boost::asio::const_buffer, 3> write_buffers;
+	write_msg_ = std::move(data);
 	write_buffers[0] = boost::asio::buffer(&len, sizeof(uint32_t));
 	write_buffers[1] = boost::asio::buffer(&req_id_, sizeof(uint64_t));
-	write_buffers[2] = boost::asio::buffer((char*)data, len);
+	write_buffers[2] = boost::asio::buffer(write_msg_.data(), len);
     reset_timer();
     auto self = this->shared_from_this();
     boost::asio::async_write(
         socket_, write_buffers,
         [this, self](boost::system::error_code ec, std::size_t length) {
+		  if (ec) {
+			std::cout << ec.value() << " " << ec.message() << std::endl;
+			close();
+			return;
+		  }
           cancel_timer();
           if (has_closed()) { return; }
           if (!ec) {
             read_head();
           } else {
+			  close();
             //LOG(INFO) << ec.message();
           }
         });
@@ -143,6 +152,8 @@ class connection : public std::enable_shared_from_this<connection>, private boos
   char head_[HEAD_LEN];
   std::vector<char> body_;
   std::uint64_t req_id_;
+
+  std::string write_msg_;
 
   boost::asio::deadline_timer timer_;
   std::size_t timeout_seconds_;
