@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <boost/asio.hpp>
+#include <boost/noncopyable.hpp>
 using boost::asio::ip::tcp;
 #include "codec.h"
 
