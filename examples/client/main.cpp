@@ -1,6 +1,6 @@
 #include <iostream>
-#include <sync_client.hpp>
-#include <async_client.hpp>
+#include <rpc_client.hpp>
+#include <chrono>
 #include <fstream>
 #include "codec.h"
 using namespace std::chrono_literals;
@@ -10,12 +10,14 @@ using namespace rest_rpc::rpc_service;
 
 void test_add() {
 	try{
-		boost::asio::io_service io_service;
-		sync_client client(io_service);
-		client.connect("127.0.0.1", "9000");
+		rpc_client client("127.0.0.1", 9000);
+		bool r = client.connect();
+		if (!r) {
+			std::cout << "connect timeout" << std::endl;
+			return;
+		}
 
 		auto result = client.call<int>("add", 1, 2);
-
 		std::cout << result << std::endl;
 	}
 	catch (const std::exception& e){
@@ -25,9 +27,12 @@ void test_add() {
 
 void test_translate() {
 	try {
-		boost::asio::io_service io_service;
-		sync_client client(io_service);
-		client.connect("127.0.0.1", "9000");
+		rpc_client client("127.0.0.1", 9000);
+		bool r = client.connect();
+		if (!r) {
+			std::cout << "connect timeout" << std::endl;
+			return;
+		}
 
 		auto result = client.call<std::string>("translate", "hello");
 		std::cout << result << std::endl;
@@ -39,9 +44,12 @@ void test_translate() {
 
 void test_hello() {
 	try {
-		boost::asio::io_service io_service;
-		sync_client client(io_service);
-		client.connect("127.0.0.1", "9000");
+		rpc_client client("127.0.0.1", 9000);
+		bool r = client.connect();
+		if (!r) {
+			std::cout << "connect timeout" << std::endl;
+			return;
+		}
 
 		client.call("hello", "purecpp");
 	}
@@ -60,9 +68,12 @@ struct person {
 
 void test_get_person_name() {
 	try {
-		boost::asio::io_service io_service;
-		sync_client client(io_service);
-		client.connect("127.0.0.1", "9000");
+		rpc_client client("127.0.0.1", 9000);
+		bool r = client.connect();
+		if (!r) {
+			std::cout << "connect timeout" << std::endl;
+			return;
+		}
 
 		auto result = client.call<std::string>("get_person_name", person{ 1, "tom", 20 });
 		std::cout << result << std::endl;
@@ -74,9 +85,12 @@ void test_get_person_name() {
 
 void test_get_person() {
 	try {
-		boost::asio::io_service io_service;
-		sync_client client(io_service);
-		client.connect("127.0.0.1", "9000");
+		rpc_client client("127.0.0.1", 9000);
+		bool r = client.connect();
+		if (!r) {
+			std::cout << "connect timeout" << std::endl;
+			return;
+		}
 
 		auto result = client.call<person>("get_person");
 		std::cout << result.name << std::endl;
@@ -97,8 +111,8 @@ struct dummy {
 };
 
 void test_async_client() {
-	async_client client("127.0.0.1", 9000);
-	client.connect();
+	rpc_client client("127.0.0.1", 9000);
+	client.async_connect();
 	bool r = client.wait_conn(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
@@ -172,8 +186,8 @@ void test_async_client() {
 }
 
 void test_upload() {
-	async_client client("127.0.0.1", 9000);
-	client.connect();
+	rpc_client client("127.0.0.1", 9000);
+	client.async_connect();
 	bool r = client.wait_conn(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
@@ -212,8 +226,8 @@ void test_upload() {
 }
 
 void test_download() {
-	async_client client("127.0.0.1", 9000);
-	client.connect();
+	rpc_client client("127.0.0.1", 9000);
+	client.async_connect();
 	bool r = client.wait_conn(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
@@ -232,15 +246,18 @@ void test_download() {
 	}
 }
 
-int main() {
-	//test_upload();
-	//test_download();
-	
-	test_async_client();
-	test_get_person();
-	test_get_person_name();
-	test_hello();
+void test_sync_client() {
 	test_add();
 	test_translate();
+	test_hello();
+	test_get_person_name();
+	test_get_person();
+}
+
+int main() {
+	test_sync_client();
+	test_async_client();
+	//test_upload();
+	//test_download();
 	return 0;
 }

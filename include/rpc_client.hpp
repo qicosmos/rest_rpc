@@ -18,7 +18,7 @@ namespace rest_rpc {
 	class req_result {
 	public:
 		req_result() = default;
-		req_result(std::string_view data): data_(data) {}
+		req_result(std::string_view data) : data_(data) {}
 		bool success() const {
 			return !has_error(data_);
 		}
@@ -37,16 +37,16 @@ namespace rest_rpc {
 		std::string_view data_;
 	};
 
-	class async_client : private boost::noncopyable {
+	class rpc_client : private boost::noncopyable {
 	public:
-		async_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
+		rpc_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
 			deadline_(ios_), host_(host), port_(port), body_(INIT_BUF_SIZE) {
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
 			});
 		}
 
-		~async_client() {
+		~rpc_client() {
 			stop();
 		}
 
@@ -62,7 +62,7 @@ namespace rest_rpc {
 			wait_timeout_ = seconds;
 		}
 
-		void connect() {
+		void async_connect() {
 			reset_deadline_timer(connect_timeout_);
 			auto addr = boost::asio::ip::address::from_string(host_);
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
@@ -78,16 +78,20 @@ namespace rest_rpc {
 					}
 
 					socket_ = decltype(socket_)(ios_);
-					connect();
+					async_connect();
 				}
 				else {
 					has_connected_ = true;
 					deadline_.cancel();
 					do_read();
 					conn_cond_.notify_one();
-					std::cout << "connect " << host_ << " " << port_ << std::endl;
 				}
 			});
+		}
+
+		bool connect(size_t timeout = 1) {
+			async_connect();
+			return wait_conn(timeout);
 		}
 
 		bool wait_conn(size_t timeout) {
@@ -96,7 +100,7 @@ namespace rest_rpc {
 			}
 
 			std::unique_lock lock(conn_mtx_);
-			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout), 
+			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout),
 				[this] {return has_connected_; });
 			return result;
 		}
@@ -106,7 +110,7 @@ namespace rest_rpc {
 		}
 
 		//sync call
-		template<typename T=void, typename... Args>
+		template<typename T = void, typename... Args>
 		auto call(const std::string& rpc_name, Args&&... args) {
 			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
 			if (future.wait_for(std::chrono::seconds(wait_timeout_)) == std::future_status::timeout) {
@@ -132,7 +136,7 @@ namespace rest_rpc {
 						std::forward_as_tuple(std::forward<Args>(args)...));
 				}
 				else {
-					if constexpr (sizeof...(Args) > 1){
+					if constexpr (sizeof...(Args) > 1) {
 						if constexpr (std::is_invocable_v<nth_type_of<SIZE - 2, Args...>, boost::system::error_code, std::string_view>) {
 							call_with_cb<true>(rpc_name, std::make_index_sequence<SIZE - 2>{},
 								std::forward_as_tuple(std::forward<Args>(args)...));
@@ -172,7 +176,7 @@ namespace rest_rpc {
 	private:
 		class call_t {
 		public:
-			call_t(boost::asio::io_service& ios, async_client* client,
+			call_t(boost::asio::io_service& ios, rpc_client* client,
 				uint64_t req_id, std::function<void(boost::system::error_code, std::string_view)> user_callback,
 				size_t timeout = 3000) : timer_(ios), client_(client), req_id_(req_id), user_callback_(std::move(user_callback)) {
 				timer_.expires_from_now(std::chrono::milliseconds(timeout));
@@ -206,7 +210,7 @@ namespace rest_rpc {
 
 		private:
 			boost::asio::steady_timer timer_;
-			async_client* client_;
+			rpc_client* client_;
 			uint64_t req_id_;
 			std::function<void(boost::system::error_code, std::string_view)> user_callback_;
 			bool has_timeout_ = false;
@@ -361,7 +365,7 @@ namespace rest_rpc {
 			}
 			else {
 				auto& f = future_map_[req_id];
-				f.set_value(req_result{data});
+				f.set_value(req_result{ data });
 				strand_.post([this, req_id]() { future_map_.erase(req_id); });
 			}
 		}
