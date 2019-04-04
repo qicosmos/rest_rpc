@@ -308,10 +308,10 @@ void test_performance2() {
 }
 
 int main() {
-	test_performance1();
 	test_sync_client();
 	test_async_client();
 	//test_upload();
 	//test_download();
+	//test_performance1();
 	return 0;
 }
