@@ -2,6 +2,9 @@
 using namespace rest_rpc;
 using namespace rpc_service;
 #include <fstream>
+
+#include "qps.h"
+
 struct dummy{
 	int add(connection* conn, int a, int b) { return a + b; }
 };
@@ -57,6 +60,13 @@ std::string download(connection* conn, const std::string& filename) {
 	return content;
 }
 
+qps g_qps;
+
+std::string get_name(connection* conn, const person& p) {
+	g_qps.increase();
+	return p.name;
+}
+
 int main() {
 	rpc_server server(9000, 4);
 
@@ -68,6 +78,7 @@ int main() {
 	server.register_handler("get_person", get_person);
 	server.register_handler("upload", upload);
 	server.register_handler("download", download);
+	server.register_handler("get_name", get_name);
 
 	server.run();
 

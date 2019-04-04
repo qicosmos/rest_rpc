@@ -113,8 +113,9 @@ namespace rest_rpc {
 		template<typename T = void, typename... Args>
 		auto call(const std::string& rpc_name, Args&&... args) {
 			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
-			if (future.wait_for(std::chrono::seconds(wait_timeout_)) == std::future_status::timeout) {
-				throw std::out_of_range("timeout");
+			auto status = future.wait_for(std::chrono::seconds(1));
+			if (status == std::future_status::timeout || status == std::future_status::deferred) {
+				throw std::out_of_range("timeout or deferred");
 			}
 
 			if constexpr (std::is_void_v<T>) {
@@ -347,9 +348,12 @@ namespace rest_rpc {
 		}
 
 		std::future<req_result> get_future() {
-			auto p = std::promise<req_result>();
-			auto future = p.get_future();
-			future_map_.emplace(req_id_, std::move(p));
+			auto p = std::make_shared<std::promise<req_result>>();
+			
+			std::future future = p->get_future();
+			strand_.post([this, p1 = std::move(p)] () mutable { 
+				future_map_.emplace(req_id_, std::move(p1)); 
+			});
 			return future;
 		}
 
@@ -365,8 +369,10 @@ namespace rest_rpc {
 			}
 			else {
 				auto& f = future_map_[req_id];
-				f.set_value(req_result{ data });
-				strand_.post([this, req_id]() { future_map_.erase(req_id); });
+				f->set_value(req_result{ data });
+				strand_.post([this, req_id]() { 
+					future_map_.erase(req_id); 
+				});
 			}
 		}
 
@@ -405,7 +411,7 @@ namespace rest_rpc {
 		std::function<void(boost::system::error_code)> err_cb_;
 
 		std::unordered_map<std::uint64_t, std::unique_ptr<call_t>> cb_map_;
-		std::unordered_map<std::uint64_t, std::promise<req_result>> future_map_;
+		std::unordered_map<std::uint64_t, std::shared_ptr<std::promise<req_result>>> future_map_;
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;

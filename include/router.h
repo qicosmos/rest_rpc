@@ -175,7 +175,7 @@ class router : boost::noncopyable {
                                            std::placeholders::_5)};
   }
 
-  std::map<std::string,
+  std::unordered_map<std::string,
            std::function<void(connection*, const char*, size_t, std::string&, ExecMode& model)>>
       map_invokers_;
   std::function<void(const std::string&, std::string&&, connection*, bool)>

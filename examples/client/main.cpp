@@ -254,7 +254,61 @@ void test_sync_client() {
 	test_get_person();
 }
 
+void test_performance1() {
+	rpc_client client("127.0.0.1", 9000);
+	bool r = client.connect();
+	if (!r) {
+		std::cout << "connect timeout" << std::endl;
+		return;
+	}
+
+	person p{ 1, "tom", 20 };
+
+	for (size_t i = 0; i < 100000000; i++) {
+		auto future = client.async_call("get_name", p);
+		auto status = future.wait_for(2s);
+		if (status == std::future_status::deferred) {
+			std::cout << "deferred\n";
+		}
+		else if (status == std::future_status::timeout) {
+			std::cout << "timeout\n";
+		}
+		else if (status == std::future_status::ready) {
+		}
+	}
+
+	std::cout << "finish\n";
+	
+	std::string str;
+	std::cin >> str;
+}
+
+void test_performance2() {
+	rpc_client client("127.0.0.1", 9000);
+	bool r = client.connect();
+	if (!r) {
+		std::cout << "connect timeout" << std::endl;
+		return;
+	}
+
+	person p{ 1, "tom", 20 };
+
+	try {
+		for (size_t i = 0; i < 100000000; i++) {
+			client.call<std::string>("get_name", p);
+		}
+		std::cout << "finish\n";
+	}
+	catch (const std::exception& ex) {
+		std::cout << ex.what() << '\n';
+	}
+	
+	std::string str;
+	std::cin >> str;
+}
+
 int main() {
+	test_performance1();
 	test_sync_client();
 	test_async_client();
 	//test_upload();
