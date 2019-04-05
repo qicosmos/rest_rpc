@@ -100,16 +100,6 @@ void test_get_person() {
 	}
 }
 
-struct dummy {
-	void foo(boost::system::error_code ec, std::string_view data) {
-		if (ec) {
-			std::cout << "ec" << std::endl;
-			return;
-		}
-		std::cout << data.size() << std::endl;
-	}
-};
-
 void test_async_client() {
 	rpc_client client("127.0.0.1", 9000);
 	client.async_connect();
@@ -122,48 +112,6 @@ void test_async_client() {
 	client.set_error_callback([] (boost::system::error_code ec){
 		std::cout << ec.message() << std::endl;
 	});
-
-	dummy dm;
-	client.async_call("hello", "purecpp", std::bind(&dummy::foo, &dm, std::placeholders::_1,
-		std::placeholders::_2), 2000);
-
-	client.async_call("hello", "purecpp", [](auto ec, auto data) {
-		if (ec) {
-			std::cout << "ec" << std::endl;
-			return;
-		}
-
-		if (has_error(data)) {
-			std::cout << "rpc error" << std::endl;
-			return;
-		}
-
-		std::cout << data.size() << std::endl;
-	}, 2000);
-
-	client.async_call("hello", "purecpp", [](auto ec, auto data) {
-		if (ec) {
-			std::cout << "ec" << std::endl;
-			return;
-		}
-		std::cout << data.size() << std::endl;
-	});
-
-	client.async_call("get_person", [](auto ec, auto data) {
-		if (ec) {
-			std::cout << "ec" << std::endl;
-			return;
-		}
-		std::cout << data.size() << std::endl;
-	});
-
-	client.async_call("get_person", [](auto ec, auto data) {
-		if (ec) {
-			std::cout << "ec" << std::endl;
-			return;
-		}
-		std::cout << data.size() << std::endl;
-	}, 2000);
 
 	auto f = client.async_call("get_person");
 	if (f.wait_for(50ms) == std::future_status::timeout) {
@@ -308,6 +256,7 @@ void test_performance2() {
 }
 
 int main() {
+	test_performance1();
 	test_sync_client();
 	test_async_client();
 	//test_upload();
