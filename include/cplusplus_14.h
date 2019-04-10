@@ -76,8 +76,8 @@ using remove_const_t = typename remove_const<T>::type;
 template<typename T>
 using remove_reference_t = typename remove_reference<T>::type;
 
-template<typename T>
-using tuple_element_t = typename tuple_element<T>::type;
+template<int I, typename T>
+using tuple_element_t = typename tuple_element<I, T>::type;
 
 template<typename T>
 using decay_t = typename decay<T>::type;
