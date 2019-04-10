@@ -151,7 +151,7 @@ namespace rest_rpc {
 #endif
 
 		template<typename... Args>
-		auto async_call(const std::string& rpc_name, Args&&... args) {
+		std::future<req_result> async_call(const std::string& rpc_name, Args&&... args) {
 			req_id_++;
 			auto future = get_future();
 			msgpack_codec codec;
@@ -285,9 +285,15 @@ namespace rest_rpc {
 			auto p = std::make_shared<std::promise<req_result>>();
 			
 			std::future<req_result> future = p->get_future();
-			strand_.post([this, p1 = std::move(p)] () mutable { 
-				future_map_.emplace(req_id_, std::move(p1)); 
+#if __cplusplus == 201103L
+			strand_.post([this, p]() mutable {
+				future_map_.emplace(req_id_, std::move(p));
 			});
+#else
+			strand_.post([this, p = std::move(p)]() mutable {
+				future_map_.emplace(req_id_, std::move(p));
+			});	
+#endif
 			return future;
 		}
 

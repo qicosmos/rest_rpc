@@ -3,7 +3,6 @@
 #include <chrono>
 #include <fstream>
 #include "codec.h"
-using namespace std::chrono_literals;
 
 using namespace rest_rpc;
 using namespace rest_rpc::rpc_service;
@@ -114,7 +113,7 @@ void test_async_client() {
 	});
 
 	auto f = client.async_call("get_person");
-	if (f.wait_for(50ms) == std::future_status::timeout) {
+	if (f.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout) {
 		std::cout << "timeout" << std::endl;
 	}
 	else {
@@ -153,7 +152,7 @@ void test_upload() {
 
 	{
 		auto f = client.async_call("upload", "test", conent);
-		if (f.wait_for(500ms) == std::future_status::timeout) {
+		if (f.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
 			std::cout << "timeout" << std::endl;
 		}
 		else {
@@ -163,7 +162,7 @@ void test_upload() {
 	}
 	{
 		auto f = client.async_call("upload", "test1", conent);
-		if (f.wait_for(500ms) == std::future_status::timeout) {
+		if (f.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
 			std::cout << "timeout" << std::endl;
 		}
 		else {
@@ -183,7 +182,7 @@ void test_download() {
 	}
 
 	auto f = client.async_call("download", "test");
-	if (f.wait_for(500ms) == std::future_status::timeout) {
+	if (f.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
 		std::cout << "timeout" << std::endl;
 	}
 	else {
@@ -214,7 +213,7 @@ void test_performance1() {
 
 	for (size_t i = 0; i < 100000000; i++) {
 		auto future = client.async_call("get_name", p);
-		auto status = future.wait_for(2s);
+		auto status = future.wait_for(std::chrono::seconds(2));
 		if (status == std::future_status::deferred) {
 			std::cout << "deferred\n";
 		}
