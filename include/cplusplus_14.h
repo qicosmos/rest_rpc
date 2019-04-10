@@ -1,6 +1,9 @@
 #ifndef REST_RPC_CPLUSPLUS_14_H_
 #define REST_RPC_CPLUSPLUS_14_H_
 
+#include <type_traits>
+#include <memory>
+
 #if __cplusplus == 201103L
 
 namespace std {

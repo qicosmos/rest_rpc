@@ -68,7 +68,7 @@ std::string get_name(connection* conn, const person& p) {
 }
 
 int main() {
-	rpc_server server(9000, 4);
+	rpc_server server(9000, std::thread::hardware_concurrency());
 
 	dummy d;
 	server.register_handler("add", &dummy::add, &d);

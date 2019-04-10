@@ -1,9 +1,16 @@
 #pragma once
+#include <tuple>
+#if __cplusplus > 201402L
 #include <string_view>
+using string_view = std::string_view;
+#else
+#include <boost/utility/string_view.hpp>
+using string_view = boost::string_view;
+#endif
 #include "codec.h"
 
 namespace rest_rpc {
-	inline bool has_error(std::string_view result) {
+	inline bool has_error(string_view result) {
 		rpc_service::msgpack_codec codec;
 		auto tp = codec.unpack<std::tuple<int>>(result.data(), result.size());
 
@@ -11,7 +18,7 @@ namespace rest_rpc {
 	}
 
 	template<typename T>
-	inline T get_result(std::string_view result) {
+	inline T get_result(string_view result) {
 		rpc_service::msgpack_codec codec;
 		auto tp = codec.unpack<std::tuple<int>>(result.data(), result.size());
 		if (std::get<0>(tp) != 0) {

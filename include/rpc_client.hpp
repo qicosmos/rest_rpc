@@ -18,7 +18,7 @@ namespace rest_rpc {
 	class req_result {
 	public:
 		req_result() = default;
-		req_result(std::string_view data) : data_(data) {}
+		req_result(string_view data) : data_(data) {}
 		bool success() const {
 			return !has_error(data_);
 		}
@@ -34,7 +34,7 @@ namespace rest_rpc {
 			}
 		}
 	private:
-		std::string_view data_;
+		string_view data_;
 	};
 
 	class rpc_client : private boost::noncopyable {
@@ -99,7 +99,7 @@ namespace rest_rpc {
 				return true;
 			}
 
-			std::unique_lock lock(conn_mtx_);
+			std::unique_lock<std::mutex> lock(conn_mtx_);
 			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout),
 				[this] {return has_connected_; });
 			return result;
@@ -110,8 +110,9 @@ namespace rest_rpc {
 		}
 
 		//sync call
+#if __cplusplus > 201402L
 		template<typename T = void, typename... Args>
-		auto call(const std::string& rpc_name, Args&&... args) {
+		auto call(const std::string& rpc_name, Args&& ... args) {
 			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
 			auto status = future.wait_for(std::chrono::seconds(1));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
@@ -125,6 +126,29 @@ namespace rest_rpc {
 				return future.get().as<T>();
 			}
 		}
+#else
+		template<typename T=void, typename... Args>
+		typename std::enable_if<std::is_void<T>::value>::type call(const std::string& rpc_name, Args&& ... args) {
+			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
+			auto status = future.wait_for(std::chrono::seconds(1));
+			if (status == std::future_status::timeout || status == std::future_status::deferred) {
+				throw std::out_of_range("timeout or deferred");
+			}
+
+			future.get().as();
+		}
+
+		template<typename T, typename... Args>
+		typename std::enable_if<!std::is_void<T>::value, T>::type call(const std::string& rpc_name, Args&& ... args) {
+			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
+			auto status = future.wait_for(std::chrono::seconds(1));
+			if (status == std::future_status::timeout || status == std::future_status::deferred) {
+				throw std::out_of_range("timeout or deferred");
+			}
+
+			return future.get().as<T>();
+		}
+#endif
 
 		template<typename... Args>
 		auto async_call(const std::string& rpc_name, Args&&... args) {
@@ -149,7 +173,7 @@ namespace rest_rpc {
 		}
 
 	private:
-		using message_type = std::pair<std::string_view, std::uint64_t>;
+		using message_type = std::pair<string_view, std::uint64_t>;
 		void reset_deadline_timer(size_t timeout) {
 			deadline_.expires_from_now(boost::posix_time::seconds((long)timeout));
 			deadline_.async_wait([this](const boost::system::error_code& ec) {
@@ -260,14 +284,14 @@ namespace rest_rpc {
 		std::future<req_result> get_future() {
 			auto p = std::make_shared<std::promise<req_result>>();
 			
-			std::future future = p->get_future();
+			std::future<req_result> future = p->get_future();
 			strand_.post([this, p1 = std::move(p)] () mutable { 
 				future_map_.emplace(req_id_, std::move(p1)); 
 			});
 			return future;
 		}
 
-		void call_back(uint64_t req_id, const boost::system::error_code& ec, std::string_view data) {
+		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
 			if (ec) {
 				//LOG<<ec.message();
 			}
