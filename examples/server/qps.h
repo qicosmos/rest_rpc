@@ -9,7 +9,7 @@ public:
 		counter_.fetch_add(1, std::memory_order_release);
 	}
 
-	qps() {
+	qps() : counter_(0) {
 		thd_ = std::thread([this] {
 			while (!stop_) {
 				std::cout << "qps: " << counter_.load(std::memory_order_acquire) << '\n';
@@ -27,5 +27,5 @@ public:
 private:
 	bool stop_ = false;
 	std::thread thd_;
-	std::atomic<uint32_t> counter_=0;
+	std::atomic<uint32_t> counter_;
 };
