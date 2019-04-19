@@ -37,8 +37,17 @@ namespace rest_rpc {
 		string_view data_;
 	};
 
+	const constexpr size_t DEFAULT_TIMEOUT = 1000; //milliseconds
+
 	class rpc_client : private boost::noncopyable {
 	public:
+		rpc_client() : socket_(ios_), work_(ios_), strand_(ios_),
+			deadline_(ios_), body_(INIT_BUF_SIZE) {
+			thd_ = std::make_shared<std::thread>([this] {
+				ios_.run();
+			});
+		}
+
 		rpc_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), strand_(ios_),
 			deadline_(ios_), host_(host), port_(port), body_(INIT_BUF_SIZE) {
 			thd_ = std::make_shared<std::thread>([this] {
@@ -94,6 +103,24 @@ namespace rest_rpc {
 			return wait_conn(timeout);
 		}
 
+		bool connect(const std::string& host, unsigned short port, size_t timeout = 1) {
+			if (port_==0) {
+				host_ = host;
+				port_ = port;
+			}
+
+			return connect(timeout);
+		}
+
+		void async_connect(const std::string& host, unsigned short port) {
+			if (port_ == 0) {
+				host_ = host;
+				port_ = port;
+			}
+
+			async_connect();
+		}
+
 		bool wait_conn(size_t timeout) {
 			if (has_connected_) {
 				return true;
@@ -111,10 +138,10 @@ namespace rest_rpc {
 
 		//sync call
 #if __cplusplus > 201402L
-		template<typename T = void, typename... Args>
+		template<size_t TIMEOUT, typename T = void, typename... Args>
 		auto call(const std::string& rpc_name, Args&& ... args) {
 			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
-			auto status = future.wait_for(std::chrono::seconds(1));
+			auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
 				throw std::out_of_range("timeout or deferred");
 			}
@@ -126,11 +153,16 @@ namespace rest_rpc {
 				return future.get().as<T>();
 			}
 		}
+
+		template<typename T = void, typename... Args>
+		auto call(const std::string& rpc_name, Args&& ... args) {
+			return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
+		}
 #else
-		template<typename T=void, typename... Args>
+		template<size_t TIMEOUT, typename T=void, typename... Args>
 		typename std::enable_if<std::is_void<T>::value>::type call(const std::string& rpc_name, Args&& ... args) {
 			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
-			auto status = future.wait_for(std::chrono::seconds(1));
+			auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
 				throw std::out_of_range("timeout or deferred");
 			}
@@ -138,15 +170,25 @@ namespace rest_rpc {
 			future.get().as();
 		}
 
-		template<typename T, typename... Args>
+		template<typename T = void, typename... Args>
+		typename std::enable_if<std::is_void<T>::value>::type call(const std::string& rpc_name, Args&& ... args) {
+			call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
+		}
+
+		template<size_t TIMEOUT, typename T, typename... Args>
 		typename std::enable_if<!std::is_void<T>::value, T>::type call(const std::string& rpc_name, Args&& ... args) {
 			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
-			auto status = future.wait_for(std::chrono::seconds(1));
+			auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
 				throw std::out_of_range("timeout or deferred");
 			}
 
 			return future.get().as<T>();
+		}
+
+		template<typename T, typename... Args>
+		typename std::enable_if<!std::is_void<T>::value, T>::type call(const std::string& rpc_name, Args&& ... args) {
+			return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
 		}
 #endif
 
@@ -325,7 +367,7 @@ namespace rest_rpc {
 		std::shared_ptr<std::thread> thd_ = nullptr;
 
 		std::string host_;
-		unsigned short port_;
+		unsigned short port_ = 0;
 		size_t connect_timeout_ = 2;//s
 		size_t wait_timeout_ = 2;//s
 		int reconnect_cnt_ = -1;

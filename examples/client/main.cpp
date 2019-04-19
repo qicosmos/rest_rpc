@@ -16,8 +16,15 @@ void test_add() {
 			return;
 		}
 
-		auto result = client.call<int>("add", 1, 2);
-		std::cout << result << std::endl;
+		{
+			auto result = client.call<int>("add", 1, 2);
+			std::cout << result << std::endl;
+		}
+
+		{
+			auto result = client.call<2000, int>("add", 1, 2);
+			std::cout << result << std::endl;
+		}
 	}
 	catch (const std::exception& e){
 		std::cout << e.what() << std::endl;
@@ -254,9 +261,26 @@ void test_performance2() {
 	std::cin >> str;
 }
 
+void test_call_with_timeout() {
+	rpc_client client;
+	client.async_connect("127.0.0.1", 9000);
+
+	try {
+		auto result = client.call<50, person>("get_person");
+		std::cout << result.name << std::endl;
+	}
+	catch (const std::exception& ex) {
+		std::cout << ex.what() << std::endl;
+	}
+	
+	std::string str;
+	std::cin >> str;
+}
+
 int main() {
 	test_sync_client();
 	test_async_client();
+	test_call_with_timeout();
 	//test_upload();
 	//test_download();
 	//test_performance1();
