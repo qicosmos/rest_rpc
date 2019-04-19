@@ -72,6 +72,7 @@ namespace rest_rpc {
 		}
 
 		void async_connect() {
+			assert(port_ != 0);
 			reset_deadline_timer(connect_timeout_);
 			auto addr = boost::asio::ip::address::from_string(host_);
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
@@ -99,6 +100,7 @@ namespace rest_rpc {
 		}
 
 		bool connect(size_t timeout = 1) {
+			assert(port_ != 0);
 			async_connect();
 			return wait_conn(timeout);
 		}
@@ -130,6 +132,20 @@ namespace rest_rpc {
 			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout),
 				[this] {return has_connected_; });
 			return result;
+		}
+
+		void update_addr(const std::string& host, unsigned short port) {
+			host_ = host;
+			port_ = port;
+		}
+
+		void close() {
+			has_connected_ = false;
+			if (socket_.is_open()) {
+				boost::system::error_code ignored_ec;
+				socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
+				socket_.close(ignored_ec);
+			}
 		}
 
 		void set_error_callback(std::function<void(boost::system::error_code)> f) {
@@ -353,15 +369,6 @@ namespace rest_rpc {
 			strand_.post([this, req_id]() {
 				future_map_.erase(req_id);
 			});
-		}
-
-		void close() {
-			has_connected_ = false;
-			if (socket_.is_open()) {
-				boost::system::error_code ignored_ec;
-				socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
-				socket_.close(ignored_ec);
-			}
 		}
 
 		boost::asio::io_service ios_;

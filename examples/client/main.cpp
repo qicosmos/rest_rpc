@@ -268,6 +268,10 @@ void test_call_with_timeout() {
 	try {
 		auto result = client.call<50, person>("get_person");
 		std::cout << result.name << std::endl;
+		client.close();
+		bool r = client.connect();
+		result = client.call<50, person>("get_person");
+		std::cout << result.name << std::endl;
 	}
 	catch (const std::exception& ex) {
 		std::cout << ex.what() << std::endl;
@@ -278,9 +282,10 @@ void test_call_with_timeout() {
 }
 
 int main() {
+	test_call_with_timeout();
 	test_sync_client();
 	test_async_client();
-	test_call_with_timeout();
+	
 	//test_upload();
 	//test_download();
 	//test_performance1();
