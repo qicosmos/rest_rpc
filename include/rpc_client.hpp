@@ -253,6 +253,7 @@ namespace rest_rpc {
 				outbox_.pop_front();
 
 				if (ec) {
+					has_connected_ = false;
 					if (err_cb_) err_cb_(ec);
 					return;
 				}
@@ -270,6 +271,7 @@ namespace rest_rpc {
 				[this](const boost::system::error_code& ec, const size_t length) {
 				if (!socket_.is_open()) {
 					//LOG(INFO) << "socket already closed";
+					has_connected_ = false;
 					if (err_cb_) err_cb_(errc::make_error_code(errc::connection_aborted));
 					return;
 				}
@@ -292,6 +294,7 @@ namespace rest_rpc {
 				}
 				else {
 					//LOG(INFO) << ec.message();
+					has_connected_ = false;
 					if (err_cb_) err_cb_(ec);
 					close();
 				}
@@ -318,6 +321,7 @@ namespace rest_rpc {
 				}
 				else {
 					//LOG(INFO) << ec.message();
+					has_connected_ = false;
 					call_back(req_id, ec, {});
 				}
 			});
@@ -352,7 +356,7 @@ namespace rest_rpc {
 		}
 
 		void close() {
-			has_connected_ = true;
+			has_connected_ = false;
 			if (socket_.is_open()) {
 				boost::system::error_code ignored_ec;
 				socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
