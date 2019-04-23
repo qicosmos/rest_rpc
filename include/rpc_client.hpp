@@ -78,7 +78,9 @@ namespace rest_rpc {
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
 				if (ec) {
 					std::cout << ec.message() << std::endl;
+					socket_.close();
 					has_connected_ = false;
+					std::this_thread::sleep_for(std::chrono::seconds(1));
 					if (reconnect_cnt_ == 0) {
 						return;
 					}
