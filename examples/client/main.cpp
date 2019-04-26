@@ -297,11 +297,11 @@ void test_connect(){
 }
 
 int main() {
-    test_connect();
-	test_call_with_timeout();
 	test_sync_client();
 	test_async_client();
 	
+	//test_call_with_timeout();
+	//test_connect();
 	//test_upload();
 	//test_download();
 	//test_performance1();
