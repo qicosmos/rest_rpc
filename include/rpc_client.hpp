@@ -25,6 +25,10 @@ namespace rest_rpc {
 
 		template<typename T>
 		T as() {
+			if (has_error(data_)) {
+				throw std::logic_error("rpc error");
+			}
+
 			return get_result<T>(data_);
 		}
 

@@ -11,6 +11,10 @@ using string_view = boost::string_view;
 
 namespace rest_rpc {
 	inline bool has_error(string_view result) {
+		if (result.empty()) {
+			return true;
+		}			
+
 		rpc_service::msgpack_codec codec;
 		auto tp = codec.unpack<std::tuple<int>>(result.data(), result.size());
 
@@ -20,12 +24,6 @@ namespace rest_rpc {
 	template<typename T>
 	inline T get_result(string_view result) {
 		rpc_service::msgpack_codec codec;
-		auto tp = codec.unpack<std::tuple<int>>(result.data(), result.size());
-		if (std::get<0>(tp) != 0) {
-			auto ret = codec.unpack<std::tuple<int, std::string>>(result.data(), result.size());
-			throw std::logic_error(std::get<1>(ret));
-		}
-
 		auto err_tp = codec.unpack<std::tuple<int, T>>(result.data(), result.size());
 		return std::get<1>(err_tp);
 	}
