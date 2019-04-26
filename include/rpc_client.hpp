@@ -73,14 +73,13 @@ namespace rest_rpc {
 
 		void async_connect() {
 			assert(port_ != 0);
-			reset_deadline_timer(connect_timeout_);
 			auto addr = boost::asio::ip::address::from_string(host_);
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
 				if (ec) {
 					std::cout << ec.message() << std::endl;
-					socket_.close();
+
 					has_connected_ = false;
-					std::this_thread::sleep_for(std::chrono::seconds(1));
+
 					if (reconnect_cnt_ == 0) {
 						return;
 					}
@@ -89,16 +88,23 @@ namespace rest_rpc {
 						reconnect_cnt_--;
 					}
 
-					socket_ = decltype(socket_)(ios_);
-					async_connect();
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                    async_reconnect();
 				}
 				else {
+				    std::cout<<"connected ok"<<std::endl;
 					has_connected_ = true;
-					deadline_.cancel();
 					do_read();
-					conn_cond_.notify_one();
+
+					if(has_wait_)
+					    conn_cond_.notify_one();
 				}
 			});
+		}
+
+		void async_reconnect(){
+            reset_socket();
+            async_connect();
 		}
 
 		bool connect(size_t timeout = 1) {
@@ -130,10 +136,12 @@ namespace rest_rpc {
 				return true;
 			}
 
+            has_wait_ = true;
 			std::unique_lock<std::mutex> lock(conn_mtx_);
 			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout),
 				[this] {return has_connected_; });
-			return result;
+            has_wait_ = false;
+			return has_connected_;
 		}
 
 		void update_addr(const std::string& host, unsigned short port) {
@@ -272,6 +280,7 @@ namespace rest_rpc {
 
 				if (ec) {
 					has_connected_ = false;
+                    close();
 					if (err_cb_) err_cb_(ec);
 					return;
 				}
@@ -290,7 +299,6 @@ namespace rest_rpc {
 				if (!socket_.is_open()) {
 					//LOG(INFO) << "socket already closed";
 					has_connected_ = false;
-					if (err_cb_) err_cb_(errc::make_error_code(errc::connection_aborted));
 					return;
 				}
 
@@ -305,16 +313,16 @@ namespace rest_rpc {
 
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
+                        close();
 						call_back(req_id, errc::make_error_code(errc::invalid_argument), {});
-						close();
 						return;
 					}
 				}
 				else {
 					//LOG(INFO) << ec.message();
 					has_connected_ = false;
-					if (err_cb_) err_cb_(ec);
 					close();
+                    if (err_cb_) err_cb_(ec);
 				}
 			});
 		}
@@ -340,6 +348,7 @@ namespace rest_rpc {
 				else {
 					//LOG(INFO) << ec.message();
 					has_connected_ = false;
+                    close();
 					call_back(req_id, ec, {});
 				}
 			});
@@ -373,6 +382,16 @@ namespace rest_rpc {
 			});
 		}
 
+        void reset_socket(){
+            boost::system::error_code igored_ec;
+            socket_.shutdown(tcp::socket::shutdown_both, igored_ec);
+            socket_.close(igored_ec);
+            socket_ = decltype(socket_)(ios_);
+            if(!socket_.is_open()){
+                socket_.open(boost::asio::ip::tcp::v4());
+            }
+        }
+
 		boost::asio::io_service ios_;
 		tcp::socket socket_;
 		boost::asio::io_service::work work_;
@@ -387,6 +406,7 @@ namespace rest_rpc {
 		bool has_connected_ = false;
 		std::mutex conn_mtx_;
 		std::condition_variable conn_cond_;
+		bool has_wait_ = false;
 
 		boost::asio::deadline_timer deadline_;
 

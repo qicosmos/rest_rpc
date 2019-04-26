@@ -281,7 +281,23 @@ void test_call_with_timeout() {
 	std::cin >> str;
 }
 
+void test_connect(){
+    rpc_client client;
+    client.set_error_callback([&client] (boost::system::error_code ex) {
+        client.async_reconnect();
+    });
+
+    bool r = client.connect("127.0.0.1", 9000);
+    if (!r) {
+        client.async_reconnect();
+    }
+
+    std::string str;
+    std::cin >> str;
+}
+
 int main() {
+    test_connect();
 	test_call_with_timeout();
 	test_sync_client();
 	test_async_client();
