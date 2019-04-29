@@ -80,7 +80,7 @@ namespace rest_rpc {
 			auto addr = boost::asio::ip::address::from_string(host_);
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
 				if (ec) {
-					std::cout << ec.message() << std::endl;
+					//std::cout << ec.message() << std::endl;
 
 					has_connected_ = false;
 
@@ -380,6 +380,7 @@ namespace rest_rpc {
 			}
 
 			auto& f = future_map_[req_id];
+			assert(f);
 			f->set_value(req_result{ data });
 			strand_.post([this, req_id]() {
 				future_map_.erase(req_id);
