@@ -375,11 +375,15 @@ namespace rest_rpc {
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
+			auto& f = future_map_[req_id];
 			if (ec) {
 				//LOG<<ec.message();
+				if (!f) {
+					std::cout << "invalid req_id" << std::endl;
+					return;
+				}
 			}
 
-			auto& f = future_map_[req_id];
 			assert(f);
 			f->set_value(req_result{ data });
 			strand_.post([this, req_id]() {
