@@ -79,6 +79,10 @@ namespace rest_rpc {
 			assert(port_ != 0);
 			auto addr = boost::asio::ip::address::from_string(host_);
 			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
+				if (has_connected_) {
+					return;
+				}
+
 				if (ec) {
 					//std::cout << ec.message() << std::endl;
 
@@ -92,7 +96,6 @@ namespace rest_rpc {
 						reconnect_cnt_--;
 					}
 
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
                     async_reconnect();
 				}
 				else {
@@ -109,6 +112,7 @@ namespace rest_rpc {
 		void async_reconnect(){
             reset_socket();
             async_connect();
+			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 
 		bool connect(size_t timeout = 1) {
