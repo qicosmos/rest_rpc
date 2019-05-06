@@ -322,7 +322,7 @@ namespace rest_rpc {
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
                         close();
-						call_back(req_id, errc::make_error_code(errc::invalid_argument), {});
+						call_back(req_id, boost::system::errc::make_error_code(boost::system::errc::invalid_argument), {});
 						return;
 					}
 				}
@@ -343,7 +343,7 @@ namespace rest_rpc {
 
 				if (!socket_.is_open()) {
 					//LOG(INFO) << "socket already closed";
-					call_back(req_id, errc::make_error_code(errc::connection_aborted), {});
+					call_back(req_id, boost::system::errc::make_error_code(boost::system::errc::connection_aborted), {});
 					return;
 				}
 
