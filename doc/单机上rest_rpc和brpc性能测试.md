@@ -284,6 +284,12 @@ int main(int argc, char* argv[]) {
 
 # 测试结果
 
+## brpc和grpc的[测试结果](https://github.com/apache/incubator-brpc/blob/master/docs/cn/benchmark.md "测试结果")
+
+ ![alt](https://github.com/apache/incubator-brpc/blob/master/docs/images/qps_vs_threadnum.png "多线程")
+
+## rest_rpc和brpc的测试结果
+
 本次测试使用相同环境与方法对rest_rpc与brpc进行性能测试，最终测试数据取多次测试数据的平均值，测试数据如下：
 
 **client使用单进程单线程测试模式**
