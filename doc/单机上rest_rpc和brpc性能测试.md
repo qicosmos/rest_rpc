@@ -200,35 +200,6 @@ int main(int argc, char* argv[]) {
 	auto end = high_resolution_clock::now();
 	cout << "elapse time = " << duration_cast<seconds>(end - begin).count() << "s" << endl;
 	std::cout << "finish\n";
-    /*while (!brpc::IsAskedToQuit()) {
-        // We will receive response synchronously, safe to put variables
-        // on stack.
-        example::EchoRequest request;
-        example::EchoResponse response;
-        brpc::Controller cntl;
-
-        //request.set_message("hello world");
-		request.set_message(buf);
-        cntl.set_log_id(log_id ++);  // set by user
-        // Set attachment which is wired to network directly instead of 
-        // being serialized into protobuf messages.
-        cntl.request_attachment().append(FLAGS_attachment);
-
-        // Because `done'(last parameter) is NULL, this function waits until
-        // the response comes back or error occurs(including timedout).
-        stub.Echo(&cntl, &request, &response, NULL);
-        if (!cntl.Failed()) {
-            LOG(INFO) << "Received response from " << cntl.remote_side()
-                << " to " << cntl.local_side()
-                << ": " << response.message() << " (attached="
-                << cntl.response_attachment() << ")"
-                << " latency=" << cntl.latency_us() << "us";
-        } else {
-            LOG(WARNING) << cntl.ErrorText();
-        }
-        usleep(FLAGS_interval_ms * 1000L);
-    }
-	*/
     //LOG(INFO) << "EchoClient is going to quit";
     return 0;
 }
@@ -318,7 +289,7 @@ int main(int argc, char* argv[]) {
 **client使用单进程单线程测试模式**
 
  | 消息字节 | QPS(rest_rpc) |  QPS(brpc) |  
- | -------- | :-----: | 
+ | -------- | :-----: | :-----: | 
  | 1K | 52631 | 41667 |
  | 8K | 42863 | 34483 |
  | 16K | 37037 | 29412 |
@@ -337,7 +308,7 @@ int main(int argc, char* argv[]) {
 **client多线程测试64K消息(rest_rpc采用高效模式)**
 
  | 线程数 | QPS(rest_rpc) |  QPS(brpc) |  
- | -------- | :-----: | 
+ | -------- | :-----: | :-----: | 
  | 6 | 60000 | 34883 |
  | 10 | 76923 | 40000 |
  | 20 | 59405 | 35242 |
