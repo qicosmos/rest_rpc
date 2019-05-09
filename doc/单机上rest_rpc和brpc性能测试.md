@@ -295,6 +295,8 @@ int main(int argc, char* argv[]) {
  | 16K | 37037 | 29412 |
  | 64K | 16949 | 8982 |
  
+ ![alt](https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%8D%95%E7%BA%BF%E7%A8%8B.png "单线程")
+ 
 从相关数据可以看出，rest_rpc QPS要高于brpc，特别是当消息字节达到64K时，rest QPS几乎是brpc的2倍。
 
 **client多线程测试1K消息(rest_rpc采用高效模式)**
@@ -304,6 +306,8 @@ int main(int argc, char* argv[]) {
  | 6 | 200000 | 103448 |
  | 10 | 250000 | 166667 |
  | 20 | 285714 | 240963 |
+ 
+  ![alt](https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%A4%9A%E7%BA%BF%E7%A8%8B1k.png "多线程1k")
 
 **client多线程测试64K消息(rest_rpc采用高效模式)**
 
@@ -313,6 +317,7 @@ int main(int argc, char* argv[]) {
  | 10 | 76923 | 40000 |
  | 20 | 59405 | 35242 |
 
+ ![alt](https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%A4%9A%E7%BA%BF%E7%A8%8B64k.png "多线程64k")
 
 
 
