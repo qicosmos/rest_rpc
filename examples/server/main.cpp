@@ -67,6 +67,11 @@ std::string get_name(connection* conn, const person& p) {
 	return p.name;
 }
 
+//if you want to use conneciton to response immediately, use ExecMode::async model
+void echo(connection* conn, const std::string& src) {
+	conn->response(src);
+}
+
 int main() {
 	rpc_server server(9000, std::thread::hardware_concurrency());
 
@@ -79,6 +84,7 @@ int main() {
 	server.register_handler("upload", upload);
 	server.register_handler("download", download);
 	server.register_handler("get_name", get_name);
+	server.register_handler<ExecMode::async>("echo", echo);
 
 	server.run();
 
