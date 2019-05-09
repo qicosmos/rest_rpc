@@ -5,6 +5,10 @@ It's so easy to love RPC.
 
 Modern C++开发的RPC库就是这么简单好用！
 
+# performance
+
+Here are the [performance test result](https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%8D%95%E6%9C%BA%E4%B8%8Arest_rpc%E5%92%8Cbrpc%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.md "performance")
+
 # quick example
 
 server code
