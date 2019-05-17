@@ -1,14 +1,13 @@
 #ifndef REST_RPC_IO_SERVICE_POOL_H_
 #define REST_RPC_IO_SERVICE_POOL_H_
 
-#include <boost/asio.hpp>
 #include <vector>
 #include <memory>
-#include <boost/noncopyable.hpp>
+#include "use_asio.hpp"
 
 namespace rest_rpc {
 namespace rpc_service {
-class io_service_pool : private boost::noncopyable {
+class io_service_pool : private asio::noncopyable {
  public:
   explicit io_service_pool(std::size_t pool_size) : next_io_service_(0) {
     if (pool_size == 0) throw std::runtime_error("io_service_pool size is 0");

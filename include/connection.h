@@ -4,15 +4,14 @@
 #include <iostream>
 #include <memory>
 #include <array>
-#include <boost/asio.hpp>
-#include <boost/asio/deadline_timer.hpp>
 #include "const_vars.h"
 #include "router.h"
+#include "use_asio.hpp"
 using boost::asio::ip::tcp;
 
 namespace rest_rpc {
 namespace rpc_service {
-class connection : public std::enable_shared_from_this<connection>, private boost::noncopyable {
+class connection : public std::enable_shared_from_this<connection>, private asio::noncopyable {
  public:
   connection(boost::asio::io_service& io_service, std::size_t timeout_seconds)
       : socket_(io_service),
@@ -122,7 +121,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
     if (timeout_seconds_ == 0) { return; }
 
     auto self(this->shared_from_this());
-    timer_.expires_from_now(boost::posix_time::seconds((long)timeout_seconds_));
+    timer_.expires_from_now(std::chrono::seconds(timeout_seconds_));
     timer_.async_wait([this, self](const boost::system::error_code& ec) {
       if (has_closed()) { return; }
 
@@ -155,7 +154,7 @@ class connection : public std::enable_shared_from_this<connection>, private boos
 
   std::string write_msg_;
 
-  boost::asio::deadline_timer timer_;
+  asio::steady_timer timer_;
   std::size_t timeout_seconds_;
   int64_t conn_id_ = 0;
   std::atomic_bool has_closed_;

@@ -1,8 +1,7 @@
 #ifndef REST_RPC_ROUTER_H_
 #define REST_RPC_ROUTER_H_
 
-#include <boost/asio.hpp>
-#include <boost/noncopyable.hpp>
+#include "use_asio.hpp"
 #include "codec.h"
 #include "meta_util.hpp"
 
@@ -12,7 +11,7 @@ enum class ExecMode { sync, async };
 namespace rpc_service {
 class connection;
 
-class router : boost::noncopyable {
+class router : asio::noncopyable {
  public:
   static router& get() {
     static router instance;

@@ -2,11 +2,7 @@
 #include <string>
 #include <deque>
 #include <future>
-#include <boost/asio/steady_timer.hpp>
-#include <boost/asio.hpp>
-#include <boost/bind.hpp>
-#include <boost/noncopyable.hpp>
-using boost::asio::ip::tcp;
+#include "use_asio.hpp"
 #include "client_util.hpp"
 #include "const_vars.h"
 #include "meta_util.hpp"
@@ -14,7 +10,6 @@ using boost::asio::ip::tcp;
 using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
-	using namespace boost::system;
 	class req_result {
 	public:
 		req_result() = default;
@@ -43,7 +38,7 @@ namespace rest_rpc {
 
 	const constexpr size_t DEFAULT_TIMEOUT = 1000; //milliseconds
 
-	class rpc_client : private boost::noncopyable {
+	class rpc_client : private asio::noncopyable {
 	public:
 		rpc_client() : socket_(ios_), work_(ios_), strand_(ios_),
 			deadline_(ios_), body_(INIT_BUF_SIZE) {
@@ -161,7 +156,7 @@ namespace rest_rpc {
 			has_connected_ = false;
 			if (socket_.is_open()) {
 				boost::system::error_code ignored_ec;
-				socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
+				socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ignored_ec);
 				socket_.close(ignored_ec);
 			}
 		}
@@ -251,7 +246,7 @@ namespace rest_rpc {
 	private:
 		using message_type = std::pair<string_view, std::uint64_t>;
 		void reset_deadline_timer(size_t timeout) {
-			deadline_.expires_from_now(boost::posix_time::seconds((long)timeout));
+			deadline_.expires_from_now(std::chrono::seconds(timeout));
 			deadline_.async_wait([this](const boost::system::error_code& ec) {
 				if (!ec) {
 					socket_.close();
@@ -322,7 +317,7 @@ namespace rest_rpc {
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
                         close();
-						call_back(req_id, boost::system::errc::make_error_code(boost::system::errc::invalid_argument), {});
+						call_back(req_id, asio::error::make_error_code(asio::error::invalid_argument), {});
 						return;
 					}
 				}
@@ -343,7 +338,7 @@ namespace rest_rpc {
 
 				if (!socket_.is_open()) {
 					//LOG(INFO) << "socket already closed";
-					call_back(req_id, boost::system::errc::make_error_code(boost::system::errc::connection_aborted), {});
+					call_back(req_id, asio::error::make_error_code(asio::error::connection_aborted), {});
 					return;
 				}
 
@@ -397,7 +392,7 @@ namespace rest_rpc {
 
         void reset_socket(){
             boost::system::error_code igored_ec;
-            socket_.shutdown(tcp::socket::shutdown_both, igored_ec);
+            socket_.shutdown(asio::ip::tcp::socket::shutdown_both, igored_ec);
             socket_.close(igored_ec);
             socket_ = decltype(socket_)(ios_);
             if(!socket_.is_open()){
@@ -406,7 +401,7 @@ namespace rest_rpc {
         }
 
 		boost::asio::io_service ios_;
-		tcp::socket socket_;
+		asio::ip::tcp::socket socket_;
 		boost::asio::io_service::work work_;
 		boost::asio::io_service::strand strand_;
 		std::shared_ptr<std::thread> thd_ = nullptr;
@@ -421,7 +416,7 @@ namespace rest_rpc {
 		std::condition_variable conn_cond_;
 		bool has_wait_ = false;
 
-		boost::asio::deadline_timer deadline_;
+		asio::steady_timer deadline_;
 
 		std::deque<message_type> outbox_;
 		uint64_t req_id_ = 0;

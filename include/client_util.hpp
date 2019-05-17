@@ -4,9 +4,15 @@
 #include <string_view>
 using string_view = std::string_view;
 #else
+#ifdef ASIO_STANDALONE
+#include "string_view.hpp"
+using namespace nonstd;
+#else
 #include <boost/utility/string_view.hpp>
 using string_view = boost::string_view;
 #endif
+#endif
+
 #include "codec.h"
 
 namespace rest_rpc {
