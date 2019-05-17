@@ -6,10 +6,10 @@ using namespace rpc_service;
 #include "qps.h"
 
 struct dummy{
-	int add(connection* conn, int a, int b) { return a + b; }
+	int add(rpc_conn conn, int a, int b) { return a + b; }
 };
 
-std::string translate(connection* conn, const std::string& orignal) {
+std::string translate(rpc_conn conn, const std::string& orignal) {
 	std::string temp = orignal;
 	for (auto& c : temp) { 
 		c = std::toupper(c); 
@@ -17,7 +17,7 @@ std::string translate(connection* conn, const std::string& orignal) {
 	return temp;
 }
 
-void hello(connection* conn, const std::string& str) {
+void hello(rpc_conn conn, const std::string& str) {
 	std::cout << "hello " << str << std::endl;
 }
 
@@ -29,21 +29,21 @@ struct person {
 	MSGPACK_DEFINE(id, name, age);
 };
 
-std::string get_person_name(connection* conn, const person& p) {
+std::string get_person_name(rpc_conn conn, const person& p) {
 	return p.name;
 }
 
-person get_person(connection* conn) {
+person get_person(rpc_conn conn) {
 	return { 1, "tom", 20 };
 }
 
-void upload(connection* conn, const std::string& filename, const std::string& content) {
+void upload(rpc_conn conn, const std::string& filename, const std::string& content) {
 	std::cout << content.size() << std::endl;
 	std::ofstream file(filename, std::ios::binary);
 	file.write(content.data(), content.size());
 }
 
-std::string download(connection* conn, const std::string& filename) {
+std::string download(rpc_conn conn, const std::string& filename) {
 	std::ifstream file(filename, std::ios::binary);
 	if (!file) {
 		return "";
@@ -62,14 +62,25 @@ std::string download(connection* conn, const std::string& filename) {
 
 qps g_qps;
 
-std::string get_name(connection* conn, const person& p) {
+std::string get_name(rpc_conn conn, const person& p) {
 	g_qps.increase();
 	return p.name;
 }
 
-//if you want to use conneciton to response immediately, use ExecMode::async model
-void echo(connection* conn, const std::string& src) {
-	conn->response(src);
+//if you want to response later, you can use async model, you can control when to response
+void async_echo(rpc_conn conn, const std::string& src) {
+	std::thread thd([conn, src] {
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+		auto conn_sp = conn.lock();
+		if (conn_sp) {
+			conn_sp->pack_and_response(std::move(src));
+		}
+	});
+	thd.detach();
+}
+
+std::string echo(rpc_conn conn, const std::string& src) {
+	return src;
 }
 
 int main() {
@@ -84,7 +95,8 @@ int main() {
 	server.register_handler("upload", upload);
 	server.register_handler("download", download);
 	server.register_handler("get_name", get_name);
-	server.register_handler<ExecMode::async>("echo", echo);
+	server.register_handler<ExecMode::async>("async_echo", async_echo);
+	server.register_handler("echo", echo);
 
 	server.run();
 

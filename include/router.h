@@ -30,13 +30,13 @@ class router : asio::noncopyable {
 
   void remove_handler(std::string const& name) { this->map_invokers_.erase(name); }
 
-  void set_callback(const std::function<void(const std::string&, std::string&&, connection*,
-                                             bool)>& callback) {
-    callback_to_server_ = callback;
-  }
-
   template<typename T>
-  void route(const char* data, std::size_t size, T conn) {
+  void route(const char* data, std::size_t size, std::weak_ptr<T> conn) {
+	auto conn_sp = conn.lock();
+	if (!conn_sp) {
+		return;
+	}
+
     std::string result;
     try {
       msgpack_codec codec;
@@ -45,24 +45,22 @@ class router : asio::noncopyable {
       auto it = map_invokers_.find(func_name);
       if (it == map_invokers_.end()) {
         result = codec.pack_args_str(result_code::FAIL, "unknown function: " + func_name);
-        callback_to_server_(func_name, std::move(result), conn, true);
+		conn_sp->response(std::move(result));
         return;
       }
 
       ExecMode model;
       it->second(conn, data, size, result, model);
-      if (model == ExecMode::sync && callback_to_server_) {
+      if (model == ExecMode::sync) {
 		if (result.size() >= MAX_BUF_LEN) {
 		  result = codec.pack_args_str(result_code::FAIL, "the response result is out of range: more than 10M " + func_name);
-		  callback_to_server_(func_name, std::move(result), conn, true);
-		  return;
 		}
-        callback_to_server_(func_name, std::move(result), conn, false);
+		conn_sp->response(std::move(result));
       }
     } catch (const std::exception& ex) {
       msgpack_codec codec;
       result = codec.pack_args_str(result_code::FAIL, ex.what());
-      callback_to_server_("", std::move(result), conn, true);
+	  conn_sp->response(std::move(result));
     }
   }
 
@@ -73,39 +71,39 @@ class router : asio::noncopyable {
   router(router&&) = delete;
 
   template<typename F, size_t... I, typename Arg, typename... Args>
-  static typename std::result_of<F(connection*, Args...)>::type call_helper(
-	  const F& f, const std::index_sequence<I...>&, const std::tuple<Arg, Args...>& tup, connection* ptr) {
+  static typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type call_helper(
+	  const F& f, const std::index_sequence<I...>&, const std::tuple<Arg, Args...>& tup, std::weak_ptr<connection> ptr) {
     return f(ptr, std::get<I + 1>(tup)...);
   }
 
   template<typename F, typename Arg, typename... Args>
   static
-      typename std::enable_if<std::is_void<typename std::result_of<F(connection*, Args...)>::type>::value>::type
-      call(const F& f, connection* ptr, std::string& result, std::tuple<Arg, Args...>& tp) {
+      typename std::enable_if<std::is_void<typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type>::value>::type
+      call(const F& f, std::weak_ptr<connection> ptr, std::string& result, std::tuple<Arg, Args...>& tp) {
     call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
     result = msgpack_codec::pack_args_str(result_code::OK);
   }
 
   template<typename F, typename Arg, typename... Args>
   static
-      typename std::enable_if<!std::is_void<typename std::result_of<F(connection*, Args...)>::type>::value>::type
-      call(const F& f, connection* ptr, std::string& result, const std::tuple<Arg, Args...>& tp) {
+      typename std::enable_if<!std::is_void<typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type>::value>::type
+      call(const F& f, std::weak_ptr<connection> ptr, std::string& result, const std::tuple<Arg, Args...>& tp) {
     auto r = call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
     msgpack_codec codec;
     result = msgpack_codec::pack_args_str(result_code::OK, r);
   }
 
   template<typename F, typename Self, size_t... Indexes, typename Arg, typename... Args>
-  static typename std::result_of<F(Self, connection*, Args...)>::type call_member_helper(
+  static typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type call_member_helper(
       const F& f, Self* self, const std::index_sequence<Indexes...>&,
-      const std::tuple<Arg, Args...>& tup, connection* ptr = 0) {
+      const std::tuple<Arg, Args...>& tup, std::weak_ptr<connection> ptr = 0) {
     return (*self.*f)(ptr, std::get<Indexes + 1>(tup)...);
   }
 
   template<typename F, typename Self, typename Arg, typename... Args>
   static typename std::enable_if<
-      std::is_void<typename std::result_of<F(Self, connection*, Args...)>::type>::value>::type
-  call_member(const F& f, Self* self, connection* ptr, std::string& result,
+      std::is_void<typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
+  call_member(const F& f, Self* self, std::weak_ptr<connection> ptr, std::string& result,
               const std::tuple<Arg, Args...>& tp) {
     call_member_helper(f, self, typename std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
     result = msgpack_codec::pack_args_str(result_code::OK);
@@ -113,8 +111,8 @@ class router : asio::noncopyable {
 
   template<typename F, typename Self, typename Arg, typename... Args>
   static typename std::enable_if<
-      !std::is_void<typename std::result_of<F(Self, connection*, Args...)>::type>::value>::type
-  call_member(const F& f, Self* self, connection* ptr, std::string& result,
+      !std::is_void<typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
+  call_member(const F& f, Self* self, std::weak_ptr<connection> ptr, std::string& result,
               const std::tuple<Arg, Args...>& tp) {
     auto r =
         call_member_helper(f, self, typename std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
@@ -124,7 +122,7 @@ class router : asio::noncopyable {
   template<typename Function, ExecMode mode = ExecMode::sync>
   struct invoker {
 	  template<ExecMode model>
-    static inline void apply(const Function& func, connection* conn, const char* data, size_t size,
+    static inline void apply(const Function& func, std::weak_ptr<connection> conn, const char* data, size_t size,
                              std::string& result, ExecMode& exe_model) {
       using args_tuple = typename function_traits<Function>::args_tuple_2nd;
 	  exe_model = ExecMode::sync;
@@ -141,7 +139,7 @@ class router : asio::noncopyable {
     }
 
     template<ExecMode model, typename Self>
-    static inline void apply_member(const Function& func, Self* self, connection* conn,
+    static inline void apply_member(const Function& func, Self* self, std::weak_ptr<connection> conn,
                                     const char* data, size_t size, std::string& result,
                                     ExecMode& exe_model) {
       using args_tuple = typename function_traits<Function>::args_tuple_2nd;
@@ -175,10 +173,8 @@ class router : asio::noncopyable {
   }
 
   std::unordered_map<std::string,
-           std::function<void(connection*, const char*, size_t, std::string&, ExecMode& model)>>
+           std::function<void(std::weak_ptr<connection>, const char*, size_t, std::string&, ExecMode& model)>>
       map_invokers_;
-  std::function<void(const std::string&, std::string&&, connection*, bool)>
-      callback_to_server_;
 };
 }  // namespace rpc_service
 }  // namespace rest_rpc

@@ -11,6 +11,7 @@ using boost::asio::ip::tcp;
 
 namespace rest_rpc {
 namespace rpc_service {
+using rpc_conn = std::weak_ptr<connection>;
 class rpc_server : private asio::noncopyable {
  public:
   rpc_server(short port, size_t size, size_t timeout_seconds = 15, size_t check_seconds = 10)
@@ -18,8 +19,6 @@ class rpc_server : private asio::noncopyable {
         acceptor_(io_service_pool_.get_io_service(), tcp::endpoint(tcp::v4(), port)),
         timeout_seconds_(timeout_seconds),
         check_seconds_(check_seconds) {
-    router::get().set_callback(std::bind(&rpc_server::callback, this, std::placeholders::_1,
-                                         std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
     do_accept();
     check_thread_ = std::make_shared<std::thread>([this] { clean(); });
   }
@@ -45,12 +44,6 @@ class rpc_server : private asio::noncopyable {
     router::get().register_handler<model>(name, f, self);
   }
 
-  void response(int64_t conn_id, std::string&& result) {
-    std::unique_lock<std::mutex> lock(mtx_);
-    auto it = connections_.find(conn_id);
-    if (it != connections_.end()) { it->second->response(std::move(result)); }
-  }
-
  private:
   void do_accept() {
     conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_));
@@ -60,7 +53,7 @@ class rpc_server : private asio::noncopyable {
       } else {
         conn_->start();
         std::unique_lock<std::mutex> lock(mtx_);
-        conn_->set_conn_id(conn_id_);
+		conn_->set_conn_id(conn_id_);
         connections_.emplace(conn_id_++, conn_);
       }
 
@@ -81,11 +74,6 @@ class rpc_server : private asio::noncopyable {
         }
       }
     }
-  }
-
-  void callback(const std::string& topic, std::string&& result, connection* conn,
-                bool has_error = false) {
-    response(conn->conn_id(), std::move(result));
   }
 
   io_service_pool io_service_pool_;

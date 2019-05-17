@@ -36,7 +36,7 @@ namespace rest_rpc {
 		string_view data_;
 	};
 
-	const constexpr size_t DEFAULT_TIMEOUT = 1000; //milliseconds
+	const constexpr size_t DEFAULT_TIMEOUT = 5000; //milliseconds
 
 	class rpc_client : private asio::noncopyable {
 	public:

@@ -200,6 +200,25 @@ void test_download() {
 	}
 }
 
+void test_echo() {
+	rpc_client client("127.0.0.1", 9000);
+	bool r = client.connect();
+	if (!r) {
+		std::cout << "connect timeout" << std::endl;
+		return;
+	}
+
+	{
+		auto result = client.call<std::string>("echo", "test");
+		std::cout << result << std::endl;
+	}
+
+	{
+		auto result = client.call<std::string>("async_echo", "test");
+		std::cout << result << std::endl;
+	}
+}
+
 void test_sync_client() {
 	test_add();
 	test_translate();
@@ -297,6 +316,7 @@ void test_connect(){
 }
 
 int main() {
+	test_echo();
 	test_sync_client();
 	test_async_client();
 	

@@ -57,6 +57,11 @@ class connection : public std::enable_shared_from_this<connection>, private asio
         });
   }
 
+  void pack_and_response(std::string data) {
+	  auto result = msgpack_codec::pack_args_str(result_code::OK, std::move(data));
+	  response(std::move(result));
+  }
+
   void set_conn_id(int64_t id) { conn_id_ = id; }
 
   int64_t conn_id() const { return conn_id_; }
@@ -110,7 +115,7 @@ class connection : public std::enable_shared_from_this<connection>, private asio
 
           if (!ec) {
             router& _router = router::get();
-            _router.route(body_.data(), length, this);
+            _router.route<connection>(body_.data(), length, this->shared_from_this());
           } else {
             //LOG(INFO) << ec.message();
           }
