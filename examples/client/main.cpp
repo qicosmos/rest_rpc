@@ -256,6 +256,16 @@ void test_performance1() {
 	std::cin >> str;
 }
 
+void multi_client_performance(size_t n){
+    std::vector<std::shared_ptr<std::thread>> group;
+    for (int i = 0; i < n; ++i) {
+        group.emplace_back(std::make_shared<std::thread>(test_performance1));// []{test_performance1();});
+    }
+    for(auto& p: group){
+        p->join();
+    }
+}
+
 void test_performance2() {
 	rpc_client client("127.0.0.1", 9000);
 	bool r = client.connect();
@@ -324,6 +334,7 @@ int main() {
 	//test_connect();
 	//test_upload();
 	//test_download();
+    //multi_client_performance(20);
 	//test_performance1();
 	return 0;
 }
