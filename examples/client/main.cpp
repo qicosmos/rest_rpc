@@ -325,7 +325,32 @@ void test_connect(){
     std::cin >> str;
 }
 
+void test_callback() {
+	rpc_client client;
+	bool r = client.connect("127.0.0.1", 9000);
+	person p{ 1, "tom", 20 };
+	int count = 100;
+	for (size_t i = 0; i < 100; i++) {
+		client.call_cb<3000>("get_person", [&count](const boost::system::error_code & ec, string_view data) {
+			if (ec) {
+				count--;
+				std::cout << "timeout" << '\n';
+				return;
+			}
+			count--;
+			std::cout << count << ' ';
+			req_result result(data);
+			auto p = result.as<person>();
+			std::cout << p.name << '\n';
+		});
+	}
+	
+	std::string str;
+	std::cin >> str;
+}
+
 int main() {
+	test_callback();
 	test_echo();
 	test_sync_client();
 	test_async_client();

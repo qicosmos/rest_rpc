@@ -55,6 +55,7 @@ namespace rest_rpc {
 		}
 
 		~rpc_client() {
+			close();
 			stop();
 		}
 
@@ -159,6 +160,7 @@ namespace rest_rpc {
 				socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ignored_ec);
 				socket_.close(ignored_ec);
 			}
+			clear_cache();
 		}
 
 		void set_error_callback(std::function<void(boost::system::error_code)> f) {
@@ -231,6 +233,26 @@ namespace rest_rpc {
 			return future;
 		}
 
+		template<size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
+		void call_cb(const std::string& rpc_name, Args&& ... args, std::function<void(boost::system::error_code, string_view)> cb) {
+			callback_id_++;
+			callback_id_ |= (uint64_t(1) << 63);
+			auto cb_id = callback_id_;
+#if __cplusplus == 201103L
+			strand_.post([this, cb_id, cb]() mutable {
+				callback_map_.emplace(cb_id, std::make_unique<call_t>(ios_, this, cb_id, std::move(cb), TIMEOUT));
+			});
+#else
+			strand_.post([this, cb_id, cb = std::move(cb)]() mutable {
+				callback_map_.emplace(cb_id, std::make_unique<call_t>(ios_, this, cb_id, std::move(cb), TIMEOUT));
+			});
+#endif
+
+			msgpack_codec codec;
+			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
+			write(callback_id_, std::move(ret));
+		}
+
 		bool has_connected() const {
 			return has_connected_;
 		}
@@ -276,6 +298,7 @@ namespace rest_rpc {
 			write_buffers[0] = boost::asio::buffer(&write_len, sizeof(int32_t));
 			write_buffers[1] = boost::asio::buffer(&msg.second, sizeof(uint64_t));
 			write_buffers[2] = boost::asio::buffer((char*)msg.first.data(), write_len);
+
 			boost::asio::async_write(socket_, write_buffers,
 				strand_.wrap([this](const boost::system::error_code& ec, const size_t length) {
 				::free((char*)outbox_.front().first.data());
@@ -284,7 +307,10 @@ namespace rest_rpc {
 				if (ec) {
 					has_connected_ = false;
                     close();
-					if (err_cb_) err_cb_(ec);
+					if (err_cb_) { 
+						err_cb_(ec); 
+					}
+
 					return;
 				}
 
@@ -317,7 +343,9 @@ namespace rest_rpc {
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
                         close();
-						call_back(req_id, asio::error::make_error_code(asio::error::invalid_argument), {});
+						if (err_cb_) {
+							err_cb_(ec);
+						}
 						return;
 					}
 				}
@@ -352,7 +380,9 @@ namespace rest_rpc {
 					//LOG(INFO) << ec.message();
 					has_connected_ = false;
                     close();
-					call_back(req_id, ec, {});
+					if (err_cb_) {
+						err_cb_(ec);
+					}
 				}
 			});
 		}
@@ -374,19 +404,48 @@ namespace rest_rpc {
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
-			auto& f = future_map_[req_id];
-			if (ec) {
-				//LOG<<ec.message();
-				if (!f) {
-					std::cout << "invalid req_id" << std::endl;
-					return;
+			auto cb_flag = req_id >> 63;
+			if (cb_flag) {
+				auto& cl = callback_map_[req_id];
+				assert(cl);
+				if (!cl->has_timeout()) {
+					cl->cancel();
+					cl->callback(ec, data);
 				}
-			}
+				else {
+					cl->callback(asio::error::make_error_code(asio::error::timed_out), {});
+				}
 
-			assert(f);
-			f->set_value(req_result{ data });
-			strand_.post([this, req_id]() {
-				future_map_.erase(req_id);
+				strand_.post([this, req_id]() {
+					callback_map_.erase(req_id);
+				});
+			}
+			else {
+				auto& f = future_map_[req_id];
+				if (ec) {
+					//LOG<<ec.message();
+					if (!f) {
+						std::cout << "invalid req_id" << std::endl;
+						return;
+					}
+				}
+
+				assert(f);
+				f->set_value(req_result{ data });
+				strand_.post([this, req_id]() {
+					future_map_.erase(req_id);
+				});
+			}
+		}
+
+		void clear_cache() {
+			strand_.post([this] {
+				while (!outbox_.empty()) {
+					::free((char*)outbox_.front().first.data());
+					outbox_.pop_front();
+				}
+				future_map_.clear();
+				callback_map_.clear();
 			});
 		}
 
@@ -399,6 +458,49 @@ namespace rest_rpc {
                 socket_.open(boost::asio::ip::tcp::v4());
             }
         }
+
+		class call_t : asio::noncopyable {
+		public:
+			call_t(asio::io_service& ios, rpc_client* client, uint64_t cb_id, std::function<void(boost::system::error_code, string_view)> cb, size_t timeout) : timer_(ios),
+				client_(client), cb_(std::move(cb)), timeout_(timeout){
+				if (timeout_ == 0) {
+					return;
+				}
+
+				timer_.expires_from_now(std::chrono::milliseconds(timeout));
+				timer_.async_wait([this, cb_id](boost::system::error_code ec) {
+					if (ec) {
+						return;
+					}
+
+					has_timeout_ = true;
+				});
+			}
+
+			void callback(boost::system::error_code ec, string_view data) {
+				cb_(ec, data);
+			}
+
+			bool has_timeout() const {
+				return has_timeout_;
+			}
+
+			void cancel() {
+				if (timeout_ == 0) {
+					return;
+				}
+
+				boost::system::error_code ec;
+				timer_.cancel(ec);
+			}
+
+		private:
+			boost::asio::steady_timer timer_;
+			rpc_client* client_;
+			std::function<void(boost::system::error_code, string_view)> cb_;
+			size_t timeout_;
+			bool has_timeout_ = false;
+		};
 
 		boost::asio::io_service ios_;
 		asio::ip::tcp::socket socket_;
@@ -423,6 +525,8 @@ namespace rest_rpc {
 		std::function<void(boost::system::error_code)> err_cb_;
 
 		std::unordered_map<std::uint64_t, std::shared_ptr<std::promise<req_result>>> future_map_;
+		std::map<std::uint64_t, std::unique_ptr<call_t>> callback_map_;
+		uint64_t callback_id_ = 0;
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;
