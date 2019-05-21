@@ -234,7 +234,7 @@ namespace rest_rpc {
 		}
 
 		template<size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
-		void call_cb(const std::string& rpc_name, Args&& ... args, std::function<void(boost::system::error_code, string_view)> cb) {
+		void async_call(const std::string& rpc_name, std::function<void(boost::system::error_code, string_view)> cb, Args&& ... args) {
 			callback_id_++;
 			callback_id_ |= (uint64_t(1) << 63);
 			auto cb_id = callback_id_;
@@ -525,7 +525,7 @@ namespace rest_rpc {
 		std::function<void(boost::system::error_code)> err_cb_;
 
 		std::unordered_map<std::uint64_t, std::shared_ptr<std::promise<req_result>>> future_map_;
-		std::map<std::uint64_t, std::unique_ptr<call_t>> callback_map_;
+		std::unordered_map<std::uint64_t, std::unique_ptr<call_t>> callback_map_;
 		uint64_t callback_id_ = 0;
 
 		char head_[HEAD_LEN] = {};
