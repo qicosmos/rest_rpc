@@ -328,23 +328,30 @@ void test_connect(){
 void test_callback() {
 	rpc_client client;
 	bool r = client.connect("127.0.0.1", 9000);
-	person p{ 1, "tom", 20 };
-	int count = 100;
+
 	for (size_t i = 0; i < 100; i++) {
-		client.call_cb<3000>("get_person", [&count](const boost::system::error_code & ec, string_view data) {
+		std::string test = "test" + std::to_string(i + 1);
+		//set timeout 100ms
+		client.async_call<100>("async_echo", [](const boost::system::error_code & ec, string_view data) {
 			if (ec) {
-				count--;
-				std::cout << "timeout" << '\n';
+				std::cout << ec.value() <<" timeout"<< std::endl;
 				return;
 			}
-			count--;
-			std::cout << count << ' ';
+
 			req_result result(data);
-			auto p = result.as<person>();
-			std::cout << p.name << '\n';
-		});
+			auto str = result.as<std::string>();
+			std::cout << "echo " << str << '\n';
+		}, test);
+
+		std::string test1 = "test" + std::to_string(i + 2);
+		//zero means no timeout check
+		client.async_call<0>("echo", [](const boost::system::error_code & ec, string_view data) {
+			req_result result(data);
+			auto str = result.as<std::string>();
+			std::cout << "echo " << str << '\n';
+		}, test1);
 	}
-	
+
 	std::string str;
 	std::cin >> str;
 }

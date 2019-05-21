@@ -69,11 +69,13 @@ std::string get_name(rpc_conn conn, const person& p) {
 
 //if you want to response later, you can use async model, you can control when to response
 void async_echo(rpc_conn conn, const std::string& src) {
-	std::thread thd([conn, src] {
+	auto req_id = conn.lock()->request_id();//note: you need keep the request id at that time, and pass it into the async thread
+	
+	std::thread thd([conn, req_id, src] {
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 		auto conn_sp = conn.lock();
 		if (conn_sp) {
-			conn_sp->pack_and_response(std::move(src));
+			conn_sp->pack_and_response(req_id, std::move(src));
 		}
 	});
 	thd.detach();
