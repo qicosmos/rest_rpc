@@ -338,16 +338,14 @@ void test_callback() {
 				return;
 			}
 
-			req_result result(data);
-			auto str = result.as<std::string>();
+			auto str = as<std::string>(data);
 			std::cout << "echo " << str << '\n';
 		}, test);
 
 		std::string test1 = "test" + std::to_string(i + 2);
 		//zero means no timeout check, no param means using default timeout(5s)
 		client.async_call<0>("echo", [](const boost::system::error_code & ec, string_view data) {
-			req_result result(data);
-			auto str = result.as<std::string>();
+			auto str = as<std::string>(data);
 			std::cout << "echo " << str << '\n';
 		}, test1);
 	}

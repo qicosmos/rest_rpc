@@ -30,7 +30,16 @@ namespace rest_rpc {
 	template<typename T>
 	inline T get_result(string_view result) {
 		rpc_service::msgpack_codec codec;
-		auto err_tp = codec.unpack<std::tuple<int, T>>(result.data(), result.size());
-		return std::get<1>(err_tp);
+		auto tp = codec.unpack<std::tuple<int, T>>(result.data(), result.size());
+		return std::get<1>(tp);
+	}
+
+	template<typename T>
+	inline T as(string_view result) {
+		if (has_error(result)) {
+			throw std::logic_error("rpc error");
+		}
+
+		return get_result<T>(result);
 	}
 }
