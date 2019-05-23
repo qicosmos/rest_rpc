@@ -344,7 +344,7 @@ namespace rest_rpc {
 						//LOG(INFO) << "invalid body len";
                         close();
 						if (err_cb_) {
-							err_cb_(ec);
+							err_cb_(asio::error::make_error_code(asio::error::message_size));
 						}
 						return;
 					}

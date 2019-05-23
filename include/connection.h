@@ -121,8 +121,8 @@ namespace rest_rpc {
 				std::array<boost::asio::const_buffer, 3> write_buffers;
 				write_buffers[0] = boost::asio::buffer(&size, sizeof(uint32_t));
 				write_buffers[1] = boost::asio::buffer(&pair.first, sizeof(uint64_t));
-				write_buffers[2] = boost::asio::buffer(write_queue_.front().second->data(), pair.second->size());
-				reset_timer();
+				write_buffers[2] = boost::asio::buffer(pair.second->data(), size);
+
 				auto self = this->shared_from_this();
 				boost::asio::async_write(
 					socket_, write_buffers,
@@ -138,7 +138,6 @@ namespace rest_rpc {
 					return;
 				}
 
-				cancel_timer();
 				if (has_closed()) { return; }
 
 				std::unique_lock<std::mutex> lock(write_mtx_);
@@ -190,7 +189,7 @@ namespace rest_rpc {
 			asio::steady_timer timer_;
 			std::size_t timeout_seconds_;
 			int64_t conn_id_ = 0;
-			std::atomic_bool has_closed_;
+			bool has_closed_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc
