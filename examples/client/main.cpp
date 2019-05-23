@@ -354,12 +354,35 @@ void test_callback() {
 	std::cin >> str;
 }
 
+void wait_for_notification(rpc_client& client) {
+	client.async_call<0>("sub", [&client](const boost::system::error_code & ec, string_view data) {
+		auto str = as<std::string>(data);
+		std::cout << str << '\n';
+
+		wait_for_notification(client);
+	});
+}
+
+void test_sub() {
+	rpc_client client;
+	bool r = client.connect("127.0.0.1", 9000);
+	if (!r) {
+		return;
+	}
+
+	wait_for_notification(client);
+
+	std::string str;
+	std::cin >> str;
+}
+
 int main() {
 	test_callback();
 	test_echo();
 	test_sync_client();
 	test_async_client();
 	
+	//test_sub();
 	//test_call_with_timeout();
 	//test_connect();
 	//test_upload();
