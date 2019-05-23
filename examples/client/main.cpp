@@ -119,7 +119,7 @@ void test_async_client() {
 		std::cout << ec.message() << std::endl;
 	});
 
-	auto f = client.async_call("get_person");
+	auto f = client.async_call<FUTURE>("get_person");
 	if (f.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout) {
 		std::cout << "timeout" << std::endl;
 	}
@@ -128,7 +128,7 @@ void test_async_client() {
 		std::cout << p.name << std::endl;
 	}
 
-	auto fu = client.async_call("hello", "purecpp");
+	auto fu = client.async_call<FUTURE>("hello", "purecpp");
 	fu.get().as(); //no return
 
 	//sync call
@@ -158,7 +158,7 @@ void test_upload() {
 	std::cout << file_len << std::endl;
 
 	{
-		auto f = client.async_call("upload", "test", conent);
+		auto f = client.async_call<FUTURE>("upload", "test", conent);
 		if (f.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
 			std::cout << "timeout" << std::endl;
 		}
@@ -168,7 +168,7 @@ void test_upload() {
 		}
 	}
 	{
-		auto f = client.async_call("upload", "test1", conent);
+		auto f = client.async_call<FUTURE>("upload", "test1", conent);
 		if (f.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
 			std::cout << "timeout" << std::endl;
 		}
@@ -188,7 +188,7 @@ void test_download() {
 		return;
 	}
 
-	auto f = client.async_call("download", "test");
+	auto f = client.async_call<FUTURE>("download", "test");
 	if (f.wait_for(std::chrono::milliseconds(500)) == std::future_status::timeout) {
 		std::cout << "timeout" << std::endl;
 	}
@@ -238,7 +238,7 @@ void test_performance1() {
 	person p{ 1, "tom", 20 };
 
 	for (size_t i = 0; i < 100000000; i++) {
-		auto future = client.async_call("get_name", p);
+		auto future = client.async_call<FUTURE>("get_name", p);
 		auto status = future.wait_for(std::chrono::seconds(2));
 		if (status == std::future_status::deferred) {
 			std::cout << "deferred\n";

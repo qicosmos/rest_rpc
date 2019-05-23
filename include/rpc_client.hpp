@@ -36,6 +36,12 @@ namespace rest_rpc {
 		string_view data_;
 	};
 
+	enum class CallModel {
+		future,
+		callback
+	};
+	const constexpr auto FUTURE = CallModel::future;
+
 	const constexpr size_t DEFAULT_TIMEOUT = 5000; //milliseconds
 
 	class rpc_client : private asio::noncopyable {
@@ -192,7 +198,7 @@ namespace rest_rpc {
 #else
 		template<size_t TIMEOUT, typename T=void, typename... Args>
 		typename std::enable_if<std::is_void<T>::value>::type call(const std::string& rpc_name, Args&& ... args) {
-			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
+			std::future<req_result> future = async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
 			auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
 				throw std::out_of_range("timeout or deferred");
@@ -208,7 +214,7 @@ namespace rest_rpc {
 
 		template<size_t TIMEOUT, typename T, typename... Args>
 		typename std::enable_if<!std::is_void<T>::value, T>::type call(const std::string& rpc_name, Args&& ... args) {
-			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
+			std::future<req_result> future = async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
 			auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
 				throw std::out_of_range("timeout or deferred");
@@ -223,7 +229,7 @@ namespace rest_rpc {
 		}
 #endif
 
-		template<typename... Args>
+		template<CallModel model, typename... Args>
 		std::future<req_result> async_call(const std::string& rpc_name, Args&&... args) {
 			req_id_++;
 			auto future = get_future();
