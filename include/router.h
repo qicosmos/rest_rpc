@@ -7,6 +7,7 @@
 
 namespace rest_rpc {
 	enum class ExecMode { sync, async };
+	const constexpr ExecMode Async = ExecMode::async;
 
 	namespace rpc_service {
 		class connection;

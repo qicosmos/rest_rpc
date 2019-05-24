@@ -148,11 +148,11 @@ int main() {
 	server.register_handler("upload", upload);
 	server.register_handler("download", download);
 	server.register_handler("get_name", get_name);
-	server.register_handler<ExecMode::async>("async_echo", async_echo);
+	server.register_handler<Async>("async_echo", async_echo);
 	server.register_handler("echo", echo);
 
 	notifier n;
-	server.register_handler<ExecMode::async>("sub", &notifier::sub, &n);
+	server.register_handler<Async>("sub", &notifier::sub, &n);
 
 	server.run();
 
