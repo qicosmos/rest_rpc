@@ -65,6 +65,10 @@ namespace rest_rpc {
 			stop();
 		}
 
+		void run(){
+            thd_->join();
+		}
+
 		void set_connect_timeout(size_t seconds) {
 			connect_timeout_ = seconds;
 		}

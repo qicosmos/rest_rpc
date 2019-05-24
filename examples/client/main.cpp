@@ -350,8 +350,7 @@ void test_callback() {
 		}, test1);
 	}
 
-	std::string str;
-	std::cin >> str;
+    client.run();
 }
 
 void wait_for_notification(rpc_client& client) {

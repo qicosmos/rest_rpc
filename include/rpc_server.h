@@ -27,11 +27,17 @@ namespace rest_rpc {
 				stop_check_ = true;
 				check_thread_->join();
 				io_service_pool_.stop();
-				thd_->join();
+				if(thd_){
+                    thd_->join();
+				}
+			}
+
+			void async_run() {
+				thd_ = std::make_shared<std::thread>([this] { io_service_pool_.run(); });
 			}
 
 			void run() {
-				thd_ = std::make_shared<std::thread>([this] { io_service_pool_.run(); });
+                io_service_pool_.run();
 			}
 
 			template<ExecMode model = ExecMode::sync, typename Function>
