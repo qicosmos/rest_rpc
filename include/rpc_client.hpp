@@ -177,7 +177,7 @@ namespace rest_rpc {
 #if __cplusplus > 201402L
 		template<size_t TIMEOUT, typename T = void, typename... Args>
 		auto call(const std::string& rpc_name, Args&& ... args) {
-			std::future<req_result> future = async_call(rpc_name, std::forward<Args>(args)...);
+			std::future<req_result> future = async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
 			auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
 			if (status == std::future_status::timeout || status == std::future_status::deferred) {
 				throw std::out_of_range("timeout or deferred");
