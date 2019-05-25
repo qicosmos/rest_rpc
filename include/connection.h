@@ -51,6 +51,15 @@ namespace rest_rpc {
 				response(req_id, std::move(result));
 			}
 
+			void close() {
+				has_closed_ = true;
+				if (socket_.is_open()) {
+					boost::system::error_code ignored_ec;
+					socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
+					socket_.close(ignored_ec);
+				}
+			}
+
 			void set_conn_id(int64_t id) { conn_id_ = id; }
 
 			int64_t conn_id() const { return conn_id_; }
@@ -167,15 +176,6 @@ namespace rest_rpc {
 				if (timeout_seconds_ == 0) { return; }
 
 				timer_.cancel();
-			}
-
-			void close() {
-				has_closed_ = true;
-				if (socket_.is_open()) {
-					boost::system::error_code ignored_ec;
-					socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
-					socket_.close(ignored_ec);
-				}
 			}
 
 			tcp::socket socket_;
