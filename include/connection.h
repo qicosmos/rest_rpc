@@ -126,11 +126,11 @@ namespace rest_rpc {
 
 			void write() {
 				auto& pair = write_queue_.front();
-				auto size = pair.second->size();
+				write_size_ = (uint32_t)pair.second->size();
 				std::array<boost::asio::const_buffer, 3> write_buffers;
-				write_buffers[0] = boost::asio::buffer(&size, sizeof(uint32_t));
+				write_buffers[0] = boost::asio::buffer(&write_size_, sizeof(uint32_t));
 				write_buffers[1] = boost::asio::buffer(&pair.first, sizeof(uint64_t));
-				write_buffers[2] = boost::asio::buffer(pair.second->data(), size);
+				write_buffers[2] = boost::asio::buffer(pair.second->data(), write_size_);
 
 				auto self = this->shared_from_this();
 				boost::asio::async_write(
@@ -184,6 +184,7 @@ namespace rest_rpc {
 			std::uint64_t req_id_;
 
 			std::deque<std::pair<uint64_t, std::shared_ptr<std::string>>> write_queue_;
+			uint32_t write_size_ = 0;
 			std::mutex write_mtx_;
 
 			asio::steady_timer timer_;
