@@ -8,7 +8,7 @@ using namespace rest_rpc;
 using namespace rest_rpc::rpc_service;
 
 void test_add() {
-	try{
+	try {
 		rpc_client client("127.0.0.1", 9000);
 		bool r = client.connect();
 		if (!r) {
@@ -26,7 +26,7 @@ void test_add() {
 			std::cout << result << std::endl;
 		}
 	}
-	catch (const std::exception& e){
+	catch (const std::exception & e) {
 		std::cout << e.what() << std::endl;
 	}
 }
@@ -43,7 +43,7 @@ void test_translate() {
 		auto result = client.call<std::string>("translate", "hello");
 		std::cout << result << std::endl;
 	}
-	catch (const std::exception& e) {
+	catch (const std::exception & e) {
 		std::cout << e.what() << std::endl;
 	}
 }
@@ -59,7 +59,7 @@ void test_hello() {
 
 		client.call("hello", "purecpp");
 	}
-	catch (const std::exception& e) {
+	catch (const std::exception & e) {
 		std::cout << e.what() << std::endl;
 	}
 }
@@ -84,7 +84,7 @@ void test_get_person_name() {
 		auto result = client.call<std::string>("get_person_name", person{ 1, "tom", 20 });
 		std::cout << result << std::endl;
 	}
-	catch (const std::exception& e) {
+	catch (const std::exception & e) {
 		std::cout << e.what() << std::endl;
 	}
 }
@@ -101,7 +101,7 @@ void test_get_person() {
 		auto result = client.call<person>("get_person");
 		std::cout << result.name << std::endl;
 	}
-	catch (const std::exception& e) {
+	catch (const std::exception & e) {
 		std::cout << e.what() << std::endl;
 	}
 }
@@ -115,7 +115,7 @@ void test_async_client() {
 		return;
 	}
 
-	client.set_error_callback([] (boost::system::error_code ec){
+	client.set_error_callback([](boost::system::error_code ec) {
 		std::cout << ec.message() << std::endl;
 	});
 
@@ -251,19 +251,19 @@ void test_performance1() {
 	}
 
 	std::cout << "finish\n";
-	
+
 	std::string str;
 	std::cin >> str;
 }
 
-void multi_client_performance(size_t n){
-    std::vector<std::shared_ptr<std::thread>> group;
-    for (int i = 0; i < n; ++i) {
-        group.emplace_back(std::make_shared<std::thread>(test_performance1));// []{test_performance1();});
-    }
-    for(auto& p: group){
-        p->join();
-    }
+void multi_client_performance(size_t n) {
+	std::vector<std::shared_ptr<std::thread>> group;
+	for (int i = 0; i < n; ++i) {
+		group.emplace_back(std::make_shared<std::thread>(test_performance1));// []{test_performance1();});
+	}
+	for (auto& p : group) {
+		p->join();
+	}
 }
 
 void test_performance2() {
@@ -282,10 +282,10 @@ void test_performance2() {
 		}
 		std::cout << "finish\n";
 	}
-	catch (const std::exception& ex) {
+	catch (const std::exception & ex) {
 		std::cout << ex.what() << '\n';
 	}
-	
+
 	std::string str;
 	std::cin >> str;
 }
@@ -302,27 +302,27 @@ void test_call_with_timeout() {
 		result = client.call<50, person>("get_person");
 		std::cout << result.name << std::endl;
 	}
-	catch (const std::exception& ex) {
+	catch (const std::exception & ex) {
 		std::cout << ex.what() << std::endl;
 	}
-	
+
 	std::string str;
 	std::cin >> str;
 }
 
-void test_connect(){
-    rpc_client client;
-    client.set_error_callback([&client] (boost::system::error_code ex) {
-        client.async_reconnect();
-    });
+void test_connect() {
+	rpc_client client;
+	client.set_error_callback([&client](boost::system::error_code ex) {
+		client.async_reconnect();
+	});
 
-    bool r = client.connect("127.0.0.1", 9000);
-    if (!r) {
-        client.async_reconnect();
-    }
+	bool r = client.connect("127.0.0.1", 9000);
+	if (!r) {
+		client.async_reconnect();
+	}
 
-    std::string str;
-    std::cin >> str;
+	std::string str;
+	std::cin >> str;
 }
 
 void test_callback() {
@@ -334,7 +334,7 @@ void test_callback() {
 		//set timeout 100ms
 		client.async_call<100>("async_echo", [](const boost::system::error_code & ec, string_view data) {
 			if (ec) {
-				std::cout << ec.value() <<" timeout"<< std::endl;
+				std::cout << ec.value() << " timeout" << std::endl;
 				return;
 			}
 
@@ -350,10 +350,10 @@ void test_callback() {
 		}, test1);
 	}
 
-    client.run();
+	client.run();
 }
 
-void wait_for_notification(rpc_client& client) {
+void wait_for_notification(rpc_client & client) {
 	client.async_call<0>("sub", [&client](const boost::system::error_code & ec, string_view data) {
 		auto str = as<std::string>(data);
 		std::cout << str << '\n';
@@ -375,18 +375,63 @@ void test_sub() {
 	std::cin >> str;
 }
 
+void test_multiple_thread() {
+	std::vector<std::shared_ptr<rpc_client>> cls;
+	std::vector<std::shared_ptr<std::thread>> v;
+	for (int j = 0; j < 4; ++j) {
+		auto client = std::make_shared<rpc_client>();
+		cls.push_back(client);
+		bool r = client->connect("127.0.0.1", 9000);
+		if (!r) {
+			return;
+		}
+
+		for (size_t i = 0; i < 2; i++) {
+			person p{ 1, "tom", 20 };
+			v.emplace_back(std::make_shared<std::thread>([client] {
+				person p{ 1, "tom", 20 };
+				for (size_t i = 0; i < 1000000; i++) {
+					client->async_call<0>("get_name", [](const boost::system::error_code & ec, string_view data) {
+						if (ec) {
+							std::cout << ec.message() << '\n';
+						}
+					}, p);
+
+					//auto future = client->async_call<FUTURE>("get_name", p);
+					//auto status = future.wait_for(std::chrono::seconds(2));
+					//if (status == std::future_status::deferred) {
+					//	std::cout << "deferred\n";
+					//}
+					//else if (status == std::future_status::timeout) {
+					//	std::cout << "timeout\n";
+					//}
+					//else if (status == std::future_status::ready) {
+					//}
+
+					//client->call<std::string>("get_name", p);
+				}
+			}));
+		}
+	}
+
+
+	std::string str;
+	std::cin >> str;
+}
+
 int main() {
 	test_callback();
 	test_echo();
 	test_sync_client();
 	test_async_client();
-	
+
 	//test_sub();
 	//test_call_with_timeout();
 	//test_connect();
 	//test_upload();
 	//test_download();
-    //multi_client_performance(20);
+	//multi_client_performance(20);
 	//test_performance1();
+	//test_multiple_thread();
 	return 0;
 }
