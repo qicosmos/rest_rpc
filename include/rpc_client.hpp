@@ -118,7 +118,7 @@ namespace rest_rpc {
 		void async_reconnect(){
             reset_socket();
             async_connect();
-			std::this_thread::sleep_for(std::chrono::seconds(1));
+			std::this_thread::sleep_for(std::chrono::milliseconds(connect_timeout_));
 		}
 
 		bool connect(size_t timeout = 1) {
@@ -520,7 +520,7 @@ namespace rest_rpc {
 
 		std::string host_;
 		unsigned short port_ = 0;
-		size_t connect_timeout_ = 2;//s
+		size_t connect_timeout_ = 2000;//s
 		size_t wait_timeout_ = 2;//s
 		int reconnect_cnt_ = -1;
 		bool has_connected_ = false;
