@@ -69,8 +69,8 @@ namespace rest_rpc {
             thd_->join();
 		}
 
-		void set_connect_timeout(size_t seconds) {
-			connect_timeout_ = seconds;
+		void set_connect_timeout(size_t milliseconds) {
+			connect_timeout_ = milliseconds;
 		}
 
 		void set_reconnect_count(int reconnect_count) {
