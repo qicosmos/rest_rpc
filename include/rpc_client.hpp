@@ -13,7 +13,7 @@ namespace rest_rpc {
 	class req_result {
 	public:
 		req_result() = default;
-		req_result(string_view data) : data_(data) {}
+		req_result(string_view data) : data_(data.data(), data.length()) {}
 		bool success() const {
 			return !has_error(data_);
 		}
@@ -32,8 +32,9 @@ namespace rest_rpc {
 				throw std::logic_error("rpc error");
 			}
 		}
+
 	private:
-		string_view data_;
+		std::string data_;
 	};
 
 	enum class CallModel {
@@ -235,8 +236,17 @@ namespace rest_rpc {
 
 		template<CallModel model, typename... Args>
 		std::future<req_result> async_call(const std::string& rpc_name, Args&&... args) {
+			auto p = std::make_shared<std::promise<req_result>>();
+			std::future<req_result> future = p->get_future();
+
 			uint64_t fu_id = 0;
-			auto future = get_future(fu_id);
+			{
+				std::unique_lock<std::mutex> lock(cb_mtx_);
+				fu_id_++;
+				fu_id = fu_id_;
+				future_map_.emplace(fu_id, std::move(p));
+			}
+
 			msgpack_codec codec;
 			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
 			write(fu_id, std::move(ret));
@@ -246,7 +256,6 @@ namespace rest_rpc {
 		template<size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
 		void async_call(const std::string& rpc_name, std::function<void(boost::system::error_code, string_view)> cb, Args&& ... args) {
 			uint64_t cb_id = 0;
-
 			{
 				std::unique_lock<std::mutex> lock(cb_mtx_);
 				callback_id_++;
@@ -392,18 +401,6 @@ namespace rest_rpc {
 					}
 				}
 			});
-		}
-
-		std::future<req_result> get_future(uint64_t& fu_id) {
-			auto p = std::make_shared<std::promise<req_result>>();
-			std::future<req_result> future = p->get_future();
-
-			std::unique_lock<std::mutex> lock(cb_mtx_);
-			fu_id_++;
-			fu_id = fu_id_;
-			future_map_.emplace(fu_id_, std::move(p));
-
-			return future;
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
