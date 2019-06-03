@@ -419,12 +419,70 @@ void test_multiple_thread() {
 	std::cin >> str;
 }
 
-int main() {
+void test_threads() {
+	rpc_client client;
+	bool r = client.connect("127.0.0.1", 9000);
+	if (!r) {
+		return;
+	}
+
+	std::thread thd1([&client] {
+		for (size_t i = 0; i < 1000000; i++) {
+			auto future = client.async_call<FUTURE>("echo", "test");
+			auto status = future.wait_for(std::chrono::seconds(2));
+			if (status == std::future_status::timeout) {
+				std::cout << "timeout\n";
+			}
+			else if (status == std::future_status::ready) {
+				std::string content = future.get().as<std::string>();
+			}
+
+			std::this_thread::sleep_for(std::chrono::microseconds(2));
+		}
+		std::cout << "thread2 finished" << '\n';
+	});
+	
+	std::thread thd2([&client] {
+		for (size_t i = 1000000; i < 2*1000000; i++) {
+			client.async_call("get_int", [i](auto ec, auto data) {
+				if (ec) {
+					std::cout << ec.message() << '\n';
+					return;
+				}
+				int r =  as<int>(data);
+				if (r != i) {
+					std::cout << "error not match" << '\n';
+				}
+			}, i);
+			std::this_thread::sleep_for(std::chrono::microseconds(2));
+		}
+
+		std::cout << "thread2 finished" << '\n';
+	});
+
+	for (size_t i = 2*1000000; i < 3 * 1000000; i++) {
+		auto future = client.async_call<FUTURE>("echo", "test");
+		auto status = future.wait_for(std::chrono::seconds(2));
+		if (status == std::future_status::timeout) {
+			std::cout << "timeout\n";
+		}
+		else if (status == std::future_status::ready) {
+			std::string content = future.get().as<std::string>();
+		}
+		std::this_thread::sleep_for(std::chrono::microseconds(2));
+	}
+	std::cout << "thread finished" << '\n';
+	
+	std::string str;
+	std::cin >> str;
+}
+
+int main() {	
 	test_callback();
 	test_echo();
 	test_sync_client();
 	test_async_client();
-
+	//test_threads();
 	//test_sub();
 	//test_call_with_timeout();
 	//test_connect();
