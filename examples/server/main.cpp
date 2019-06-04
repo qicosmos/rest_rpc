@@ -85,6 +85,10 @@ std::string echo(rpc_conn conn, const std::string& src) {
 	return src;
 }
 
+int get_int(rpc_conn conn, int val) {
+	return val;
+}
+
 struct notifier {
 public:
 	notifier() {
@@ -150,6 +154,7 @@ int main() {
 	server.register_handler("get_name", get_name);
 	server.register_handler<Async>("async_echo", async_echo);
 	server.register_handler("echo", echo);
+	server.register_handler("get_int", get_int);
 
 	notifier n;
 	server.register_handler<Async>("sub", &notifier::sub, &n);
