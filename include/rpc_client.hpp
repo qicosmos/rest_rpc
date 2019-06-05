@@ -21,7 +21,7 @@ namespace rest_rpc {
 		template<typename T>
 		T as() {
 			if (has_error(data_)) {
-				throw std::logic_error("rpc error");
+				throw std::logic_error(get_error_msg(data_));
 			}
 
 			return get_result<T>(data_);
@@ -29,7 +29,7 @@ namespace rest_rpc {
 
 		void as() {
 			if (has_error(data_)) {
-				throw std::logic_error("rpc error");
+				throw std::logic_error(get_error_msg(data_));
 			}
 		}
 
