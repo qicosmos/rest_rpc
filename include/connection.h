@@ -46,7 +46,8 @@ namespace rest_rpc {
 				write();
 			}
 
-			void pack_and_response(uint64_t req_id, std::string data) {
+			template<typename T>
+			void pack_and_response(uint64_t req_id, T data) {
 				auto result = msgpack_codec::pack_args_str(result_code::OK, std::move(data));
 				response(req_id, std::move(result));
 			}
