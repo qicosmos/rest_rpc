@@ -1,184 +1,164 @@
 # rest_rpc
-c++11, high performance, simple, easy to use rpc framework.
+c++11, high performance, cross platform, easy to use rpc framework.
 
 It's so easy to love RPC.
 
 Modern C++开发的RPC库就是这么简单好用！
 
-# performance
+# rest_rpc简介
 
-Here are the [performance test result](https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%8D%95%E6%9C%BA%E4%B8%8Arest_rpc%E5%92%8Cbrpc%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.md "performance")
+rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。
+可以快速上手，使用者只需要关注自己的业务逻辑即可。
 
-# quick example
+# rest_rpc的特点
 
-server code
+## 易
 
-	#include "rpc_server.h"
-	using namespace rest_rpc;
-	using namespace rpc_service;
+rest_rpc为用户提供了非常简单易用的接口，几行代码就可以实现rpc通信了，来看第一个例子
+
+### 一个加法的rpc服务
+
+```
+//服务端注册加法rpc服务
+
+struct dummy{
+	int add(rpc_conn conn, int a, int b) { return a + b; }
+};
+
+int main(){
+	rpc_server server(9000, std::thread::hardware_concurrency());
+
+	dummy d;
+	server.register_handler("add", &dummy::add, &d);
 	
-	struct dummy{
-		int add(connection* conn, int a, int b) { return a + b; }
-	};
+	server.run();
+}
+```
+
+```
+//客户端调用加法的rpc服务
+int main(){
+	rpc_client client("127.0.0.1", 9000);
+	client.connect();
+
+	int result = client.call<int>("add", 1, 2);
+
+	client.run();
+}
+```
+
+### 获取一个对象的rpc服务
+
+```
+//服务端注册获取person的rpc服务
+
+//1.先定义person对象
+struct person {
+	int id;
+	std::string name;
+	int age;
+
+	MSGPACK_DEFINE(id, name, age);
+};
+
+//2.提供并服务
+person get_person(rpc_conn conn) {
+	return { 1, "tom", 20 };
+}
+
+int main(){
+	//...
+	server.register_handler("get_person", get_person);
+}
+```
+
+```
+//客户端调用获取person对象的rpc服务
+int main(){
+	rpc_client client("127.0.0.1", 9000);
+	client.connect();
 	
-	std::string translate(connection* conn, const std::string& orignal) {
-		std::string temp = orignal;
-		for (auto& c : temp) { 
-			c = std::toupper(c); 
-		}
-		return temp;
-	}
+	person result = client.call<person>("get_person");
+	std::cout << result.name << std::endl;
 	
-	void hello(connection* conn, const std::string& str) {
-		std::cout << "hello " << str << std::endl;
-	}
-	
-	int main() {
-		rpc_server server(9000, 4);
-	
-		dummy d;
-		server.register_handler("add", &dummy::add, &d);
-		server.register_handler("translate", translate);
-		server.register_handler("hello", hello);
-	
-		server.run();
-	
-		std::string str;
-		std::cin >> str;
-	}
+	client.run();
+}
+```
 
-通用的rpc_client用法_
+## 酷
 
-	#include <iostream>
-    #include <rpc_client.hpp>
-    #include <chrono>
-    #include <fstream>
-    #include "codec.h"
+异步？
 
-    using namespace rest_rpc;
-    using namespace rest_rpc::rpc_service;
+同步？
 
-    void test_add() {
-	    try{
-		    rpc_client client("127.0.0.1", 9000);
-		    bool r = client.connect();
-		    if (!r) {
-			    std::cout << "connect timeout" << std::endl;
-			    return;
-		    }
+future?
 
-		    auto result = client.call<int>("add", 1, 2);
-		    std::cout << result << std::endl;
-	    }
-	    catch (const std::exception& e){
-		    std::cout << e.what() << std::endl;
-	    }
-    }
+callback？
 
-    void test_translate() {
-	    try {
-		    rpc_client client("127.0.0.1", 9000);
-		    bool r = client.connect();
-		    if (!r) {
-			    std::cout << "connect timeout" << std::endl;
-			    return;
-		    }
+当初为了提供什么样的接口在社区群里还争论了一番，有人希望提供callback接口，有人希望提供future接口，最后我
+决定都提供，专治强迫症患者:)
 
-		    auto result = client.call<std::string>("translate", "hello");
-		    std::cout << result << std::endl;
-	    }
-	    catch (const std::exception& e) {
-		    std::cout << e.what() << std::endl;
-	    }
-    }
+现在想要的这些接口都给你提供了，你想用什么类型的接口就用什么类型的接口，够酷吧，让我们来看看怎么用这些接口吧：
 
-    void test_hello() {
-	    try {
-		    rpc_client client("127.0.0.1", 9000);
-		    bool r = client.connect();
-		    if (!r) {
-			    std::cout << "connect timeout" << std::endl;
-			    return;
-		    }
+```
+//服务端提供echo服务
+std::string echo(rpc_conn conn, const std::string& src) {
+	return src;
+}
 
-		    client.call("hello", "purecpp");
-	    }
-	    catch (const std::exception& e) {
-		    std::cout << e.what() << std::endl;
-	    }
-    }
-	
-	int main() {
-		test_add();
-	    test_translate();
-	    test_hello();
-		return 0;
-	}
+server.register_handler("echo", echo);
+```
 
-如果希望client使用的时候更加安全，可以自己对通用的rpc_client做一个简单的封装，就可以更安全的使用接口了，具体可以参考example中的app_client.
-在app_client中不需要输入rpc服务名称，需要输入的参数也做了类型限定，可以保证不会传入错误的参数。
+客户端同步接口
 
-app_client的用法
+```
+auto result = client.call<std::string>("echo", "hello");
+```
 
-    #include <iostream>
-    #include "client.hpp"
+客户端异步回调接口
 
-    void test_client() {
-	    client cl("127.0.0.1", 9000);
-	    bool r = cl.connect();
-	    if (!r) {
-		    std::cout << "connect failed" << std::endl;
-		    return;
-	    }
+```
+client.async_call("echo", [](boost::system::error_code ec, string_view data){
+	auto str = as<std::string>(data);
+	std::cout << "echo " << str << '\n';
+});
+```
 
-	    try {
-		    int result = cl.add(2, 3);
-		    cl.hello("purecpp");
-		    auto str = cl.translate("purecpp");
-		    auto name = cl.get_person_name({ 1, "tom", 20 });
-		    auto p = cl.get_person();
+客户端异步future接口
 
-		    std::cout << result << '\n';
-		    std::cout << str << '\n';
-		    std::cout << name << '\n';
-		    std::cout << p.name << '\n';
+```
+auto future = client->async_call<FUTURE>("echo", "hello");
+auto status = future.wait_for(std::chrono::seconds(2));
+if (status == std::future_status::timeout) {
+	std::cout << "timeout\n";
+}
+else if (status == std::future_status::ready) {
+	auto str = future.get().as<std::string>();
+	std::cout << "echo " << str << '\n';
+}
+```
 
-		    {
-			    auto future = cl.async_add(4, 5);
-			    if (future.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout) {
-				    std::cout << "timeout" << std::endl;
-			    }
-			    else {
-				    auto result = future.get().as<int>();
-				    std::cout << result << std::endl;
-			    }
-		    }
+除了上面的这些很棒的接口之外，更酷的是rest_rpc还支持了服务端推送的功能，这是目前很多rpc库做不到的。
 
-		    {
-			    auto future = cl.async_translate("modern c++");
-			    if (future.wait_for(std::chrono::milliseconds(50)) == std::future_status::timeout) {
-				    std::cout << "timeout" << std::endl;
-			    }
-			    else {
-				    auto result = future.get().as<std::string>();
-				    std::cout << result << std::endl;
-			    }
-		    }
-	    }
-	    catch (const std::exception& ex) {
-		    std::cout << ex.what() << std::endl;
-	    }
-    }
+服务端定时推送的例子在这里：
 
-    int main() {
-	    test_client();
+https://github.com/qicosmos/rest_rpc/blob/master/examples/server/main.cpp#L88
+https://github.com/qicosmos/rest_rpc/blob/master/examples/client/main.cpp#L372
 
-	    std::string str;
-	    std::cin >> str;
-    }
+## 快
+
+rest_rpc是目前最快的rpc库，具体和grpc和brpc做了性能对比测试，rest_rpc性能是最高的，远超grpc。
+
+性能测试的结果在这里：
+
+https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%8D%95%E6%9C%BA%E4%B8%8Arest_rpc%E5%92%8Cbrpc%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.md
 
 
-除了简单好用，没什么多余的要说的。
+# rest_rpc的更多用法
+
+可以参考rest_rpc的example:
+
+https://github.com/qicosmos/rest_rpc/tree/master/examples
 
 # future
 
