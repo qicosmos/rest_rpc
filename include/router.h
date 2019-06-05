@@ -75,23 +75,23 @@ namespace rest_rpc {
 
 			template<typename F, size_t... I, typename Arg, typename... Args>
 			static typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type call_helper(
-				const F & f, const std::index_sequence<I...>&, const std::tuple<Arg, Args...> & tup, std::weak_ptr<connection> ptr) {
-				return f(ptr, std::get<I + 1>(tup)...);
+				const F & f, const std::index_sequence<I...>&, std::tuple<Arg, Args...> tup, std::weak_ptr<connection> ptr) {
+				return f(ptr, std::move(std::get<I + 1>(tup))...);
 			}
 
 			template<typename F, typename Arg, typename... Args>
 			static
 				typename std::enable_if<std::is_void<typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type>::value>::type
-				call(const F & f, std::weak_ptr<connection> ptr, std::string & result, std::tuple<Arg, Args...> & tp) {
-				call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
+				call(const F & f, std::weak_ptr<connection> ptr, std::string & result, std::tuple<Arg, Args...> tp) {
+				call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(tp), ptr);
 				result = msgpack_codec::pack_args_str(result_code::OK);
 			}
 
 			template<typename F, typename Arg, typename... Args>
 			static
 				typename std::enable_if<!std::is_void<typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type>::value>::type
-				call(const F & f, std::weak_ptr<connection> ptr, std::string & result, const std::tuple<Arg, Args...> & tp) {
-				auto r = call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
+				call(const F & f, std::weak_ptr<connection> ptr, std::string & result, std::tuple<Arg, Args...> tp) {
+				auto r = call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(tp), ptr);
 				msgpack_codec codec;
 				result = msgpack_codec::pack_args_str(result_code::OK, r);
 			}
@@ -99,16 +99,16 @@ namespace rest_rpc {
 			template<typename F, typename Self, size_t... Indexes, typename Arg, typename... Args>
 			static typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type call_member_helper(
 				const F & f, Self * self, const std::index_sequence<Indexes...>&,
-				const std::tuple<Arg, Args...> & tup, std::weak_ptr<connection> ptr = 0) {
-				return (*self.*f)(ptr, std::get<Indexes + 1>(tup)...);
+				std::tuple<Arg, Args...> tup, std::weak_ptr<connection> ptr = 0) {
+				return (*self.*f)(ptr, std::move(std::get<Indexes + 1>(tup))...);
 			}
 
 			template<typename F, typename Self, typename Arg, typename... Args>
 			static typename std::enable_if<
 				std::is_void<typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
 				call_member(const F & f, Self * self, std::weak_ptr<connection> ptr, std::string & result,
-					const std::tuple<Arg, Args...> & tp) {
-				call_member_helper(f, self, typename std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
+					std::tuple<Arg, Args...> tp) {
+				call_member_helper(f, self, typename std::make_index_sequence<sizeof...(Args)>{}, std::move(tp), ptr);
 				result = msgpack_codec::pack_args_str(result_code::OK);
 			}
 
@@ -116,9 +116,9 @@ namespace rest_rpc {
 			static typename std::enable_if<
 				!std::is_void<typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
 				call_member(const F & f, Self * self, std::weak_ptr<connection> ptr, std::string & result,
-					const std::tuple<Arg, Args...> & tp) {
+					std::tuple<Arg, Args...> tp) {
 				auto r =
-					call_member_helper(f, self, typename std::make_index_sequence<sizeof...(Args)>{}, tp, ptr);
+					call_member_helper(f, self, typename std::make_index_sequence<sizeof...(Args)>{}, std::move(tp), ptr);
 				result = msgpack_codec::pack_args_str(result_code::OK, r);
 			}
 
@@ -132,7 +132,7 @@ namespace rest_rpc {
 					msgpack_codec codec;
 					try {
 						auto tp = codec.unpack<args_tuple>(data, size);
-						call(func, conn, result, tp);
+						call(func, conn, result, std::move(tp));
 						exe_model = model;
 					}
 					catch (std::invalid_argument & e) {
@@ -152,7 +152,7 @@ namespace rest_rpc {
 					msgpack_codec codec;
 					try {
 						auto tp = codec.unpack<args_tuple>(data, size);
-						call_member(func, self, conn, result, tp);
+						call_member(func, self, conn, result, std::move(tp));
 						exe_model = model;
 					}
 					catch (std::invalid_argument & e) {
