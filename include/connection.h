@@ -65,6 +65,10 @@ namespace rest_rpc {
 
 			int64_t conn_id() const { return conn_id_; }
 
+			const std::vector<char>& body() const {
+				return body_;
+			}
+
 		private:
 			void read_head() {
 				reset_timer();
