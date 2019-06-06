@@ -461,7 +461,6 @@ namespace rest_rpc {
 
         void reset_socket(){
             boost::system::error_code igored_ec;
-            socket_.shutdown(asio::ip::tcp::socket::shutdown_both, igored_ec);
             socket_.close(igored_ec);
             socket_ = decltype(socket_)(ios_);
             if(!socket_.is_open()){
