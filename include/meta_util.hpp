@@ -34,6 +34,21 @@ namespace rest_rpc{
         using args_tuple_2nd = std::tuple<std::string, std::remove_const_t<std::remove_reference_t<Args>>...>;
     };
 
+	template<typename Ret>
+	struct function_traits<Ret()> {
+	public:
+		enum { arity = 0 };
+		typedef Ret function_type();
+		typedef Ret return_type;
+		using stl_function_type = std::function<function_type>;
+		typedef Ret(*pointer)();
+
+		typedef std::tuple<> tuple_type;
+		typedef std::tuple<> bare_tuple_type;
+		using args_tuple = std::tuple<std::string>;
+		using args_tuple_2nd = std::tuple<std::string>;
+	};
+
     template<typename Ret, typename... Args>
     struct function_traits<Ret(*)(Args...)> : function_traits<Ret(Args...)>{};
 
