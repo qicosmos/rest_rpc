@@ -39,7 +39,7 @@ public:
 	}
 
 	std::future<req_result> async_add(int a, int b) {
-		return client_.async_call("add", a, b);
+		return client_.async_call<FUTURE>("add", a, b);
 	}
 
 	std::string translate(const std::string& str) {
@@ -53,7 +53,7 @@ public:
 	}
 
 	std::future<req_result> async_translate(const std::string& str) {
-		return client_.async_call("translate", str);
+		return client_.async_call<FUTURE>("translate", str);
 	}
 
 	void hello(const std::string& str) {
