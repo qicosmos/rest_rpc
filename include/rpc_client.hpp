@@ -178,6 +178,10 @@ namespace rest_rpc {
 			err_cb_ = std::move(f);
 		}
 
+		uint64_t reqest_id() {
+			return temp_req_id_;
+		}
+
 		//sync call
 #if __cplusplus > 201402L
 		template<size_t TIMEOUT, typename T = void, typename... Args>
@@ -406,6 +410,7 @@ namespace rest_rpc {
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
+			temp_req_id_ = req_id;
 			auto cb_flag = req_id >> 63;
 			if (cb_flag) {
 				std::shared_ptr<call_t> cl = nullptr;
@@ -541,6 +546,8 @@ namespace rest_rpc {
 		std::unordered_map<std::uint64_t, std::shared_ptr<call_t>> callback_map_;
 		std::mutex cb_mtx_;
 		uint64_t callback_id_ = 0;
+
+		uint64_t temp_req_id_ = 0;
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;
