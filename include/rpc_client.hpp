@@ -154,7 +154,7 @@ namespace rest_rpc {
             has_wait_ = true;
 			std::unique_lock<std::mutex> lock(conn_mtx_);
 			bool result = conn_cond_.wait_for(lock, std::chrono::seconds(timeout),
-				[this] {return has_connected_; });
+				[this] {return has_connected_.load(); });
             has_wait_ = false;
 			return has_connected_;
 		}
@@ -524,7 +524,7 @@ namespace rest_rpc {
 		size_t connect_timeout_ = 2000;//s
 		size_t wait_timeout_ = 2;//s
 		int reconnect_cnt_ = -1;
-		bool has_connected_ = false;
+		std::atomic_bool has_connected_ = { false };
 		std::mutex conn_mtx_;
 		std::condition_variable conn_cond_;
 		bool has_wait_ = false;
