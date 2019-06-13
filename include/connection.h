@@ -69,6 +69,10 @@ namespace rest_rpc {
 				return body_;
 			}
 
+			std::string remote_address() const {
+				return socket_.remote_endpoint().address().to_string();
+			}
+
 		private:
 			void read_head() {
 				reset_timer();
@@ -167,7 +171,7 @@ namespace rest_rpc {
 
 				auto self(this->shared_from_this());
 				timer_.expires_from_now(std::chrono::seconds(timeout_seconds_));
-				timer_.async_wait([this, self](const boost::system::error_code & ec) {
+				timer_.async_wait([this, self](const boost::system::error_code& ec) {
 					if (has_closed()) { return; }
 
 					if (ec) { return; }
