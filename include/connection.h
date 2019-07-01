@@ -70,6 +70,10 @@ namespace rest_rpc {
 			}
 
 			std::string remote_address() const {
+				if (has_closed_) {
+					return "";
+				}
+
 				return socket_.remote_endpoint().address().to_string();
 			}
 
