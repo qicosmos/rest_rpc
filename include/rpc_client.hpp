@@ -106,7 +106,7 @@ namespace rest_rpc {
                     async_reconnect();
 				}
 				else {
-				    std::cout<<"connected ok"<<std::endl;
+				    //std::cout<<"connected ok"<<std::endl;
 					has_connected_ = true;
 					do_read();
 
