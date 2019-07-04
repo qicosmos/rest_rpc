@@ -440,7 +440,7 @@ namespace rest_rpc {
 				if (ec) {
 					//LOG<<ec.message();
 					if (!f) {
-						std::cout << "invalid req_id" << std::endl;
+						//std::cout << "invalid req_id" << std::endl;
 						return;
 					}
 				}
