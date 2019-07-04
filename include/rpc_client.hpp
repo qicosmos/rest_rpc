@@ -123,6 +123,9 @@ namespace rest_rpc {
 		}
 
 		bool connect(size_t timeout = 1) {
+			if (has_connected_)
+				return true;
+
 			assert(port_ != 0);
 			async_connect();
 			return wait_conn(timeout);
