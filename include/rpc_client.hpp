@@ -337,6 +337,10 @@ namespace rest_rpc {
 				}
 
 				std::unique_lock<std::mutex> lock(write_mtx_);
+				if (outbox_.empty()) {
+					return;
+				}
+
 				::free((char*)outbox_.front().first.data());
 				outbox_.pop_front();
 
