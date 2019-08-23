@@ -78,50 +78,6 @@ namespace rest_rpc {
 			reconnect_cnt_ = reconnect_count;
 		}
 
-		void set_wait_timeout(size_t seconds) {
-			wait_timeout_ = seconds;
-		}
-
-		void async_connect() {
-			assert(port_ != 0);
-			auto addr = boost::asio::ip::address::from_string(host_);
-			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
-				if (has_connected_) {
-					return;
-				}
-
-				if (ec) {
-					//std::cout << ec.message() << std::endl;
-
-					has_connected_ = false;
-
-					if (reconnect_cnt_ == 0) {
-						return;
-					}
-
-					if (reconnect_cnt_ > 0) {
-						reconnect_cnt_--;
-					}
-
-                    async_reconnect();
-				}
-				else {
-				    //std::cout<<"connected ok"<<std::endl;
-					has_connected_ = true;
-					do_read();
-
-					if(has_wait_)
-					    conn_cond_.notify_one();
-				}
-			});
-		}
-
-		void async_reconnect(){
-            reset_socket();
-            async_connect();
-			std::this_thread::sleep_for(std::chrono::milliseconds(connect_timeout_));
-		}
-
 		bool connect(size_t timeout = 1) {
 			if (has_connected_)
 				return true;
@@ -162,6 +118,10 @@ namespace rest_rpc {
 			return has_connected_;
 		}
 
+		void enable_auto_reconnect() {
+			enable_reconnect_ = true;
+		}
+
 		void update_addr(const std::string& host, unsigned short port) {
 			host_ = host;
 			port_ = port;
@@ -183,6 +143,10 @@ namespace rest_rpc {
 
 		uint64_t reqest_id() {
 			return temp_req_id_;
+		}
+
+		bool has_connected() const {
+			return has_connected_;
 		}
 
 		//sync call
@@ -278,10 +242,6 @@ namespace rest_rpc {
 			write(cb_id, std::move(ret));
 		}
 
-		bool has_connected() const {
-			return has_connected_;
-		}
-
 		void stop() {
 			if (thd_ != nullptr) {
 				ios_.stop();
@@ -291,6 +251,46 @@ namespace rest_rpc {
 		}
 
 	private:
+		void async_connect() {
+			assert(port_ != 0);
+			auto addr = boost::asio::ip::address::from_string(host_);
+			socket_.async_connect({ addr, port_ }, [this](const boost::system::error_code& ec) {
+				if (has_connected_) {
+					return;
+				}
+
+				if (ec) {
+					//std::cout << ec.message() << std::endl;
+
+					has_connected_ = false;
+
+					if (reconnect_cnt_ == 0) {
+						return;
+					}
+
+					if (reconnect_cnt_ > 0) {
+						reconnect_cnt_--;
+					}
+
+					async_reconnect();
+				}
+				else {
+					//std::cout<<"connected ok"<<std::endl;
+					has_connected_ = true;
+					do_read();
+
+					if (has_wait_)
+						conn_cond_.notify_one();
+				}
+			});
+		}
+
+		void async_reconnect() {
+			reset_socket();
+			async_connect();
+			std::this_thread::sleep_for(std::chrono::milliseconds(connect_timeout_));
+		}
+
 		using message_type = std::pair<string_view, std::uint64_t>;
 		void reset_deadline_timer(size_t timeout) {
 			deadline_.expires_from_now(std::chrono::seconds(timeout));
@@ -329,9 +329,7 @@ namespace rest_rpc {
 				if (ec) {
 					has_connected_ = false;
 					close();
-					if (err_cb_) {
-						err_cb_(ec);
-					}
+					error_callback(ec);
 
 					return;
 				}
@@ -382,7 +380,7 @@ namespace rest_rpc {
 					//LOG(INFO) << ec.message();
 					has_connected_ = false;
 					close();
-                    if (err_cb_) err_cb_(ec);
+					error_callback(ec);
 				}
 			});
 		}
@@ -409,9 +407,7 @@ namespace rest_rpc {
 					//LOG(INFO) << ec.message();
 					has_connected_ = false;
                     close();
-					if (err_cb_) {
-						err_cb_(ec);
-					}
+					error_callback(ec);
 				}
 			});
 		}
@@ -526,6 +522,22 @@ namespace rest_rpc {
 			bool has_timeout_ = false;
 		};
 
+		void error_callback(const boost::system::error_code& ec) {
+			if (err_cb_) {
+				err_cb_(ec);
+			}
+
+			if (enable_reconnect_) {
+				async_connect();
+			}
+		}
+
+		void set_default_error_cb() {
+			err_cb_ = [this](boost::system::error_code){
+				async_connect();
+			};
+		}
+
 		boost::asio::io_service ios_;
 		asio::ip::tcp::socket socket_;
 		boost::asio::io_service::work work_;
@@ -533,8 +545,7 @@ namespace rest_rpc {
 
 		std::string host_;
 		unsigned short port_ = 0;
-		size_t connect_timeout_ = 2000;//s
-		size_t wait_timeout_ = 2;//s
+		size_t connect_timeout_ = 1000;//s
 		int reconnect_cnt_ = -1;
 		std::atomic_bool has_connected_ = { false };
 		std::mutex conn_mtx_;
@@ -548,6 +559,7 @@ namespace rest_rpc {
 		std::mutex write_mtx_;
 		uint64_t fu_id_ = 0;
 		std::function<void(boost::system::error_code)> err_cb_;
+		bool enable_reconnect_ = false;
 
 		std::unordered_map<std::uint64_t, std::shared_ptr<std::promise<req_result>>> future_map_;
 		std::unordered_map<std::uint64_t, std::shared_ptr<call_t>> callback_map_;

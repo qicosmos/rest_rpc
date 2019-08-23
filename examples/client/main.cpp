@@ -108,8 +108,7 @@ void test_get_person() {
 
 void test_async_client() {
 	rpc_client client("127.0.0.1", 9000);
-	client.async_connect();
-	bool r = client.wait_conn(1);
+	bool r = client.connect();
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
 		return;
@@ -141,8 +140,7 @@ void test_async_client() {
 
 void test_upload() {
 	rpc_client client("127.0.0.1", 9000);
-	client.async_connect();
-	bool r = client.wait_conn(1);
+	bool r = client.connect(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
 		return;
@@ -181,8 +179,7 @@ void test_upload() {
 
 void test_download() {
 	rpc_client client("127.0.0.1", 9000);
-	client.async_connect();
-	bool r = client.wait_conn(1);
+	bool r = client.connect(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
 		return;
@@ -312,13 +309,33 @@ void test_call_with_timeout() {
 
 void test_connect() {
 	rpc_client client;
-	client.set_error_callback([&client](boost::system::error_code ex) {
-		client.async_reconnect();
-	});
-
+	client.enable_auto_reconnect(); //automatic reconnect
 	bool r = client.connect("127.0.0.1", 9000);
-	if (!r) {
-		client.async_reconnect();
+	int count = 0;
+	while (true) {
+		if (client.has_connected()) {
+			std::cout << "connected ok\n";
+			break;
+		}
+		else {
+			std::cout << "connected failed: "<< count++<<"\n";
+		}
+		std::this_thread::sleep_for(std::chrono::seconds(1));
+	}
+
+	{
+		rpc_client client;
+		bool r = client.connect("127.0.0.1", 9000);
+		int count = 0;
+		while (true) {
+			if (client.connect()) {
+				std::cout << "connected ok\n";
+				break;
+			}
+			else {
+				std::cout << "connected failed: " << count++ << "\n";
+			}
+		}
 	}
 
 	std::string str;
@@ -477,7 +494,8 @@ void test_threads() {
 	std::cin >> str;
 }
 
-int main() {	
+int main() {
+	test_connect();
 	test_callback();
 	test_echo();
 	test_sync_client();
