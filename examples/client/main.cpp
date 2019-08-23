@@ -310,6 +310,7 @@ void test_call_with_timeout() {
 void test_connect() {
 	rpc_client client;
 	client.enable_auto_reconnect(); //automatic reconnect
+	client.enable_auto_heartbeat(); //automatic heartbeat
 	bool r = client.connect("127.0.0.1", 9000);
 	int count = 0;
 	while (true) {
@@ -323,20 +324,20 @@ void test_connect() {
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 
-	{
-		rpc_client client;
-		bool r = client.connect("127.0.0.1", 9000);
-		int count = 0;
-		while (true) {
-			if (client.connect()) {
-				std::cout << "connected ok\n";
-				break;
-			}
-			else {
-				std::cout << "connected failed: " << count++ << "\n";
-			}
-		}
-	}
+	//{
+	//	rpc_client client;
+	//	bool r = client.connect("127.0.0.1", 9000);
+	//	int count = 0;
+	//	while (true) {
+	//		if (client.connect()) {
+	//			std::cout << "connected ok\n";
+	//			break;
+	//		}
+	//		else {
+	//			std::cout << "connected failed: " << count++ << "\n";
+	//		}
+	//	}
+	//}
 
 	std::string str;
 	std::cin >> str;

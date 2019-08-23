@@ -99,7 +99,7 @@ namespace rest_rpc {
 			template<typename F, typename Self, size_t... Indexes, typename Arg, typename... Args>
 			static typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type call_member_helper(
 				const F & f, Self * self, const std::index_sequence<Indexes...>&,
-				std::tuple<Arg, Args...> tup, std::weak_ptr<connection> ptr = nullptr) {
+				std::tuple<Arg, Args...> tup, std::weak_ptr<connection> ptr = std::shared_ptr<connection>{ nullptr }) {
 				return (*self.*f)(ptr, std::move(std::get<Indexes + 1>(tup))...);
 			}
 

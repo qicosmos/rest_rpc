@@ -51,7 +51,7 @@ namespace rest_rpc {
 			deadline_(ios_), body_(INIT_BUF_SIZE) {
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
-			});
+			});			
 		}
 
 		rpc_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), 
@@ -118,8 +118,17 @@ namespace rest_rpc {
 			return has_connected_;
 		}
 
-		void enable_auto_reconnect() {
-			enable_reconnect_ = true;
+		void enable_auto_reconnect(bool enable = true) {
+			enable_reconnect_ = enable;
+		}
+
+		void enable_auto_heartbeat(bool enable = true) {
+			if (enable) {
+				reset_deadline_timer(5);
+			}
+			else {
+				deadline_.cancel();
+			}				
 		}
 
 		void update_addr(const std::string& host, unsigned short port) {
@@ -294,10 +303,14 @@ namespace rest_rpc {
 		using message_type = std::pair<string_view, std::uint64_t>;
 		void reset_deadline_timer(size_t timeout) {
 			deadline_.expires_from_now(std::chrono::seconds(timeout));
-			deadline_.async_wait([this](const boost::system::error_code& ec) {
+			deadline_.async_wait([this, timeout](const boost::system::error_code& ec) {
 				if (!ec) {
-					socket_.close();
+					if (has_connected_) {
+						write(0, buffer_type(0));
+					}
 				}
+
+				reset_deadline_timer(timeout);
 			});
 		}
 
