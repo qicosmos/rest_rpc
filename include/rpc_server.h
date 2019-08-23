@@ -54,9 +54,41 @@ namespace rest_rpc {
 				conn_timeout_callback_ = std::move(callback);
 			}
 
+			void publish(const std::string& key, std::string sub_key, std::string data) {
+				decltype(sub_map_.equal_range(key)) range;
+
+				{
+					std::unique_lock<std::mutex> lock(sub_mtx_);
+					if (sub_map_.empty())
+						return;
+
+					range = sub_map_.equal_range(key + sub_key);
+				}
+				
+				auto shared_data = std::make_shared<std::string>(std::move(data));
+				for (auto it = range.first; it != range.second; ++it) {
+					auto conn = it->second.lock();
+					if (conn == nullptr || conn->has_closed()) {
+						if (!sub_key.empty()) {
+							std::unique_lock<std::mutex> lock(retry_mtx_);
+							retry_.emplace(std::move(sub_key), shared_data);
+						}
+						
+						continue;
+					}
+
+					conn->publish(key, *shared_data);
+				}
+			}
+
 		private:
 			void do_accept() {
 				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_));
+				conn_->set_callback([this](std::string key, std::string sub_key, std::weak_ptr<connection> conn) {
+					std::unique_lock<std::mutex> lock(sub_mtx_);
+					sub_map_.emplace(key + sub_key, conn);
+				});
+
 				acceptor_.async_accept(conn_->socket(), [this](boost::system::error_code ec) {
 					if (ec) {
 						//LOG(INFO) << "acceptor error: " << ec.message();
@@ -105,6 +137,11 @@ namespace rest_rpc {
 			bool stop_check_ = false;
 
 			std::function<void(int64_t)> conn_timeout_callback_;
+			std::unordered_multimap<std::string, std::weak_ptr<connection>> sub_map_;
+			std::mutex sub_mtx_;
+
+			std::map<std::string, std::shared_ptr<std::string>> retry_;
+			std::mutex retry_mtx_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc

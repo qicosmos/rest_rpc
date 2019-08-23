@@ -380,14 +380,47 @@ void wait_for_notification(rpc_client & client) {
 	});
 }
 
-void test_sub() {
-	rpc_client client;
-	bool r = client.connect("127.0.0.1", 9000);
-	if (!r) {
+void test_sub1() {
+	//rpc_client client;
+	//bool r = client.connect("127.0.0.1", 9000);
+	//if (!r) {
+	//	return;
+	//}
+
+	//client.subscribe("test", "", [](string_view data) {
+	//	std::cout << data << "\n";
+	//});
+
+	rpc_client client1;
+	bool r1 = client1.connect("127.0.0.1", 9000);
+	if (!r1) {
 		return;
 	}
 
-	wait_for_notification(client);
+	client1.call("publish", "", "hello subscriber");
+	
+	/*std::thread thd([&client1] {
+		while (true) {
+			try {
+				client1.call("publish", "", "hello subscriber");
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}
+		}
+	});
+
+	std::thread thd1([&client1] {
+		while (true) {
+			try {
+				int r = client1.call<int>("add", 2, 3);
+				std::cout << "add result: " << r << "\n";
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}
+		}
+	});*/
 
 	std::string str;
 	std::cin >> str;
@@ -496,6 +529,7 @@ void test_threads() {
 }
 
 int main() {
+	test_sub1();
 	test_connect();
 	test_callback();
 	test_echo();

@@ -229,7 +229,7 @@ namespace rest_rpc {
 
 			msgpack_codec codec;
 			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
-			write(fu_id, std::move(ret));
+			write(fu_id, request_type::req_res, std::move(ret));
 			return future;
 		}
 
@@ -248,7 +248,7 @@ namespace rest_rpc {
 
 			msgpack_codec codec;
 			auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
-			write(cb_id, std::move(ret));
+			write(cb_id, request_type::req_res, std::move(ret));
 		}
 
 		void stop() {
@@ -257,6 +257,14 @@ namespace rest_rpc {
 				thd_->join();
 				thd_ = nullptr;
 			}
+		}
+
+		template<typename Func>
+		void subscribe(std::string key, std::string sub_key, Func f) {
+			sub_map_.emplace(key, std::move(f));
+			msgpack_codec codec;
+			auto ret = codec.pack_args(key, sub_key);
+			write(0, request_type::sub_pub, std::move(ret));
 		}
 
 	private:
@@ -300,13 +308,12 @@ namespace rest_rpc {
 			std::this_thread::sleep_for(std::chrono::milliseconds(connect_timeout_));
 		}
 
-		using message_type = std::pair<string_view, std::uint64_t>;
 		void reset_deadline_timer(size_t timeout) {
 			deadline_.expires_from_now(std::chrono::seconds(timeout));
 			deadline_.async_wait([this, timeout](const boost::system::error_code& ec) {
 				if (!ec) {
 					if (has_connected_) {
-						write(0, buffer_type(0));
+						write(0, request_type::req_res, buffer_type(0));
 					}
 				}
 
@@ -314,10 +321,10 @@ namespace rest_rpc {
 			});
 		}
 
-		void write(std::uint64_t req_id, buffer_type&& message) {
+		void write(std::uint64_t req_id, request_type type, buffer_type&& message) {
 			size_t size = message.size();
 			assert(size < MAX_BUF_LEN);
-			message_type msg{ {message.release(), size}, req_id };
+			message_type msg{ req_id, type, {message.release(), size} };
 
 			std::unique_lock<std::mutex> lock(write_mtx_);
 			outbox_.emplace_back(std::move(msg));
@@ -331,11 +338,12 @@ namespace rest_rpc {
 
 		void write() {
 			auto& msg = outbox_[0];
-			write_size_ = (uint32_t)msg.first.length();
-			std::array<boost::asio::const_buffer, 3> write_buffers;
+			write_size_ = (uint32_t)msg.content.length();
+			std::array<boost::asio::const_buffer, 4> write_buffers;
 			write_buffers[0] = boost::asio::buffer(&write_size_, sizeof(int32_t));
-			write_buffers[1] = boost::asio::buffer(&msg.second, sizeof(uint64_t));
-			write_buffers[2] = boost::asio::buffer((char*)msg.first.data(), write_size_);
+			write_buffers[1] = boost::asio::buffer(&msg.req_id, sizeof(uint64_t));
+			write_buffers[2] = boost::asio::buffer(&msg.req_type, sizeof(request_type));
+			write_buffers[3] = boost::asio::buffer((char*)msg.content.data(), write_size_);
 
 			boost::asio::async_write(socket_, write_buffers,
 				[this](const boost::system::error_code& ec, const size_t length) {
@@ -352,7 +360,7 @@ namespace rest_rpc {
 					return;
 				}
 
-				::free((char*)outbox_.front().first.data());
+				::free((char*)outbox_.front().content.data());
 				outbox_.pop_front();
 
 				if (!outbox_.empty()) {
@@ -372,11 +380,14 @@ namespace rest_rpc {
 				}
 
 				if (!ec) {
-					const uint32_t body_len = *((uint32_t*)(head_));
-					auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+					//const uint32_t body_len = *((uint32_t*)(head_));
+					//auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+					//auto req_type = *(request_type*)(head_ + sizeof(int32_t) + sizeof(int64_t));
+					rpc_header* header = (rpc_header*)(head_);
+					const uint32_t body_len = header->body_len;
 					if (body_len > 0 && body_len < MAX_BUF_LEN) {
 						if (body_.size() < body_len) { body_.resize(body_len); }
-						read_body(req_id, body_len);
+						read_body(header->req_id, header->req_type, body_len);
 						return;
 					}
 
@@ -398,10 +409,10 @@ namespace rest_rpc {
 			});
 		}
 
-		void read_body(std::uint64_t req_id, size_t body_len) {
+		void read_body(std::uint64_t req_id, request_type req_type, size_t body_len) {
 			boost::asio::async_read(
 				socket_, boost::asio::buffer(body_.data(), body_len),
-				[this, req_id, body_len](boost::system::error_code ec, std::size_t length) {
+				[this, req_id, req_type, body_len](boost::system::error_code ec, std::size_t length) {
 				//cancel_timer();
 
 				if (!socket_.is_open()) {
@@ -412,7 +423,19 @@ namespace rest_rpc {
 
 				if (!ec) {
 					//entier body
-					call_back(req_id, ec, { body_.data(), body_len });
+					if (req_type == request_type::req_res) {
+						call_back(req_id, ec, { body_.data(), body_len });
+					}
+					else if (req_type == request_type::sub_pub) {
+						callback_sub(ec, { body_.data(), body_len });
+					}
+					else {
+						close();
+						if (err_cb_) {
+							err_cb_(asio::error::make_error_code(asio::error::invalid_argument));
+						}
+						return;
+					}
 
 					do_read();
 				}
@@ -464,11 +487,26 @@ namespace rest_rpc {
 			}
 		}
 
+		void callback_sub(const boost::system::error_code& ec, string_view result) {
+			rpc_service::msgpack_codec codec;
+			//try-catch
+			auto tp = codec.unpack<std::tuple<int, std::string, std::string>>(result.data(), result.size());
+			auto code = std::get<0>(tp);
+			auto key = std::get<1>(tp);
+			auto data = std::get<2>(tp);
+			auto it = sub_map_.find(key);
+			if (it == sub_map_.end()) {
+				return;
+			}
+
+			it->second(data);
+		}
+
 		void clear_cache() {
 			{
 				std::unique_lock<std::mutex> lock(write_mtx_);
 				while (!outbox_.empty()) {
-					::free((char*)outbox_.front().first.data());
+					::free((char*)outbox_.front().content.data());
 					outbox_.pop_front();
 				}
 			}
@@ -583,5 +621,7 @@ namespace rest_rpc {
 
 		char head_[HEAD_LEN] = {};
 		std::vector<char> body_;
+
+		std::unordered_map<std::string, std::function<void(string_view)>> sub_map_;
 	};
 }
