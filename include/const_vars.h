@@ -25,7 +25,7 @@ namespace rest_rpc {
 	struct message_type {
 		std::uint64_t req_id;
 		request_type req_type;
-		string_view content;		
+		std::shared_ptr<std::string> content;
 	};
 
 

@@ -260,11 +260,42 @@ namespace rest_rpc {
 		}
 
 		template<typename Func>
-		void subscribe(std::string key, std::string sub_key, Func f) {
+		void subscribe(std::string key, Func f) {
+			auto it = sub_map_.find(key);
+			if (it != sub_map_.end()) {
+				assert("duplicated subscribe");
+				return;
+			}
+
 			sub_map_.emplace(key, std::move(f));
+			msgpack_codec codec;
+			auto ret = codec.pack_args(key, "");
+			write(0, request_type::sub_pub, std::move(ret));
+		}
+
+		template<typename Func>
+		void subscribe(std::string key, std::string sub_key, Func f) {
+			auto composite_key = key + sub_key;
+			auto it = sub_map_.find(composite_key);
+			if (it != sub_map_.end()) {
+				assert("duplicated subscribe");
+				return;
+			}
+
+			sub_map_.emplace(std::move(composite_key), std::move(f));
 			msgpack_codec codec;
 			auto ret = codec.pack_args(key, sub_key);
 			write(0, request_type::sub_pub, std::move(ret));
+		}
+
+		template<typename T>
+		void publish(std::string key, T&& t) {
+			call<100000>("publish", std::move(key), "", std::forward<T>(t));
+		}
+
+		template<typename T>
+		void publish(std::string key, std::string sub_key, T&& t) {
+			call<100000>("publish", std::move(key), std::move(sub_key), std::forward<T>(t));
 		}
 
 	private:
@@ -324,7 +355,7 @@ namespace rest_rpc {
 		void write(std::uint64_t req_id, request_type type, buffer_type&& message) {
 			size_t size = message.size();
 			assert(size < MAX_BUF_LEN);
-			message_type msg{ req_id, type, {message.release(), size} };
+			client_message_type msg{ req_id, type, {message.release(), size} };
 
 			std::unique_lock<std::mutex> lock(write_mtx_);
 			outbox_.emplace_back(std::move(msg));
@@ -489,17 +520,22 @@ namespace rest_rpc {
 
 		void callback_sub(const boost::system::error_code& ec, string_view result) {
 			rpc_service::msgpack_codec codec;
-			//try-catch
-			auto tp = codec.unpack<std::tuple<int, std::string, std::string>>(result.data(), result.size());
-			auto code = std::get<0>(tp);
-			auto key = std::get<1>(tp);
-			auto data = std::get<2>(tp);
-			auto it = sub_map_.find(key);
-			if (it == sub_map_.end()) {
-				return;
-			}
+			try {
+				auto tp = codec.unpack<std::tuple<int, std::string, std::string>>(result.data(), result.size());
+				auto code = std::get<0>(tp);
+				auto& key = std::get<1>(tp);
+				auto& data = std::get<2>(tp);
 
-			it->second(data);
+				auto it = sub_map_.find(key);
+				if (it == sub_map_.end()) {
+					return;
+				}
+
+				it->second(data);
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}			
 		}
 
 		void clear_cache() {
@@ -605,7 +641,12 @@ namespace rest_rpc {
 
 		asio::steady_timer deadline_;
 
-		std::deque<message_type> outbox_;
+		struct client_message_type {
+			std::uint64_t req_id;
+			request_type req_type;
+			string_view content;
+		};
+		std::deque<client_message_type> outbox_;
 		uint32_t write_size_ = 0;
 		std::mutex write_mtx_;
 		uint64_t fu_id_ = 0;

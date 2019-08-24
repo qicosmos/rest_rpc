@@ -381,15 +381,21 @@ void wait_for_notification(rpc_client & client) {
 }
 
 void test_sub1() {
-	//rpc_client client;
-	//bool r = client.connect("127.0.0.1", 9000);
-	//if (!r) {
-	//	return;
-	//}
+	rpc_client client;
+	bool r = client.connect("127.0.0.1", 9000);
+	if (!r) {
+		return;
+	}
 
-	//client.subscribe("test", "", [](string_view data) {
-	//	std::cout << data << "\n";
-	//});
+	client.enable_auto_heartbeat();
+
+	client.subscribe("key", [](string_view data) {
+		std::cout << data << "\n";
+	});
+
+	client.subscribe("key", "sub_key", [](string_view data) {
+		std::cout << data << "\n";
+	});
 
 	rpc_client client1;
 	bool r1 = client1.connect("127.0.0.1", 9000);
@@ -397,12 +403,15 @@ void test_sub1() {
 		return;
 	}
 
-	client1.call("publish", "", "hello subscriber");
+	client1.publish("key", "hello subscriber");
+	client1.publish("key", "sub_key", "ok");
 	
-	/*std::thread thd([&client1] {
+	std::thread thd([&client1] {
 		while (true) {
 			try {
-				client1.call("publish", "", "hello subscriber");
+				client1.publish("key", "hello subscriber");
+				client1.publish("key", "sub_key", "ok");
+				std::this_thread::sleep_for(std::chrono::seconds(1));
 			}
 			catch (const std::exception& ex) {
 				std::cout << ex.what() << "\n";
@@ -420,7 +429,7 @@ void test_sub1() {
 				std::cout << ex.what() << "\n";
 			}
 		}
-	});*/
+	});
 
 	std::string str;
 	std::cin >> str;

@@ -105,14 +105,15 @@ int main() {
 	server.register_handler("echo", echo);
 	server.register_handler("get_int", get_int);
 
-	server.register_handler("publish", [&server](rpc_conn conn, std::string sub_key, std::string val) {
-		server.publish("publish", std::move(sub_key), std::move(val));
+	server.register_handler("publish", [&server](rpc_conn conn, std::string key, std::string sub_key, std::string val) {
+		server.publish(std::move(key), std::move(sub_key), std::move(val));
 	});
 
 	std::thread thd([&server] {
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::seconds(1));
-			server.publish("test", "", "hello subscriber");
+			server.publish("key", "", "hello subscriber");
+			server.publish("key", "sub_key", "hello subscriber");
 		}
 	});
 

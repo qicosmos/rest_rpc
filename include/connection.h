@@ -39,7 +39,7 @@ namespace rest_rpc {
 				assert(len < MAX_BUF_LEN);
 
 				std::unique_lock<std::mutex> lock(write_mtx_);
-				write_queue_.emplace_back(message_type{ req_id, req_type, std::move(data) });
+				write_queue_.emplace_back(message_type{ req_id, req_type, std::make_shared<std::string>(std::move(data)) });
 				if (write_queue_.size() > 1) {
 					return;
 				}
@@ -165,12 +165,12 @@ namespace rest_rpc {
 
 			void write() {
 				auto& msg = write_queue_.front();
-				write_size_ = (uint32_t)msg.content.size();
+				write_size_ = (uint32_t)msg.content->size();
 				std::array<boost::asio::const_buffer, 4> write_buffers;
 				write_buffers[0] = boost::asio::buffer(&write_size_, sizeof(uint32_t));
 				write_buffers[1] = boost::asio::buffer(&msg.req_id, sizeof(uint64_t));
 				write_buffers[2] = boost::asio::buffer(&msg.req_type, sizeof(request_type));
-				write_buffers[3] = boost::asio::buffer(msg.content.data(), write_size_);
+				write_buffers[3] = boost::asio::buffer(msg.content->data(), write_size_);
 
 				auto self = this->shared_from_this();
 				boost::asio::async_write(

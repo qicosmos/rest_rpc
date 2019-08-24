@@ -11,6 +11,51 @@ using boost::asio::ip::tcp;
 
 namespace rest_rpc {
 	namespace rpc_service {
+		class retry_data : public std::enable_shared_from_this<retry_data> {
+		public:
+			retry_data(asio::io_service& ios, std::shared_ptr<std::string> data, size_t timeout) : timer_(ios), sp_data_(data),
+				timeout_(timeout) {
+			}
+
+			void cancel() {
+				if (timeout_ == 0) {
+					return;
+				}
+
+				boost::system::error_code ec;
+				timer_.cancel(ec);
+			}
+
+			bool has_timeout() const {
+				return has_timeout_;
+			}
+
+			std::shared_ptr<std::string> data() {
+				return sp_data_;
+			}
+
+			void start_timer() {
+				if (timeout_ == 0) {
+					return;
+				}
+
+				timer_.expires_from_now(std::chrono::milliseconds(timeout_));
+				auto self = this->shared_from_this();
+				timer_.async_wait([this, self](boost::system::error_code ec) {
+					if (ec) {
+						return;
+					}
+
+					has_timeout_ = true;
+				});
+			}
+		private:
+			boost::asio::steady_timer timer_;
+			std::shared_ptr<std::string> sp_data_;
+			size_t timeout_;
+			std::atomic_bool has_timeout_ = { false };			
+		};
+
 		using rpc_conn = std::weak_ptr<connection>;
 		class rpc_server : private asio::noncopyable {
 		public:
@@ -21,6 +66,7 @@ namespace rest_rpc {
 				check_seconds_(check_seconds) {
 				do_accept();
 				check_thread_ = std::make_shared<std::thread>([this] { clean(); });
+				pub_sub_thread_ = std::make_shared<std::thread>([this] { clean_sub_pub(); });
 			}
 
 			~rpc_server() {
@@ -71,13 +117,20 @@ namespace rest_rpc {
 					if (conn == nullptr || conn->has_closed()) {
 						if (!sub_key.empty()) {
 							std::unique_lock<std::mutex> lock(retry_mtx_);
-							retry_.emplace(std::move(sub_key), shared_data);
+							auto it = retry_map_.find(sub_key);
+							if (it == retry_map_.end())
+								continue;
+
+							auto retry = std::make_shared<retry_data>(io_service_pool_.get_io_service(),
+								shared_data, 30 * 1000);
+							retry_map_.emplace(std::move(sub_key), retry);
+							retry->start_timer();
 						}
 						
 						continue;
 					}
 
-					conn->publish(key, *shared_data);
+					conn->publish(key + sub_key, *shared_data);
 				}
 			}
 
@@ -123,6 +176,23 @@ namespace rest_rpc {
 				}
 			}
 
+			void clean_sub_pub() {
+				while (!stop_check_pub_sub_) {
+					std::this_thread::sleep_for(std::chrono::seconds(10));
+
+					std::unique_lock<std::mutex> lock(sub_mtx_);
+					for (auto it = sub_map_.cbegin(); it != sub_map_.cend();) {
+						auto conn = it->second.lock();
+						if (conn == nullptr || conn->has_closed()) {
+							it = sub_map_.erase(it);
+						}
+						else {
+							++it;
+						}
+					}
+				}
+			}
+
 			io_service_pool io_service_pool_;
 			tcp::acceptor acceptor_;
 			std::shared_ptr<connection> conn_;
@@ -140,8 +210,11 @@ namespace rest_rpc {
 			std::unordered_multimap<std::string, std::weak_ptr<connection>> sub_map_;
 			std::mutex sub_mtx_;
 
-			std::map<std::string, std::shared_ptr<std::string>> retry_;
+			std::map<std::string, std::shared_ptr<retry_data>> retry_map_;
 			std::mutex retry_mtx_;
+
+			std::shared_ptr<std::thread> pub_sub_thread_;
+			bool stop_check_pub_sub_ = false;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc
