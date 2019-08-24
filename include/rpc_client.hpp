@@ -534,6 +534,9 @@ namespace rest_rpc {
 				it->second(data);
 			}
 			catch (const std::exception& ex) {
+				if (err_cb_) {
+					err_cb_(asio::error::make_error_code(asio::error::invalid_argument));
+				}
 				std::cout << ex.what() << "\n";
 			}			
 		}

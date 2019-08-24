@@ -138,6 +138,11 @@ namespace rest_rpc {
 				}
 			}
 
+			std::unordered_multimap<std::string, std::weak_ptr<connection>> get_subscriber_map() {
+				std::unique_lock<std::mutex> lock(sub_mtx_);
+				return sub_map_;
+			}
+
 		private:
 			void do_accept() {
 				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_));
