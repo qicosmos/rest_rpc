@@ -100,6 +100,10 @@ namespace rest_rpc {
 				conn_timeout_callback_ = std::move(callback);
 			}
 
+			void publish(const std::string& key, std::string data) {
+				publish(key, "", std::move(data));
+			}
+
 			void publish(const std::string& key, std::string sub_key, std::string data) {
 				decltype(sub_map_.equal_range(key)) range;
 
