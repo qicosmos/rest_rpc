@@ -70,8 +70,20 @@ namespace rest_rpc {
 			}
 
 			~rpc_server() {
-				stop_check_ = true;
-				check_thread_->join();
+				{
+					std::unique_lock<std::mutex> lock(mtx_);
+					stop_check_ = true;
+					cv_.notify_all();
+					check_thread_->join();
+				}
+
+				{
+					std::unique_lock<std::mutex> lock(sub_mtx_);
+					stop_check_pub_sub_ = true;
+					sub_cv_.notify_all();
+					pub_sub_thread_->join();
+				}
+
 				io_service_pool_.stop();
 				if(thd_){
                     thd_->join();
@@ -168,9 +180,9 @@ namespace rest_rpc {
 
 			void clean() {
 				while (!stop_check_) {
-					std::this_thread::sleep_for(std::chrono::seconds(check_seconds_));
-
 					std::unique_lock<std::mutex> lock(mtx_);
+					cv_.wait_for(lock, std::chrono::seconds(check_seconds_));
+
 					for (auto it = connections_.cbegin(); it != connections_.cend();) {
 						if (it->second->has_closed()) {
 							if (conn_timeout_callback_) {
@@ -187,9 +199,9 @@ namespace rest_rpc {
 
 			void clean_sub_pub() {
 				while (!stop_check_pub_sub_) {
-					std::this_thread::sleep_for(std::chrono::seconds(10));
-
 					std::unique_lock<std::mutex> lock(sub_mtx_);
+					sub_cv_.wait_for(lock, std::chrono::seconds(10));
+
 					for (auto it = sub_map_.cbegin(); it != sub_map_.cend();) {
 						auto conn = it->second.lock();
 						if (conn == nullptr || conn->has_closed()) {
@@ -214,10 +226,12 @@ namespace rest_rpc {
 			std::shared_ptr<std::thread> check_thread_;
 			size_t check_seconds_;
 			bool stop_check_ = false;
+			std::condition_variable cv_;
 
 			std::function<void(int64_t)> conn_timeout_callback_;
 			std::unordered_multimap<std::string, std::weak_ptr<connection>> sub_map_;
 			std::mutex sub_mtx_;
+			std::condition_variable sub_cv_;
 
 			std::map<std::string, std::shared_ptr<retry_data>> retry_map_;
 			std::mutex retry_mtx_;
