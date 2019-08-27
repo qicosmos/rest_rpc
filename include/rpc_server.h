@@ -11,51 +11,6 @@ using boost::asio::ip::tcp;
 
 namespace rest_rpc {
 	namespace rpc_service {
-		class retry_data : public std::enable_shared_from_this<retry_data> {
-		public:
-			retry_data(asio::io_service& ios, std::shared_ptr<std::string> data, size_t timeout) : timer_(ios), sp_data_(data),
-				timeout_(timeout) {
-			}
-
-			void cancel() {
-				if (timeout_ == 0) {
-					return;
-				}
-
-				boost::system::error_code ec;
-				timer_.cancel(ec);
-			}
-
-			bool has_timeout() const {
-				return has_timeout_;
-			}
-
-			std::shared_ptr<std::string> data() {
-				return sp_data_;
-			}
-
-			void start_timer() {
-				if (timeout_ == 0) {
-					return;
-				}
-
-				timer_.expires_from_now(std::chrono::milliseconds(timeout_));
-				auto self = this->shared_from_this();
-				timer_.async_wait([this, self](boost::system::error_code ec) {
-					if (ec) {
-						return;
-					}
-
-					has_timeout_ = true;
-				});
-			}
-		private:
-			boost::asio::steady_timer timer_;
-			std::shared_ptr<std::string> sp_data_;
-			size_t timeout_;
-			std::atomic_bool has_timeout_ = { false };			
-		};
-
 		using rpc_conn = std::weak_ptr<connection>;
 		class rpc_server : private asio::noncopyable {
 		public:
@@ -114,10 +69,6 @@ namespace rest_rpc {
 
 			void publish(const std::string& key, std::string data) {
 				publish(key, "", std::move(data));
-			}
-
-			void publish_by_token(std::string token, std::string data) {
-				publish("", std::move(token), std::move(data));
 			}
 
 			void publish_by_token(const std::string& key, std::string token, std::string data) {
