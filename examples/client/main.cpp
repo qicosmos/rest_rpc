@@ -407,8 +407,11 @@ void test_sub1() {
 	std::thread thd1([&client, &stop] {
 		while (true) {
 			try {
-				int r = client.call<int>("add", 2, 3);
-				std::cout << "add result: " << r << "\n";
+				if (client.has_connected()) {
+					int r = client.call<int>("add", 2, 3);
+					std::cout << "add result: " << r << "\n";
+				}
+				
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
 			}
 			catch (const std::exception& ex) {
