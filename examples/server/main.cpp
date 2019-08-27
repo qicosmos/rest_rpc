@@ -6,7 +6,9 @@ using namespace rpc_service;
 #include "qps.h"
 
 struct dummy{
-	int add(rpc_conn conn, int a, int b) { return a + b; }
+	int add(rpc_conn conn, int a, int b) { 
+		return a + b; 
+	}
 };
 
 std::string translate(rpc_conn conn, const std::string& orignal) {
@@ -116,10 +118,13 @@ int main() {
 	std::thread thd([&server] {
 		person p{ 1, "tom", 20 };
 		while (true) {
-			std::this_thread::sleep_for(std::chrono::seconds(1));
 			server.publish("key", "hello subscriber");
-			server.publish_by_token("key", "unique_token", p);
-			server.publish_by_token("key1", "unique_token", "hello subscriber1");
+			auto list = server.get_token_list();
+			for (auto& token : list) {				
+				server.publish_by_token("key", token, p);
+				server.publish_by_token("key1", token, "hello subscriber1");
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
 	});
 

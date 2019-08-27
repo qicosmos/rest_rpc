@@ -393,50 +393,52 @@ void test_sub1() {
 		std::cout << data << "\n";
 	});
 
-	client.subscribe("key", "unique_token", [](string_view data) {
+	client.subscribe("key", "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1", [](string_view data) {
 		msgpack_codec codec;
 		person p = codec.unpack<person>(data.data(), data.size());
 		std::cout << p.name << "\n";
 	});
 
-	client.subscribe("key1", "unique_token", [](string_view data) {		
+	client.subscribe("key1", "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1", [](string_view data) {
 		std::cout << data << "\n";
 	});
 
-	rpc_client client1;
+	bool stop = false;
+	std::thread thd1([&client, &stop] {
+		while (true) {
+			try {
+				int r = client.call<int>("add", 2, 3);
+				std::cout << "add result: " << r << "\n";
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}
+		}
+	});
+
+	/*rpc_client client1;
 	bool r1 = client1.connect("127.0.0.1", 9000);
 	if (!r1) {
 		return;
 	}
 
-	//person p{10, "jack", 21};
-	//client1.publish("key", "hello subscriber");
-	//client1.publish_by_token("key", "sub_key", p);
-	//
-	//std::thread thd([&client1, p] {
-	//	while (true) {
-	//		try {
-	//			client1.publish("key", "hello subscriber");
-	//			client1.publish_by_token("key", "unique_token", p);
-	//			std::this_thread::sleep_for(std::chrono::seconds(1));
-	//		}
-	//		catch (const std::exception& ex) {
-	//			std::cout << ex.what() << "\n";
-	//		}
-	//	}
-	//});
-
-	//std::thread thd1([&client1] {
-	//	while (true) {
-	//		try {
-	//			int r = client1.call<int>("add", 2, 3);
-	//			std::cout << "add result: " << r << "\n";
-	//		}
-	//		catch (const std::exception& ex) {
-	//			std::cout << ex.what() << "\n";
-	//		}
-	//	}
-	//});
+	person p{10, "jack", 21};
+	client1.publish("key", "hello subscriber");
+	client1.publish_by_token("key", "sub_key", p);
+	
+	std::thread thd([&client1, p] {
+		while (true) {
+			try {
+				client1.publish("key", "hello subscriber");
+				client1.publish_by_token("key", "unique_token", p);				
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}
+		}
+	});
+*/
 
 	std::string str;
 	std::cin >> str;
