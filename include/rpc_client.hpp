@@ -282,10 +282,9 @@ namespace rest_rpc {
 				return;
 			}
 
-			sub_map_.emplace(std::move(composite_key), std::move(f));
-			msgpack_codec codec;
-			auto ret = codec.pack_args(key, token);
-			write(0, request_type::sub_pub, std::move(ret));
+			sub_map_.emplace(std::move(composite_key), std::move(f));			
+			send_subscribe(key, token);
+			key_token_set_.emplace(std::move(key), std::move(token));
 		}
 
 		template<typename T, size_t TIMEOUT = 3>
@@ -330,7 +329,7 @@ namespace rest_rpc {
 					//std::cout<<"connected ok"<<std::endl;
 					has_connected_ = true;
 					do_read();
-
+					resend_subscribe();
 					if (has_wait_)
 						conn_cond_.notify_one();
 				}
@@ -429,9 +428,7 @@ namespace rest_rpc {
 					if (body_len == 0 || body_len > MAX_BUF_LEN) {
 						//LOG(INFO) << "invalid body len";
                         close();
-						if (err_cb_) {
-							err_cb_(asio::error::make_error_code(asio::error::message_size));
-						}
+						error_callback(asio::error::make_error_code(asio::error::message_size));
 						return;
 					}
 				}
@@ -466,9 +463,7 @@ namespace rest_rpc {
 					}
 					else {
 						close();
-						if (err_cb_) {
-							err_cb_(asio::error::make_error_code(asio::error::invalid_argument));
-						}
+						error_callback(asio::error::make_error_code(asio::error::invalid_argument));
 						return;
 					}
 
@@ -481,6 +476,21 @@ namespace rest_rpc {
 					error_callback(ec);
 				}
 			});
+		}
+
+		void send_subscribe(const std::string& key, const std::string& token) {
+			msgpack_codec codec;
+			auto ret = codec.pack_args(key, token);
+			write(0, request_type::sub_pub, std::move(ret));
+		}
+
+		void resend_subscribe() {
+			if (key_token_set_.empty())
+				return;
+
+			for (auto& pair : key_token_set_) {
+				send_subscribe(pair.first, pair.second);
+			}
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
@@ -538,9 +548,7 @@ namespace rest_rpc {
 				it->second(data);
 			}
 			catch (const std::exception& ex) {
-				if (err_cb_) {
-					err_cb_(asio::error::make_error_code(asio::error::invalid_argument));
-				}
+				error_callback(asio::error::make_error_code(asio::error::invalid_argument));
 				std::cout << ex.what() << "\n";
 			}			
 		}
@@ -671,5 +679,6 @@ namespace rest_rpc {
 		std::vector<char> body_;
 
 		std::unordered_map<std::string, std::function<void(string_view)>> sub_map_;
+		std::set<std::pair<std::string, std::string>> key_token_set_;
 	};
 }
