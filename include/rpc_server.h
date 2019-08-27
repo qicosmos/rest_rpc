@@ -88,7 +88,9 @@ namespace rest_rpc {
 				conn_->set_callback([this](std::string key, std::string token, std::weak_ptr<connection> conn) {
 					std::unique_lock<std::mutex> lock(sub_mtx_);
 					sub_map_.emplace(std::move(key) + token, conn);
-					token_list_.emplace(std::move(token));
+					if (!token.empty()) {
+						token_list_.emplace(std::move(token));
+					}					
 				});
 
 				acceptor_.async_accept(conn_->socket(), [this](boost::system::error_code ec) {

@@ -268,9 +268,8 @@ namespace rest_rpc {
 			}
 
 			sub_map_.emplace(key, std::move(f));
-			msgpack_codec codec;
-			auto ret = codec.pack_args(key, "");
-			write(0, request_type::sub_pub, std::move(ret));
+			send_subscribe(key, "");
+			key_token_set_.emplace(std::move(key), "");
 		}
 
 		template<typename Func>
