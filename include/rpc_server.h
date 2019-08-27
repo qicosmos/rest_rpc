@@ -104,51 +104,26 @@ namespace rest_rpc {
 				publish(key, "", std::move(data));
 			}
 
-			void publish(const std::string& key, std::string sub_key, std::string data) {
-				decltype(sub_map_.equal_range(key)) range;
-
-				{
-					std::unique_lock<std::mutex> lock(sub_mtx_);
-					if (sub_map_.empty())
-						return;
-
-					range = sub_map_.equal_range(key + sub_key);
-				}
-				
-				auto shared_data = std::make_shared<std::string>(std::move(data));
-				for (auto it = range.first; it != range.second; ++it) {
-					auto conn = it->second.lock();
-					if (conn == nullptr || conn->has_closed()) {
-						if (!sub_key.empty()) {
-							std::unique_lock<std::mutex> lock(retry_mtx_);
-							auto it = retry_map_.find(sub_key);
-							if (it == retry_map_.end())
-								continue;
-
-							auto retry = std::make_shared<retry_data>(io_service_pool_.get_io_service(),
-								shared_data, 30 * 1000);
-							retry_map_.emplace(std::move(sub_key), retry);
-							retry->start_timer();
-						}
-						
-						continue;
-					}
-
-					conn->publish(key + sub_key, *shared_data);
-				}
+			void publish_by_token(std::string token, std::string data) {
+				publish("", std::move(token), std::move(data));
 			}
 
-			std::unordered_multimap<std::string, std::weak_ptr<connection>> get_subscriber_map() {
+			void publish_by_token(const std::string& key, std::string token, std::string data) {
+				publish(key, std::move(token), std::move(data));
+			}
+
+			std::set<std::string> get_token_list() {
 				std::unique_lock<std::mutex> lock(sub_mtx_);
-				return sub_map_;
+				return token_list_;
 			}
 
 		private:
 			void do_accept() {
 				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_));
-				conn_->set_callback([this](std::string key, std::string sub_key, std::weak_ptr<connection> conn) {
+				conn_->set_callback([this](std::string key, std::string token, std::weak_ptr<connection> conn) {
 					std::unique_lock<std::mutex> lock(sub_mtx_);
-					sub_map_.emplace(key + sub_key, conn);
+					sub_map_.emplace(std::move(key) + token, conn);
+					token_list_.emplace(std::move(token));
 				});
 
 				acceptor_.async_accept(conn_->socket(), [this](boost::system::error_code ec) {
@@ -202,6 +177,28 @@ namespace rest_rpc {
 				}
 			}
 
+			void publish(std::string key, std::string token, std::string data) {
+				decltype(sub_map_.equal_range(key)) range;
+
+				{
+					std::unique_lock<std::mutex> lock(sub_mtx_);
+					if (sub_map_.empty())
+						return;
+
+					range = sub_map_.equal_range(key + token);
+				}
+
+				auto shared_data = std::make_shared<std::string>(std::move(data));
+				for (auto it = range.first; it != range.second; ++it) {
+					auto conn = it->second.lock();
+					if (conn == nullptr || conn->has_closed()) {
+						continue;
+					}
+
+					conn->publish(key + token, *shared_data);
+				}
+			}
+
 			io_service_pool io_service_pool_;
 			tcp::acceptor acceptor_;
 			std::shared_ptr<connection> conn_;
@@ -217,10 +214,8 @@ namespace rest_rpc {
 
 			std::function<void(int64_t)> conn_timeout_callback_;
 			std::unordered_multimap<std::string, std::weak_ptr<connection>> sub_map_;
+			std::set<std::string> token_list_;
 			std::mutex sub_mtx_;
-
-			std::map<std::string, std::shared_ptr<retry_data>> retry_map_;
-			std::mutex retry_mtx_;
 
 			std::shared_ptr<std::thread> pub_sub_thread_;
 			bool stop_check_pub_sub_ = false;

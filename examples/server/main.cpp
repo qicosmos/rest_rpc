@@ -105,15 +105,19 @@ int main() {
 	server.register_handler("echo", echo);
 	server.register_handler("get_int", get_int);
 
-	server.register_handler("publish", [&server](rpc_conn conn, std::string key, std::string sub_key, std::string val) {
-		server.publish(std::move(key), std::move(sub_key), std::move(val));
+	server.register_handler("publish_by_token", [&server](rpc_conn conn, std::string key, std::string token, std::string val) {
+		server.publish_by_token(std::move(key), std::move(token), std::move(val));
+	});
+
+	server.register_handler("publish", [&server](rpc_conn conn, std::string key, std::string token, std::string val) {
+		server.publish(std::move(key), std::move(val));
 	});
 
 	std::thread thd([&server] {
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::seconds(1));
-			server.publish("key", "", "hello subscriber");
-			server.publish("key", "sub_key", "hello subscriber");
+			server.publish("key", "hello subscriber");
+			server.publish_by_token("key", "unique_token", "hello subscriber");
 		}
 	});
 

@@ -274,8 +274,8 @@ namespace rest_rpc {
 		}
 
 		template<typename Func>
-		void subscribe(std::string key, std::string sub_key, Func f) {
-			auto composite_key = key + sub_key;
+		void subscribe(std::string key, std::string token, Func f) {
+			auto composite_key = key + token;
 			auto it = sub_map_.find(composite_key);
 			if (it != sub_map_.end()) {
 				assert("duplicated subscribe");
@@ -284,18 +284,18 @@ namespace rest_rpc {
 
 			sub_map_.emplace(std::move(composite_key), std::move(f));
 			msgpack_codec codec;
-			auto ret = codec.pack_args(key, sub_key);
+			auto ret = codec.pack_args(key, token);
 			write(0, request_type::sub_pub, std::move(ret));
 		}
 
-		template<typename T>
+		template<typename T, size_t TIMEOUT = 3>
 		void publish(std::string key, T&& t) {
-			call<100000>("publish", std::move(key), "", std::forward<T>(t));
+			call<TIMEOUT>("publish", std::move(key), "", std::forward<T>(t));
 		}
 
-		template<typename T>
-		void publish(std::string key, std::string sub_key, T&& t) {
-			call<100000>("publish", std::move(key), std::move(sub_key), std::forward<T>(t));
+		template<typename T, size_t TIMEOUT=3>
+		void publish_by_token(std::string key, std::string token, T&& t) {
+			call<TIMEOUT>("publish_by_token", std::move(key), std::move(token), std::forward<T>(t));
 		}
 
 	private:

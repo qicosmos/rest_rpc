@@ -382,18 +382,18 @@ void wait_for_notification(rpc_client & client) {
 
 void test_sub1() {
 	rpc_client client;
+	client.enable_auto_reconnect();
+	client.enable_auto_heartbeat();
 	bool r = client.connect("127.0.0.1", 9000);
 	if (!r) {
 		return;
 	}
 
-	client.enable_auto_heartbeat();
-
 	client.subscribe("key", [](string_view data) {
 		std::cout << data << "\n";
 	});
 
-	client.subscribe("key", "sub_key", [](string_view data) {
+	client.subscribe("key", "unique_token", [](string_view data) {
 		std::cout << data << "\n";
 	});
 
@@ -404,13 +404,13 @@ void test_sub1() {
 	}
 
 	client1.publish("key", "hello subscriber");
-	client1.publish("key", "sub_key", "ok");
+	client1.publish_by_token("key", "sub_key", "ok");
 	
 	std::thread thd([&client1] {
 		while (true) {
 			try {
 				client1.publish("key", "hello subscriber");
-				client1.publish("key", "sub_key", "ok");
+				client1.publish_by_token("key", "unique_token", "ok");
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 			}
 			catch (const std::exception& ex) {
