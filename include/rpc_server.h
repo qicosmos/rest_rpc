@@ -67,11 +67,13 @@ namespace rest_rpc {
 				conn_timeout_callback_ = std::move(callback);
 			}
 
-			void publish(const std::string& key, std::string data) {
+			template<typename T>
+			void publish(const std::string& key, T data) {
 				publish(key, "", std::move(data));
 			}
 
-			void publish_by_token(const std::string& key, std::string token, std::string data) {
+			template<typename T>
+			void publish_by_token(const std::string& key, std::string token, T data) {
 				publish(key, std::move(token), std::move(data));
 			}
 
@@ -140,7 +142,8 @@ namespace rest_rpc {
 				}
 			}
 
-			void publish(std::string key, std::string token, std::string data) {
+			template<typename T>
+			void publish(std::string key, std::string token, T data) {
 				decltype(sub_map_.equal_range(key)) range;
 
 				{
@@ -151,7 +154,16 @@ namespace rest_rpc {
 					range = sub_map_.equal_range(key + token);
 				}
 
-				auto shared_data = std::make_shared<std::string>(std::move(data));
+				std::shared_ptr<std::string> shared_data = nullptr;
+				if constexpr(std::is_assignable<std::string, T>::value) {
+					shared_data = std::make_shared<std::string>(std::move(data));
+				}
+				else {
+					msgpack_codec codec;
+					auto buf = codec.pack(std::move(data));
+					shared_data = std::make_shared<std::string>(buf.data(), buf.size());
+				}
+				
 				for (auto it = range.first; it != range.second; ++it) {
 					auto conn = it->second.lock();
 					if (conn == nullptr || conn->has_closed()) {

@@ -77,7 +77,7 @@ namespace rest_rpc {
 
 				return socket_.remote_endpoint().address().to_string();
 			}
-
+			
 			void publish(const std::string& key, const std::string& data) {
 				auto result = msgpack_codec::pack_args_str(result_code::OK, key, data);
 				response(0, std::move(result), request_type::sub_pub);

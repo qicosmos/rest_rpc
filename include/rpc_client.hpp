@@ -290,12 +290,16 @@ namespace rest_rpc {
 
 		template<typename T, size_t TIMEOUT = 3>
 		void publish(std::string key, T&& t) {
-			call<TIMEOUT>("publish", std::move(key), "", std::forward<T>(t));
+			msgpack_codec codec;
+			auto buf = codec.pack(std::move(t));
+			call<TIMEOUT>("publish", std::move(key), "", std::string(buf.data(), buf.size()));
 		}
 
 		template<typename T, size_t TIMEOUT=3>
 		void publish_by_token(std::string key, std::string token, T&& t) {
-			call<TIMEOUT>("publish_by_token", std::move(key), std::move(token), std::forward<T>(t));
+			msgpack_codec codec;
+			auto buf = codec.pack(std::move(t));
+			call<TIMEOUT>("publish_by_token", std::move(key), std::move(token), std::string(buf.data(), buf.size()));
 		}
 
 	private:
