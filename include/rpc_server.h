@@ -156,16 +156,7 @@ namespace rest_rpc {
 					range = sub_map_.equal_range(key + token);
 				}
 
-				std::shared_ptr<std::string> shared_data = nullptr;
-				if constexpr(std::is_assignable<std::string, T>::value) {
-					shared_data = std::make_shared<std::string>(std::move(data));
-				}
-				else {
-					msgpack_codec codec;
-					auto buf = codec.pack(std::move(data));
-					shared_data = std::make_shared<std::string>(buf.data(), buf.size());
-				}
-				
+				std::shared_ptr<std::string> shared_data = get_shared_data<T>(std::move(data));				
 				for (auto it = range.first; it != range.second; ++it) {
 					auto conn = it->second.lock();
 					if (conn == nullptr || conn->has_closed()) {
@@ -174,6 +165,20 @@ namespace rest_rpc {
 
 					conn->publish(key + token, *shared_data);
 				}
+			}
+
+			template<typename T>
+			typename std::enable_if<std::is_assignable<std::string, T>::value, std::shared_ptr<std::string>>::type 
+				get_shared_data(std::string data) {
+				return std::make_shared<std::string>(std::move(data));
+			}
+
+			template<typename T>
+			typename std::enable_if<!std::is_assignable<std::string, T>::value, std::shared_ptr<std::string>>::type
+				get_shared_data(T data) {
+				msgpack_codec codec;
+				auto buf = codec.pack(std::move(data));
+				return std::make_shared<std::string>(buf.data(), buf.size());
 			}
 
 			io_service_pool io_service_pool_;
