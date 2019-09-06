@@ -516,7 +516,7 @@ void test_threads() {
 	
 	std::thread thd2([&client] {
 		for (size_t i = 1000000; i < 2*1000000; i++) {
-			client.async_call("get_int", [i](auto ec, auto data) {
+			client.async_call("get_int", [i](boost::system::error_code ec, string_view data) {
 				if (ec) {
 					std::cout << ec.message() << '\n';
 					return;
