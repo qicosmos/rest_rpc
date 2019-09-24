@@ -31,3 +31,16 @@ using tcp_socket = boost::asio::ip::tcp::socket;
 using ssl_socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
 #endif
 #endif
+
+#if __cplusplus > 201402L
+#include <string_view>
+using string_view = std::string_view;
+#else
+#ifdef ASIO_STANDALONE
+#include "string_view.hpp"
+using namespace nonstd;
+#else
+#include <boost/utility/string_view.hpp>
+using string_view = boost::string_view;
+#endif
+#endif

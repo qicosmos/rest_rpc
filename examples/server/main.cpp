@@ -6,7 +6,9 @@ using namespace rpc_service;
 #include "qps.h"
 
 struct dummy{
-	int add(rpc_conn conn, int a, int b) { return a + b; }
+	int add(rpc_conn conn, int a, int b) { 
+		return a + b; 
+	}
 };
 
 std::string translate(rpc_conn conn, const std::string& orignal) {
@@ -89,57 +91,6 @@ int get_int(rpc_conn conn, int val) {
 	return val;
 }
 
-struct notifier {
-public:
-	notifier() {
-		std::thread thd([this] {
-			while (!stop_) {
-				if (has_subs_) {
-					notify("this a notification from the server");
-				}
-
-				std::this_thread::sleep_for(std::chrono::seconds(1));
-			}
-		});
-		thd.detach();
-	}
-
-	~notifier() {
-		stop_ = true;
-	}
-
-	void sub(rpc_conn conn) {
-		if (!has_subs_) {
-			has_subs_ = true;
-		}
-		auto req_id = conn.lock()->request_id();
-		std::unique_lock<std::mutex> lock(mtx_);
-		subs_.emplace_back(conn, req_id);
-	}
-
-private:
-	void notify(const std::string& result) {
-		{
-			std::unique_lock<std::mutex> lock(mtx_);
-			for (auto& pair : subs_) {
-				auto sp_conn = pair.first.lock();
-				if (sp_conn) {
-					sp_conn->pack_and_response(pair.second, result);
-				}
-			}
-
-			subs_.clear();
-		}
-
-		has_subs_ = false;
-	}
-
-	std::vector<std::pair<rpc_conn, uint64_t>> subs_;
-	std::mutex mtx_;
-	std::atomic_bool has_subs_ = { false };
-	bool stop_ = false;
-};
-
 int main() {
 	rpc_server server(9000, std::thread::hardware_concurrency());
 
@@ -156,8 +107,26 @@ int main() {
 	server.register_handler("echo", echo);
 	server.register_handler("get_int", get_int);
 
-	notifier n;
-	server.register_handler<Async>("sub", &notifier::sub, &n);
+	server.register_handler("publish_by_token", [&server](rpc_conn conn, std::string key, std::string token, std::string val) {
+		server.publish_by_token(std::move(key), std::move(token), std::move(val));
+	});
+
+	server.register_handler("publish", [&server](rpc_conn conn, std::string key, std::string token, std::string val) {
+		server.publish(std::move(key), std::move(val));
+	});
+
+	std::thread thd([&server] {
+		person p{ 1, "tom", 20 };
+		while (true) {
+			server.publish("key", "hello subscriber");
+			auto list = server.get_token_list();
+			for (auto& token : list) {				
+				server.publish_by_token("key", token, p);
+				server.publish_by_token("key1", token, "hello subscriber1");
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		}
+	});
 
 	server.run();
 

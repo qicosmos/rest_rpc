@@ -108,8 +108,7 @@ void test_get_person() {
 
 void test_async_client() {
 	rpc_client client("127.0.0.1", 9000);
-	client.async_connect();
-	bool r = client.wait_conn(1);
+	bool r = client.connect();
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
 		return;
@@ -141,8 +140,7 @@ void test_async_client() {
 
 void test_upload() {
 	rpc_client client("127.0.0.1", 9000);
-	client.async_connect();
-	bool r = client.wait_conn(1);
+	bool r = client.connect(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
 		return;
@@ -181,8 +179,7 @@ void test_upload() {
 
 void test_download() {
 	rpc_client client("127.0.0.1", 9000);
-	client.async_connect();
-	bool r = client.wait_conn(1);
+	bool r = client.connect(1);
 	if (!r) {
 		std::cout << "connect timeout" << std::endl;
 		return;
@@ -312,14 +309,35 @@ void test_call_with_timeout() {
 
 void test_connect() {
 	rpc_client client;
-	client.set_error_callback([&client](boost::system::error_code ex) {
-		client.async_reconnect();
-	});
-
+	client.enable_auto_reconnect(); //automatic reconnect
+	client.enable_auto_heartbeat(); //automatic heartbeat
 	bool r = client.connect("127.0.0.1", 9000);
-	if (!r) {
-		client.async_reconnect();
+	int count = 0;
+	while (true) {
+		if (client.has_connected()) {
+			std::cout << "connected ok\n";
+			break;
+		}
+		else {
+			std::cout << "connected failed: "<< count++<<"\n";
+		}
+		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
+
+	//{
+	//	rpc_client client;
+	//	bool r = client.connect("127.0.0.1", 9000);
+	//	int count = 0;
+	//	while (true) {
+	//		if (client.connect()) {
+	//			std::cout << "connected ok\n";
+	//			break;
+	//		}
+	//		else {
+	//			std::cout << "connected failed: " << count++ << "\n";
+	//		}
+	//	}
+	//}
 
 	std::string str;
 	std::cin >> str;
@@ -362,14 +380,68 @@ void wait_for_notification(rpc_client & client) {
 	});
 }
 
-void test_sub() {
+void test_sub1() {
 	rpc_client client;
+	client.enable_auto_reconnect();
+	client.enable_auto_heartbeat();
 	bool r = client.connect("127.0.0.1", 9000);
 	if (!r) {
 		return;
 	}
 
-	wait_for_notification(client);
+	client.subscribe("key", [](string_view data) {
+		std::cout << data << "\n";
+	});
+
+	client.subscribe("key", "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1", [](string_view data) {
+		msgpack_codec codec;
+		person p = codec.unpack<person>(data.data(), data.size());
+		std::cout << p.name << "\n";
+	});
+
+	client.subscribe("key1", "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1", [](string_view data) {
+		std::cout << data << "\n";
+	});
+
+	bool stop = false;
+	std::thread thd1([&client, &stop] {
+		while (true) {
+			try {
+				if (client.has_connected()) {
+					int r = client.call<int>("add", 2, 3);
+					std::cout << "add result: " << r << "\n";
+				}
+				
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}
+		}
+	});
+
+	/*rpc_client client1;
+	bool r1 = client1.connect("127.0.0.1", 9000);
+	if (!r1) {
+		return;
+	}
+
+	person p{10, "jack", 21};
+	client1.publish("key", "hello subscriber");
+	client1.publish_by_token("key", "sub_key", p);
+	
+	std::thread thd([&client1, p] {
+		while (true) {
+			try {
+				client1.publish("key", "hello subscriber");
+				client1.publish_by_token("key", "unique_token", p);				
+			}
+			catch (const std::exception& ex) {
+				std::cout << ex.what() << "\n";
+			}
+		}
+	});
+*/
 
 	std::string str;
 	std::cin >> str;
@@ -444,7 +516,7 @@ void test_threads() {
 	
 	std::thread thd2([&client] {
 		for (size_t i = 1000000; i < 2*1000000; i++) {
-			client.async_call("get_int", [i](auto ec, auto data) {
+			client.async_call("get_int", [i](boost::system::error_code ec, string_view data) {
 				if (ec) {
 					std::cout << ec.message() << '\n';
 					return;
@@ -477,7 +549,9 @@ void test_threads() {
 	std::cin >> str;
 }
 
-int main() {	
+int main() {
+	test_sub1();
+	test_connect();
 	test_callback();
 	test_echo();
 	test_sync_client();

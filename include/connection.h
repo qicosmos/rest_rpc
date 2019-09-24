@@ -5,9 +5,10 @@
 #include <memory>
 #include <array>
 #include <deque>
+#include "use_asio.hpp"
 #include "const_vars.h"
 #include "router.h"
-#include "use_asio.hpp"
+
 using boost::asio::ip::tcp;
 
 namespace rest_rpc {
@@ -33,12 +34,12 @@ namespace rest_rpc {
 				return req_id_;
 			}
 
-			void response(uint64_t req_id, std::string data) {
+			void response(uint64_t req_id, std::string data, request_type req_type = request_type::req_res) {
 				auto len = data.size();
 				assert(len < MAX_BUF_LEN);
 
 				std::unique_lock<std::mutex> lock(write_mtx_);
-				write_queue_.emplace_back(std::make_pair(req_id, std::make_shared<std::string>(std::move(data))));
+				write_queue_.emplace_back(message_type{ req_id, req_type, std::make_shared<std::string>(std::move(data)) });
 				if (write_queue_.size() > 1) {
 					return;
 				}
@@ -76,6 +77,15 @@ namespace rest_rpc {
 
 				return socket_.remote_endpoint().address().to_string();
 			}
+			
+			void publish(const std::string& key, const std::string& data) {
+				auto result = msgpack_codec::pack_args_str(result_code::OK, key, data);
+				response(0, std::move(result), request_type::sub_pub);
+			}
+
+			void set_callback(std::function<void(std::string, std::string, std::weak_ptr<connection>)> callback) {
+				callback_ = std::move(callback);
+			}
 
 		private:
 			void read_head() {
@@ -90,8 +100,12 @@ namespace rest_rpc {
 					}
 
 					if (!ec) {
-						const uint32_t body_len = *((int*)(head_));
-						req_id_ = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+						//const uint32_t body_len = *((int*)(head_));
+						//req_id_ = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+						rpc_header* header = (rpc_header*)(head_);
+						req_id_ = header->req_id;
+						const uint32_t body_len = header->body_len;
+						req_type_ = header->req_type;
 						if (body_len > 0 && body_len < MAX_BUF_LEN) {
 							if (body_.size() < body_len) { body_.resize(body_len); }
 							read_body(body_len);
@@ -128,8 +142,20 @@ namespace rest_rpc {
 
 					if (!ec) {
 						read_head();
-						router& _router = router::get();
-						_router.route<connection>(body_.data(), length, this->shared_from_this());
+						if (req_type_ == request_type::req_res) {
+							router& _router = router::get();
+							_router.route<connection>(body_.data(), length, this->shared_from_this());
+						}
+						else if (req_type_ == request_type::sub_pub) {
+							try {
+								msgpack_codec codec;
+								auto p = codec.unpack<std::tuple<std::string, std::string>>(body_.data(), length);
+								callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)), this->shared_from_this());
+							}
+							catch (const std::exception& ex) {
+								std::cout << ex.what() << "\n";
+							}							
+						}
 					}
 					else {
 						//LOG(INFO) << ec.message();
@@ -138,12 +164,13 @@ namespace rest_rpc {
 			}
 
 			void write() {
-				auto& pair = write_queue_.front();
-				write_size_ = (uint32_t)pair.second->size();
-				std::array<boost::asio::const_buffer, 3> write_buffers;
+				auto& msg = write_queue_.front();
+				write_size_ = (uint32_t)msg.content->size();
+				std::array<boost::asio::const_buffer, 4> write_buffers;
 				write_buffers[0] = boost::asio::buffer(&write_size_, sizeof(uint32_t));
-				write_buffers[1] = boost::asio::buffer(&pair.first, sizeof(uint64_t));
-				write_buffers[2] = boost::asio::buffer(pair.second->data(), write_size_);
+				write_buffers[1] = boost::asio::buffer(&msg.req_id, sizeof(uint64_t));
+				write_buffers[2] = boost::asio::buffer(&msg.req_type, sizeof(request_type));
+				write_buffers[3] = boost::asio::buffer(msg.content->data(), write_size_);
 
 				auto self = this->shared_from_this();
 				boost::asio::async_write(
@@ -195,8 +222,8 @@ namespace rest_rpc {
 			char head_[HEAD_LEN];
 			std::vector<char> body_;
 			std::uint64_t req_id_;
+			request_type req_type_;
 
-			std::deque<std::pair<uint64_t, std::shared_ptr<std::string>>> write_queue_;
 			uint32_t write_size_ = 0;
 			std::mutex write_mtx_;
 
@@ -204,6 +231,9 @@ namespace rest_rpc {
 			std::size_t timeout_seconds_;
 			int64_t conn_id_ = 0;
 			bool has_closed_;
+
+			std::deque<message_type> write_queue_;
+			std::function<void(std::string, std::string, std::weak_ptr<connection>)> callback_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc
