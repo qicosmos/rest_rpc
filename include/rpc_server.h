@@ -3,6 +3,7 @@
 
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include "connection.h"
 #include "io_service_pool.h"
 #include "router.h"
@@ -28,16 +29,16 @@ namespace rest_rpc {
 				{
 					std::unique_lock<std::mutex> lock(mtx_);
 					stop_check_ = true;
-					cv_.notify_all();
-					check_thread_->join();
+					cv_.notify_all();					
 				}
+				check_thread_->join();
 
 				{
 					std::unique_lock<std::mutex> lock(sub_mtx_);
 					stop_check_pub_sub_ = true;
-					sub_cv_.notify_all();
-					pub_sub_thread_->join();
+					sub_cv_.notify_all();					
 				}
+				pub_sub_thread_->join();
 
 				io_service_pool_.stop();
 				if(thd_){
