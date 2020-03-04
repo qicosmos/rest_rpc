@@ -236,6 +236,11 @@ namespace rest_rpc {
 
 		template<size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
 		void async_call(const std::string& rpc_name, std::function<void(boost::system::error_code, string_view)> cb, Args&& ... args) {
+			if (!has_connected_) {
+				error_callback(boost::asio::error::make_error_code(boost::asio::error::not_connected));
+				return;
+			}
+
 			uint64_t cb_id = 0;
 			{
 				std::unique_lock<std::mutex> lock(cb_mtx_);
