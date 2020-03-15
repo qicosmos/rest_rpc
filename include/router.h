@@ -1,6 +1,7 @@
 #ifndef REST_RPC_ROUTER_H_
 #define REST_RPC_ROUTER_H_
 
+#include <functional>
 #include "use_asio.hpp"
 #include "codec.h"
 #include "meta_util.hpp"
