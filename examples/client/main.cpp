@@ -549,6 +549,58 @@ void test_threads() {
 	std::cin >> str;
 }
 
+void test_ssl() {
+    bool is_ssl = true;
+    rpc_client client;
+    client.set_error_callback([](auto ec) {
+        std::cout << ec.message() << "\n";
+    });
+
+#ifdef CINATRA_ENABLE_SSL
+    client.set_ssl_context_callback([](boost::asio::ssl::context& ctx) {
+        ctx.set_verify_mode(boost::asio::ssl::context::verify_peer);
+        ctx.load_verify_file("server.crt");
+    });
+#endif
+
+    bool r = client.connect("127.0.0.1", 9000, is_ssl);
+    if (!r) {
+        return;
+    }
+
+    for (size_t i = 0; i < 100; i++) {
+        try {
+            auto result = client.call<std::string>("echo", "purecpp");
+            std::cout << result << " sync\n";
+        }
+        catch (const std::exception& e) {
+            std::cout << e.what() << " sync\n";
+        }        
+
+        auto future = client.async_call<CallModel::future>("echo", "purecpp");
+        auto status = future.wait_for(std::chrono::milliseconds(5000));
+        if (status == std::future_status::timeout) {
+            std::cout << "timeout future\n";
+        }
+        else {
+            auto result1 = future.get();
+            std::cout << result1.as<std::string>() << " future\n";
+        }
+
+        client.async_call("echo", [](auto ec, auto data) {
+            if (ec) {                
+                std::cout << ec.message() <<" "<< data << "\n";
+                return;
+            }
+
+            auto result = as<std::string>(data);
+            std::cout << result << " async\n";
+        }, "purecpp");
+    }
+
+    std::getchar();
+}
+
 int main() {
 	test_sub1();
 	test_connect();

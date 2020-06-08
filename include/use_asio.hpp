@@ -44,3 +44,21 @@ using namespace nonstd;
 using string_view = boost::string_view;
 #endif
 #endif
+
+#if __cplusplus > 201402L
+#if defined (__GNUC__)
+#if __GNUC__ < 8
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#else
+#include <filesystem>
+namespace fs = std::filesystem;
+#endif
+#else
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#endif
+#else
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#endif

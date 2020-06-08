@@ -91,6 +91,13 @@ int get_int(rpc_conn conn, int val) {
 	return val;
 }
 
+void test_ssl() {
+    rpc_server server(9000, std::thread::hardware_concurrency(), { "server.crt", "server.key" });
+    server.register_handler("hello", hello);
+    server.register_handler("echo", echo);
+    server.run();
+}
+
 int main() {
 	rpc_server server(9000, std::thread::hardware_concurrency());
 

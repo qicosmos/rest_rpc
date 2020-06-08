@@ -11,7 +11,7 @@
 using boost::asio::ip::tcp;
 
 namespace rest_rpc {
-	namespace rpc_service {
+	namespace rpc_service {        
 		using rpc_conn = std::weak_ptr<connection>;
 		class rpc_server : private asio::noncopyable {
 		public:
@@ -24,6 +24,15 @@ namespace rest_rpc {
 				check_thread_ = std::make_shared<std::thread>([this] { clean(); });
 				pub_sub_thread_ = std::make_shared<std::thread>([this] { clean_sub_pub(); });
 			}
+
+            rpc_server(short port, size_t size, ssl_configure ssl_conf, size_t timeout_seconds = 15, size_t check_seconds = 10) : 
+                rpc_server(port, size, timeout_seconds, check_seconds) {
+#ifdef CINATRA_ENABLE_SSL
+                ssl_conf_ = std::move(ssl_conf);
+#else
+                assert(false);//please add definition CINATRA_ENABLE_SSL, not allowed coming in this branch
+#endif
+            }
 
 			~rpc_server() {
 				{
@@ -99,6 +108,11 @@ namespace rest_rpc {
 						//LOG(INFO) << "acceptor error: " << ec.message();
 					}
 					else {
+#ifdef CINATRA_ENABLE_SSL
+                        if (!ssl_conf_.cert_file.empty()) {
+                            conn_->init_ssl_context(ssl_conf_);
+                        }
+#endif
 						conn_->start();
 						std::unique_lock<std::mutex> lock(mtx_);
 						conn_->set_conn_id(conn_id_);
@@ -204,6 +218,8 @@ namespace rest_rpc {
 
 			std::shared_ptr<std::thread> pub_sub_thread_;
 			bool stop_check_pub_sub_ = false;
+
+            ssl_configure ssl_conf_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc

@@ -8,11 +8,17 @@
 #include "use_asio.hpp"
 #include "const_vars.h"
 #include "router.h"
+#include "cplusplus_14.h"
 
 using boost::asio::ip::tcp;
 
 namespace rest_rpc {
 	namespace rpc_service {
+        struct ssl_configure {
+            std::string cert_file;
+            std::string key_file;
+        };
+
 		class connection : public std::enable_shared_from_this<connection>, private asio::noncopyable {
 		public:
 			connection(boost::asio::io_service& io_service, std::size_t timeout_seconds)
@@ -23,9 +29,18 @@ namespace rest_rpc {
 				has_closed_(false) {
 			}
 
-			~connection() { close(); }
+			~connection() { 
+                close(); 
+            }
 
-			void start() { read_head(); }
+			void start() { 
+                if (is_ssl() && !has_shake_) {
+                    async_handshake();
+                }
+                else {
+                    read_head();
+                }
+            }
 
 			tcp::socket& socket() { return socket_; }
 
@@ -53,15 +68,6 @@ namespace rest_rpc {
 				response(req_id, std::move(result));
 			}
 
-			void close() {
-				has_closed_ = true;
-				if (socket_.is_open()) {
-					boost::system::error_code ignored_ec;
-					socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
-					socket_.close(ignored_ec);
-				}
-			}
-
 			void set_conn_id(int64_t id) { conn_id_ = id; }
 
 			int64_t conn_id() const { return conn_id_; }
@@ -87,13 +93,39 @@ namespace rest_rpc {
 				callback_ = std::move(callback);
 			}
 
+            void init_ssl_context(const ssl_configure& ssl_conf) {
+#ifdef CINATRA_ENABLE_SSL
+                unsigned long ssl_options = boost::asio::ssl::context::default_workarounds
+                    | boost::asio::ssl::context::no_sslv2
+                    | boost::asio::ssl::context::single_dh_use;
+                try {
+                    boost::asio::ssl::context ssl_context(boost::asio::ssl::context::sslv23);
+                    ssl_context.set_options(ssl_options);
+                    ssl_context.set_password_callback([](std::size_t size,
+                                                         boost::asio::ssl::context_base::password_purpose purpose) {return "123456"; });
+
+                    boost::system::error_code ec;
+                    if (fs::exists(ssl_conf.cert_file, ec)) {
+                        ssl_context.use_certificate_chain_file(ssl_conf.cert_file);
+                    }
+
+                    if (fs::exists(ssl_conf.key_file, ec))
+                        ssl_context.use_private_key_file(ssl_conf.key_file, boost::asio::ssl::context::pem);
+
+                    //ssl_context_callback(ssl_context);
+                    ssl_stream_ = std::make_unique<boost::asio::ssl::stream<boost::asio::ip::tcp::socket&>>(socket_, ssl_context);
+                }
+                catch (const std::exception& e) {
+                    print(e);
+                }
+#endif
+            }
+
 		private:
 			void read_head() {
 				reset_timer();
 				auto self(this->shared_from_this());
-				boost::asio::async_read(
-					socket_, boost::asio::buffer(head_),
-					[this, self](boost::system::error_code ec, std::size_t length) {
+                async_read_head([this, self](boost::system::error_code ec, std::size_t length) {
 					if (!socket_.is_open()) {
 						//LOG(INFO) << "socket already closed";
 						return;
@@ -117,12 +149,12 @@ namespace rest_rpc {
 							read_head();
 						}
 						else {
-							//LOG(INFO) << "invalid body len";
+                            print("invalid body len");
 							close();
 						}
 					}
 					else {
-						//LOG(INFO) << ec.message();
+                        print(ec);
 						close();
 					}
 				});
@@ -130,9 +162,7 @@ namespace rest_rpc {
 
 			void read_body(std::size_t size) {
 				auto self(this->shared_from_this());
-				boost::asio::async_read(
-					socket_, boost::asio::buffer(body_.data(), size),
-					[this, self](boost::system::error_code ec, std::size_t length) {
+				async_read(size, [this, self](boost::system::error_code ec, std::size_t length) {
 					cancel_timer();
 
 					if (!socket_.is_open()) {
@@ -153,7 +183,7 @@ namespace rest_rpc {
 								callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)), this->shared_from_this());
 							}
 							catch (const std::exception& ex) {
-								std::cout << ex.what() << "\n";
+                                print(ex);
 							}							
 						}
 					}
@@ -173,8 +203,7 @@ namespace rest_rpc {
 				write_buffers[3] = boost::asio::buffer(msg.content->data(), write_size_);
 
 				auto self = this->shared_from_this();
-				boost::asio::async_write(
-					socket_, write_buffers,
+				async_write(write_buffers,
 					[this, self](boost::system::error_code ec, std::size_t length) {
 					on_write(ec, length);
 				});
@@ -182,8 +211,8 @@ namespace rest_rpc {
 
 			void on_write(boost::system::error_code ec, std::size_t length) {
 				if (ec) {
-					std::cout << ec.value() << " " << ec.message() << std::endl;
-					close();
+                    print(ec);
+					close(false);
 					return;
 				}
 
@@ -197,6 +226,67 @@ namespace rest_rpc {
 				}
 			}
 
+            void async_handshake() {
+#ifdef CINATRA_ENABLE_SSL
+                auto self = this->shared_from_this();
+                ssl_stream_->async_handshake(boost::asio::ssl::stream_base::server,
+                    [this, self](const boost::system::error_code& error) {
+                    if (error) {
+                        print(error);
+                        close();
+                        return;
+                    }
+
+                    has_shake_ = true;
+                    read_head();
+                });
+#endif
+            }
+
+            bool is_ssl() const {
+#ifdef CINATRA_ENABLE_SSL
+                return ssl_stream_ != nullptr;
+#else
+                return false;
+#endif
+            }
+
+            template<typename Handler>
+            void async_read_head(Handler handler) {
+                if (is_ssl()) {
+#ifdef CINATRA_ENABLE_SSL
+                    boost::asio::async_read(*ssl_stream_, boost::asio::buffer(head_, HEAD_LEN), std::move(handler));
+#endif
+                }
+                else {
+                    boost::asio::async_read(socket_, boost::asio::buffer(head_, HEAD_LEN), std::move(handler));
+                }
+            }
+
+            template<typename Handler>
+            void async_read(size_t size_to_read, Handler handler) {
+                if (is_ssl()) {
+#ifdef CINATRA_ENABLE_SSL
+                    boost::asio::async_read(*ssl_stream_, boost::asio::buffer(body_.data(), size_to_read), std::move(handler));
+#endif
+                }
+                else {
+                    boost::asio::async_read(socket_, boost::asio::buffer(body_.data(), size_to_read), std::move(handler));
+                }
+            }
+
+            template<typename BufferType, typename Handler>
+            void async_write(const BufferType& buffers, Handler handler) {
+                if (is_ssl()) {
+#ifdef CINATRA_ENABLE_SSL
+                    boost::asio::async_write(*ssl_stream_, buffers, std::move(handler));
+#endif
+                }
+                else {
+                    boost::asio::async_write(socket_, buffers, std::move(handler));
+                }
+            }
+
 			void reset_timer() {
 				if (timeout_seconds_ == 0) { return; }
 
@@ -208,7 +298,7 @@ namespace rest_rpc {
 					if (ec) { return; }
 
 					//LOG(INFO) << "rpc connection timeout";
-					close();
+					close(false);
 				});
 			}
 
@@ -218,7 +308,46 @@ namespace rest_rpc {
 				timer_.cancel();
 			}
 
+            void close(bool close_ssl = true) {
+#ifdef CINATRA_ENABLE_SSL
+                if (close_ssl && ssl_stream_) {
+                    boost::system::error_code ec;
+                    ssl_stream_->shutdown(ec);
+                    ssl_stream_ = nullptr;
+                }
+#endif
+                if (has_closed_) {
+                    return;
+                }
+
+                boost::system::error_code ignored_ec;
+                socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
+                socket_.close(ignored_ec);
+                has_closed_ = true;
+                has_shake_ = false;
+            }
+
+            template<typename... Args>
+            void print(Args... args) {
+#ifdef _DEBUG
+                std::initializer_list<int>{( std::cout << args << ' ', 0)...};
+                std::cout << "\n";
+#endif
+            }
+
+            void print(const boost::system::error_code& ec) {
+                print(ec.value(), ec.message());
+            }
+
+            void print(const std::exception& ex) {
+                print(ex.what());
+            }
+
 			tcp::socket socket_;
+#ifdef CINATRA_ENABLE_SSL
+            std::unique_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket&>> ssl_stream_ = nullptr;
+#endif
+            bool has_shake_ = false;
 			char head_[HEAD_LEN];
 			std::vector<char> body_;
 			std::uint64_t req_id_;
