@@ -552,7 +552,7 @@ void test_threads() {
 void test_ssl() {
     bool is_ssl = true;
     rpc_client client;
-    client.set_error_callback([](auto ec) {
+    client.set_error_callback([](boost::system::error_code ec) {
         std::cout << ec.message() << "\n";
     });
 
@@ -587,7 +587,7 @@ void test_ssl() {
             std::cout << result1.as<std::string>() << " future\n";
         }
 
-        client.async_call("echo", [](auto ec, auto data) {
+        client.async_call("echo", [](boost::system::error_code ec, string_view data) {
             if (ec) {                
                 std::cout << ec.message() <<" "<< data << "\n";
                 return;
