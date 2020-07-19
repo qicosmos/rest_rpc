@@ -105,11 +105,11 @@ namespace rest_rpc {
                                                          boost::asio::ssl::context_base::password_purpose purpose) {return "123456"; });
 
                     boost::system::error_code ec;
-                    if (fs::exists(ssl_conf.cert_file, ec)) {
+                    if (rpcfs::exists(ssl_conf.cert_file, ec)) {
                         ssl_context.use_certificate_chain_file(ssl_conf.cert_file);
                     }
 
-                    if (fs::exists(ssl_conf.key_file, ec))
+                    if (rpcfs::exists(ssl_conf.key_file, ec))
                         ssl_context.use_private_key_file(ssl_conf.key_file, boost::asio::ssl::context::pem);
 
                     //ssl_context_callback(ssl_context);

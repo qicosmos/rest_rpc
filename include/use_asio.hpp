@@ -49,16 +49,16 @@ using string_view = boost::string_view;
 #if defined (__GNUC__)
 #if __GNUC__ < 8
 #include <experimental/filesystem>
-namespace fs = std::experimental::filesystem;
+namespace rpcfs = std::experimental::filesystem;
 #else
 #include <filesystem>
-namespace fs = std::filesystem;
+namespace rpcfs = std::filesystem;
 #endif
 #else
 #include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
+namespace rpcfs = boost::filesystem;
 #endif
 #else
 #include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
+namespace rpcfs = boost::filesystem;
 #endif
