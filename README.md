@@ -138,12 +138,12 @@ else if (status == std::future_status::ready) {
 }
 ```
 
-除了上面的这些很棒的接口之外，更酷的是rest_rpc还支持了服务端推送的功能，这是目前很多rpc库做不到的。
+除了上面的这些很棒的接口之外，更酷的是rest_rpc还支持了订阅发布的功能，这是目前很多rpc库做不到的。
 
-服务端定时推送的例子在这里：
+服务端订阅发布的例子在这里：
 
-https://github.com/qicosmos/rest_rpc/blob/master/examples/server/main.cpp#L88
-https://github.com/qicosmos/rest_rpc/blob/master/examples/client/main.cpp#L372
+https://github.com/qicosmos/rest_rpc/blob/master/examples/server/main.cpp#L121
+https://github.com/qicosmos/rest_rpc/blob/master/examples/client/main.cpp#L383
 
 ## 快
 
