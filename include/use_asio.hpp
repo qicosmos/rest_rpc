@@ -45,6 +45,7 @@ using string_view = boost::string_view;
 #endif
 #endif
 
+#ifdef CINATRA_ENABLE_SSL
 #if __cplusplus > 201402L
 #if defined (__GNUC__)
 #if __GNUC__ < 8
@@ -61,4 +62,5 @@ namespace rpcfs = boost::filesystem;
 #else
 #include <boost/filesystem.hpp>
 namespace rpcfs = boost::filesystem;
+#endif
 #endif
