@@ -340,7 +340,7 @@ namespace rest_rpc {
 
 					has_connected_ = false;
 
-					if (reconnect_cnt_ == 0) {
+					if (reconnect_cnt_ <= 0) {
 						return;
 					}
 
