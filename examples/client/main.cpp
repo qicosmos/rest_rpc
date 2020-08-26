@@ -2,7 +2,6 @@
 #include <rest_rpc.hpp>
 #include <chrono>
 #include <fstream>
-#include "codec.h"
 
 using namespace rest_rpc;
 using namespace rest_rpc::rpc_service;
