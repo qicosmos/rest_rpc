@@ -12,6 +12,7 @@ endif()
 
 find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(
+        "/usr/local/include"
         "../../include"
         "../../third/msgpack/include"
 )
