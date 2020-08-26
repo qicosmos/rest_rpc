@@ -1,5 +1,5 @@
 #include <iostream>
-#include <rpc_client.hpp>
+#include <rest_rpc.hpp>
 #include <chrono>
 #include <fstream>
 #include "codec.h"

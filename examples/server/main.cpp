@@ -1,4 +1,4 @@
-#include <rpc_server.h>
+#include <rest_rpc.hpp>
 using namespace rest_rpc;
 using namespace rpc_service;
 #include <fstream>
