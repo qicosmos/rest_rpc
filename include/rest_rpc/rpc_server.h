@@ -15,7 +15,7 @@ namespace rest_rpc {
 		using rpc_conn = std::weak_ptr<connection>;
 		class rpc_server : private asio::noncopyable {
 		public:
-			rpc_server(short port, size_t size, size_t timeout_seconds = 15, size_t check_seconds = 10)
+			rpc_server(unsigned short port, size_t size, size_t timeout_seconds = 15, size_t check_seconds = 10)
 				: io_service_pool_(size),
 				acceptor_(io_service_pool_.get_io_service(), tcp::endpoint(tcp::v4(), port)),
 				timeout_seconds_(timeout_seconds),
@@ -25,7 +25,7 @@ namespace rest_rpc {
 				pub_sub_thread_ = std::make_shared<std::thread>([this] { clean_sub_pub(); });
 			}
 
-            rpc_server(short port, size_t size, ssl_configure ssl_conf, size_t timeout_seconds = 15, size_t check_seconds = 10) : 
+            rpc_server(unsigned short port, size_t size, ssl_configure ssl_conf, size_t timeout_seconds = 15, size_t check_seconds = 10) :
                 rpc_server(port, size, timeout_seconds, check_seconds) {
 #ifdef CINATRA_ENABLE_SSL
                 ssl_conf_ = std::move(ssl_conf);
