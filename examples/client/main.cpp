@@ -600,7 +600,29 @@ void test_ssl() {
     std::getchar();
 }
 
+void benchmark_test(){
+  rpc_client client;
+  bool r = client.connect("127.0.0.1", 9000);
+  if (!r) {
+    return;
+  }
+
+  for (size_t i = 0; i < 1000000; i++) {
+    client.async_call("echo", [i](boost::system::error_code ec, string_view data) {
+      if (ec) {
+        return;
+      }
+
+    }, "hello wolrd");
+    std::this_thread::sleep_for(std::chrono::microseconds(2));
+  }
+
+  std::getchar();
+  std::cout<<"benchmark test finished\n";
+}
+
 int main() {
+//  benchmark_test();
 	test_sub1();
 	test_connect();
 	test_callback();

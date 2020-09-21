@@ -84,6 +84,7 @@ void async_echo(rpc_conn conn, const std::string& src) {
 }
 
 std::string echo(rpc_conn conn, const std::string& src) {
+  g_qps.increase();
 	return src;
 }
 
@@ -98,7 +99,14 @@ void test_ssl() {
     server.run();
 }
 
+void benchmark_test(){
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  server.register_handler("echo", echo);
+  server.run();
+}
+
 int main() {
+//  benchmark_test();
 	rpc_server server(9000, std::thread::hardware_concurrency());
 
 	dummy d;
