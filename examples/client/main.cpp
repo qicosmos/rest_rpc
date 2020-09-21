@@ -614,7 +614,6 @@ void benchmark_test(){
       }
 
     }, "hello wolrd");
-    std::this_thread::sleep_for(std::chrono::microseconds(2));
   }
 
   std::getchar();
