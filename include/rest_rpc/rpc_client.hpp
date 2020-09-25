@@ -124,6 +124,7 @@ namespace rest_rpc {
 
 		void enable_auto_reconnect(bool enable = true) {
 			enable_reconnect_ = enable;
+                        reconnect_cnt_ = std::numeric_limits<int>::max();
 		}
 
 		void enable_auto_heartbeat(bool enable = true) {
@@ -655,7 +656,7 @@ namespace rest_rpc {
 			}
 
 			if (enable_reconnect_) {
-				async_connect();
+                          async_reconnect();
 			}
 		}
 
