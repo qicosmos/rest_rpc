@@ -16,6 +16,8 @@ rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，�
 2. 浙江智网科技
 3. purecpp.org
 
+[在这里增加用户](https://github.com/qicosmos/rest_rpc/wiki/%E4%BD%BF%E7%94%A8rest_rpc%E7%9A%84%E7%94%A8%E6%88%B7%E5%88%97%E8%A1%A8)
+
 # rest_rpc的特点
 
 ## 易
