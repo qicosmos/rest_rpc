@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.1)
-project(basic_server)
+project(example)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11")
 
@@ -17,7 +17,8 @@ include_directories(
         "../../third/msgpack/include"
 )
 
-add_executable(basic_server main.cpp)
+add_executable(basic_server server/main.cpp)
+add_executable(basic_client client/main.cpp)
 
 if (ENABLE_SSL)
     target_link_libraries(basic_server ${Boost_LIBRARIES} -lssl -lcrypto -lpthread)
