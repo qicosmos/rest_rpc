@@ -38,3 +38,9 @@ cmake_install.cmake
 
 # idea
 .idea/
+
+.DS_Store
+*iml
+target/
+
+build/
