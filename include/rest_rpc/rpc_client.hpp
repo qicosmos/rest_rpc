@@ -575,7 +575,7 @@ namespace rest_rpc {
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
-		    if (client_language_ == client_language_t::JAVA) {
+            if (client_language_ == client_language_t::JAVA) {
                 // For Java client.
                 // TODO(qwang): Call java callback.
                 // handle error.
@@ -854,7 +854,7 @@ namespace rest_rpc {
 		std::unordered_map<std::string, std::function<void(string_view)>> sub_map_;
 		std::set<std::pair<std::string, std::string>> key_token_set_;
 
-		client_language_t client_language_ = client_language_t::CPP;
+        client_language_t client_language_ = client_language_t::CPP;
         std::function<void(long, const std::string&)> on_result_received_callback_;
 	};
 }

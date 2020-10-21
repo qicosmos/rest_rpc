@@ -7,8 +7,7 @@ using namespace rpc_service;
 
 struct dummy{
 	int add(rpc_conn conn, int a, int b) {
-	    std::cout << "ohhhhhhhhhhh invoked: a=" << a << ", b=" << b << std::endl;
-		return a + b; 
+		return a + b;
 	}
 };
 
