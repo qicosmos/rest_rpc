@@ -1,48 +1,24 @@
 package org.restrpc.test;
 
-import org.restrpc.client.Codec;
 import org.restrpc.client.NativeRpcClient;
 import org.restrpc.client.RpcClient;
+import org.testng.Assert;
 import org.testng.annotations.Test;
-import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
 public class BasicClientTest {
 
     @Test
-    public void testBasic() throws IOException, InterruptedException, ExecutionException {
+    public void testBasic() throws InterruptedException, ExecutionException {
+        // Note that you must run the `basic_server` first and then run this test.
         RpcClient rpcClient = new NativeRpcClient();
         rpcClient.connect("127.0.0.1:9000");
         CompletableFuture<Object> future = rpcClient.asyncFunc("add").invoke(Integer.class, 2, 3);
-        System.out.println("The result of add(2, 3) is " + future.get());
+        Assert.assertEquals(future.get(), 5);
 
-        {
-           CompletableFuture<Object> future1 = rpcClient.asyncFunc("echo").invoke(String.class, "hello world!");
-            System.out.println("The result of echo is " + future1.get());
-        }
+        CompletableFuture<Object> future1 = rpcClient.asyncFunc("echo").invoke(String.class, "hello world");
+        Assert.assertEquals(future1.get(), "hello world");
     }
 
-    private String getClassStr(Object o) {
-        return o.getClass().getName();
-    }
-
-    @Test
-    public void testClass() {
-        int a = 3;
-        System.out.println("int -> " + getClassStr(a));
-        long b = 3;
-        System.out.println("long -> " + getClassStr(b));
-        String s = "3";
-        System.out.println("string ->" + getClassStr(s));
-        String c = null;
-        System.out.println("null str ->" + getClassStr(c));
-    }
-
-    @Test
-    public void testEncode() throws IOException {
-        Codec codec = new Codec();
-        Object[] args = new Object[] {2, 3};
-        byte[] bs = codec.encode("add", args);
-    }
 }

@@ -17,7 +17,6 @@ public class Codec {
 
     public byte[] encode(String funcName, Object[] args) throws IOException {
         // assert args != nullptr.
-
         MessageBufferPacker messagePacker = MessagePack.newDefaultBufferPacker();
         messagePacker.packArrayHeader(1 + args.length);
         messagePacker.packString(funcName);
@@ -69,12 +68,5 @@ public class Codec {
             return messageUnpacker.unpackString();
         }
         throw new RuntimeException("Unknown type: " + returnClz);
-    }
-
-    public int myDecodeInt(byte[] encodedBytes) throws IOException {
-        MessageUnpacker messageUnpacker = MessagePack.newDefaultUnpacker(encodedBytes);
-        messageUnpacker.unpackArrayHeader();
-        messageUnpacker.unpackInt();
-        return messageUnpacker.unpackInt();
     }
 }
