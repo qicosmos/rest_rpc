@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.1)
 project(example)
 
-set(ASIO_STANDALONE 1)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11")
 
 SET(ENABLE_SSL OFF)
