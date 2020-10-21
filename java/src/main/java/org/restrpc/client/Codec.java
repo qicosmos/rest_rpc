@@ -46,8 +46,8 @@ public class Codec {
         return messagePacker.toByteArray();
     }
 
-    public Object decodeSingleValue(String targetTypeName, byte[] encodedBytes) throws IOException {
-        if (targetTypeName == null) {
+    public Object decodeReturnValue(Class returnClz, byte[] encodedBytes) throws IOException {
+        if (returnClz == null) {
             throw new RuntimeException("Internal bug.");
         }
 
@@ -57,17 +57,18 @@ public class Codec {
 
         // TODO(qwang): unpack nil.
         MessageUnpacker messageUnpacker = MessagePack.newDefaultUnpacker(encodedBytes);
-        switch (targetTypeName) {
-            case INT_TYPE_NAME:
-                return messageUnpacker.unpackInt();
-            case LONG_TYPE_NAME:
-                return messageUnpacker.unpackLong();
-            case STRING_TYPE_NAME:
-                return messageUnpacker.unpackString();
-            default:
-                throw new RuntimeException("Unknown type: " + targetTypeName);
-        }
+        // Unpack unnecessary fields.
+        messageUnpacker.unpackArrayHeader();
+        messageUnpacker.unpackInt();
 
+        if (Integer.class.equals(returnClz)) {
+            return messageUnpacker.unpackInt();
+        } else if (Long.class.equals(returnClz)) {
+            return messageUnpacker.unpackLong();
+        } else if (String.class.equals(returnClz)) {
+            return messageUnpacker.unpackString();
+        }
+        throw new RuntimeException("Unknown type: " + returnClz);
     }
 
     public int myDecodeInt(byte[] encodedBytes) throws IOException {

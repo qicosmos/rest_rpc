@@ -1,7 +1,7 @@
 package org.restrpc.client;
 
+
 import java.io.IOException;
-import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -16,9 +16,9 @@ public class NativeRpcClient implements RpcClient {
     private Codec codec;
 
     // The map to cache return type.
-    private ConcurrentHashMap<Long, String> localFutureReturnTypenameCache = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Long, Class<?>> localFutureReturnTypenameCache = new ConcurrentHashMap<>();
 
-    private ConcurrentHashMap<Long, RestFuture<?>> localFutureCache = new ConcurrentHashMap<>();
+    private ConcurrentHashMap<Long, CompletableFuture<Object>> localFutureCache = new ConcurrentHashMap<>();
 
     public NativeRpcClient() {
         rpcClientPointer = nativeNewRpcClient();
@@ -39,7 +39,7 @@ public class NativeRpcClient implements RpcClient {
         return new AsyncRpcFunctionImpl(this, funcName);
     }
 
-    public <ReturnType> RestFuture<ReturnType> invoke(String funcName, Object[] args) {
+    public <ReturnType> CompletableFuture<Object> invoke(Class returnClz, String funcName, Object[] args) {
         if (rpcClientPointer == -1) {
             throw new RuntimeException("no init");
         }
@@ -55,10 +55,14 @@ public class NativeRpcClient implements RpcClient {
             return null;
         }
 
-        final long requestId = nativeInvoke(rpcClientPointer, encodedBytes);
-        RestFuture<ReturnType> futureToReturn = new RestFuture<ReturnType>() {};
-        localFutureCache.put(requestId, futureToReturn);
-        return futureToReturn;
+        synchronized (this) {
+            final long requestId = nativeInvoke(rpcClientPointer, encodedBytes);
+            CompletableFuture<Object> futureToReturn = new CompletableFuture<Object>();
+            localFutureReturnTypenameCache.put(requestId, returnClz);
+
+            localFutureCache.put(requestId, futureToReturn);
+            return futureToReturn;
+        }
     }
 
     public void close() {
@@ -76,15 +80,13 @@ public class NativeRpcClient implements RpcClient {
      */
     private void onResultReceived(long requestId, byte[] encodedReturnValueBytes) throws IOException {
 //        if (requestId not is local_cache) {//error}
-//        codec.decodeReturnValue(encodedReturnValueBytes);
-        System.out.println("-----------oo java-----------");
-        System.out.println("result is " + codec.myDecodeInt(encodedReturnValueBytes));
-        System.out.println("-----------end java-----------");
-
-        RestFuture<?> future = localFutureCache.get(requestId);
-        future.getClass().getGenericSuperclass().getTypeName();
-        Object o = codec.decodeSingleValue(
-                future.getClass().getGenericSuperclass().getTypeName(), encodedReturnValueBytes);
+//        System.out.println("result is " + codec.myDecodeInt(encodedReturnValueBytes));
+        synchronized (this) {
+            final Class<?> returnClz = localFutureReturnTypenameCache.get(requestId);
+            CompletableFuture<Object> future = localFutureCache.get(requestId);
+            Object o = codec.decodeReturnValue(returnClz, encodedReturnValueBytes);
+            future.complete(o);
+        }
     }
 
     private native long nativeNewRpcClient();

@@ -12,17 +12,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 public class BasicClientTest {
 
     @Test
-    public void testBasic() throws IOException, InterruptedException {
+    public void testBasic() throws IOException, InterruptedException, ExecutionException {
         RpcClient rpcClient = new NativeRpcClient();
         rpcClient.connect("127.0.0.1:9000");
-        RestFuture<Integer> obj = rpcClient.asyncFunc("add").invoke(2, 3);
-        TimeUnit.SECONDS.sleep(10000);
-        System.out.println("The result of add(2, 3) is " + obj.get());
+        CompletableFuture<Object> future = rpcClient.asyncFunc("echo").invoke(String.class, 2, 3);
+        System.out.println("The result of add(2, 3) is " + future.get());
     }
 
     private String getClassStr(Object o) {
@@ -50,7 +50,7 @@ public class BasicClientTest {
 
     @Test
     public void testDecode() throws IOException {
-        CompletableFuture<?> i = new CompletableFuture<Integer>() {};
+//        CompletableFuture<?> i = new CompletableFuture<Integer>() {};
 //        System.out.println(i.getClass().getDeclare);
 //
 //        OutputStream os = new ByteArrayOutputStream();

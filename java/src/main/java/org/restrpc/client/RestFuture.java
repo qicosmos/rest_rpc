@@ -2,6 +2,7 @@ package org.restrpc.client;
 
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 
 public class RestFuture<T> {
 
@@ -12,6 +13,7 @@ public class RestFuture<T> {
     public RestFuture(Class<T> metaType) {
         this.metaType = metaType;
     }
+
     private byte[] encodedData;
 
     private static Codec codec = new Codec();

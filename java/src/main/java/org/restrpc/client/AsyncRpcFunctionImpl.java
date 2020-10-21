@@ -23,9 +23,9 @@ public class AsyncRpcFunctionImpl implements AsyncRpcFunction {
 //    }
 
     public <ReturnType, Arg1Type, Arg2Type>
-    RestFuture<ReturnType> invoke(Arg1Type arg1, Arg2Type arg2) {
+    CompletableFuture<Object> invoke(Class returnClz, Arg1Type arg1, Arg2Type arg2) {
         Object[] args = new Object[] {arg1, arg2};
-        return internalInvoke(args);
+        return internalInvoke(returnClz, args);
     }
 
 //    public <Arg1Type, Arg2Type, Arg3Type>
@@ -53,7 +53,7 @@ public class AsyncRpcFunctionImpl implements AsyncRpcFunction {
 //        return internalInvoke(args);
 //    }
 
-    private <ReturnType> RestFuture<ReturnType> internalInvoke(Object[] args) {
-        return rpcClient.invoke(funcName, args);
+    private <ReturnType> CompletableFuture<Object> internalInvoke(Class returnClz, Object[] args) {
+        return rpcClient.invoke(returnClz, funcName, args);
     }
 }

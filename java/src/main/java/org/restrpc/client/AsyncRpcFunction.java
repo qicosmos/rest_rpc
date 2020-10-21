@@ -10,7 +10,7 @@ public interface AsyncRpcFunction {
 //    CompletableFuture<Object> invoke(Arg1Type arg1);
 
     <ReturnType, Arg1Type, Arg2Type>
-    RestFuture<ReturnType> invoke(Arg1Type arg1, Arg2Type arg2);
+    CompletableFuture<Object> invoke(Class returnClz, Arg1Type arg1, Arg2Type arg2);
 
 //    <Arg1Type, Arg2Type, Arg3Type>
 //    CompletableFuture<Object> invoke(Arg1Type arg1, Arg2Type arg2, Arg3Type arg3);
