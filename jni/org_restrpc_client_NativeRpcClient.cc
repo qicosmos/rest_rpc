@@ -126,6 +126,10 @@ JNIEXPORT void JNICALL Java_org_restrpc_client_NativeRpcClient_nativeDestroy
     auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
     native_rpc_client->close();
     delete native_rpc_client;
+
+    env->DeleteGlobalRef(java_class_NativeRpcClient);
+    env->DeleteGlobalRef(java_method_onResultReceived);
+    env->DeleteGlobalRef(java_object_native_rpc_client);
 }
 
 #ifdef __cplusplus
