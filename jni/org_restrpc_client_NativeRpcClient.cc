@@ -69,14 +69,9 @@ JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeNewRpcClie
 
     auto on_result_received = [](long request_id, const std::string &data) {
         JNIEnv *env = nullptr;
-        std::cout << "on_result_received Callback invoked." << std::endl;
         jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
-        std::cout << "---------------env:" << env << std::endl;
         jbyteArray javaByteArray = NativeStringToJavaByteArray(env, data);
-
-        std::cout << "---------------a" << std::endl;
         env->CallVoidMethod(java_object_native_rpc_client, java_method_onResultReceived, request_id, javaByteArray);
-        std::cout << "---------------e" << std::endl;
     };
 
     rest_rpc::rpc_client *native_rpc_client = new rest_rpc::rpc_client(
@@ -108,7 +103,7 @@ JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeInvoke
         (JNIEnv *env, jobject o, jlong rpcClientPointer, jbyteArray encodedBytes) {
     auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
     auto encodedFuncNameAndArgs = JavaByteArrayToNativeString(env, encodedBytes);
-    return native_rpc_client->wq_async_call(encodedFuncNameAndArgs);
+    return native_rpc_client->internal_async_call(encodedFuncNameAndArgs);
 }
 
 /*

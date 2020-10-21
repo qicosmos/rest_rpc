@@ -39,7 +39,7 @@ public class NativeRpcClient implements RpcClient {
         return new AsyncRpcFunctionImpl(this, funcName);
     }
 
-    public <ReturnType> CompletableFuture<Object> invoke(Class returnClz, String funcName, Object[] args) {
+    public CompletableFuture<Object> invoke(Class returnClz, String funcName, Object[] args) {
         if (rpcClientPointer == -1) {
             throw new RuntimeException("no init");
         }
@@ -78,13 +78,12 @@ public class NativeRpcClient implements RpcClient {
      * The callback that will be invoked once the reuslt of rpc request received.
      * Note that this method will be invoked in JNI.
      */
-    private void onResultReceived(long requestId, byte[] encodedReturnValueBytes) throws IOException {
+    private void onResultReceived(long requestId, byte[] encodedReturnValue) throws IOException {
 //        if (requestId not is local_cache) {//error}
-//        System.out.println("result is " + codec.myDecodeInt(encodedReturnValueBytes));
         synchronized (this) {
             final Class<?> returnClz = localFutureReturnTypenameCache.get(requestId);
             CompletableFuture<Object> future = localFutureCache.get(requestId);
-            Object o = codec.decodeReturnValue(returnClz, encodedReturnValueBytes);
+            Object o = codec.decodeReturnValue(returnClz, encodedReturnValue);
             future.complete(o);
         }
     }

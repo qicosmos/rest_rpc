@@ -8,7 +8,7 @@ public interface RpcClient {
 
     AsyncRpcFunction asyncFunc(String funcName);
 
-    <ReturnType> CompletableFuture<Object> invoke(Class returnClz, String funcName, Object[] args);
+    CompletableFuture<Object> invoke(Class returnClz, String funcName, Object[] args);
 
     void close();
 }
