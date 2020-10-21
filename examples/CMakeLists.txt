@@ -12,7 +12,11 @@ if (ENABLE_SSL)
 endif()
 
 find_package(Boost COMPONENTS system filesystem REQUIRED)
-include_directories("/usr/local/include")
+include_directories(
+        "/usr/local/include"
+        "../../include"
+        "../../third/msgpack/include"
+)
 
 add_executable(basic_server server/main.cpp)
 add_executable(basic_client client/main.cpp)
