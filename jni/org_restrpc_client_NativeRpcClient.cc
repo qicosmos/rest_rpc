@@ -34,6 +34,13 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
 //void JNI_OnUnload(JavaVM *vm, void *reserved) {}
 
+inline std::string JavaStringToNativeString(JNIEnv *env, jstring jstr) {
+    const char *c_str = env->GetStringUTFChars(jstr, nullptr);
+    std::string result(c_str);
+    env->ReleaseStringUTFChars(static_cast<jstring>(jstr), c_str);
+    return result;
+}
+
 /// Convert C++ String to a Java ByteArray.
 inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &str) {
     jbyteArray array = env->NewByteArray(str.size());
@@ -76,7 +83,6 @@ JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeNewRpcClie
 
     rest_rpc::rpc_client *native_rpc_client = new rest_rpc::rpc_client(
             rest_rpc::client_language_t::JAVA, on_result_received);
-    std::cout << "------native_rpc_client=" << reinterpret_cast<long>(native_rpc_client) << std::endl;
     return reinterpret_cast<long>(native_rpc_client);
 }
 
@@ -87,11 +93,15 @@ JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeNewRpcClie
  * Signature: (JLjava/lang/String;)V
  */
 JNIEXPORT void JNICALL Java_org_restrpc_client_NativeRpcClient_nativeConnect
-(JNIEnv *, jobject o, jlong rpcClientPointer, jstring serverAddress) {
+(JNIEnv *env, jobject o, jlong rpcClientPointer, jstring serverAddress) {
     auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
-    // TODO(qwang): Do not hard code this.
-    const bool connected = native_rpc_client->connect("127.0.0.1", 9000);
-    std::cout << "Connected:" << connected << std::endl;
+    // TODO(qwang): return a flag or throw exception.
+    const std::string server_addr = JavaStringToNativeString(env, serverAddress);
+    // Use a helper to split and handle the exception.
+    const size_t pos = server_addr.find(":");
+    const std::string ip = server_addr.substr(0, pos);
+    const int port = std::stoi(server_addr.substr(pos + 1, server_addr.size()));
+    const bool connected = native_rpc_client->connect(ip, static_cast<short>(port));
 }
 
 /*
@@ -112,8 +122,10 @@ JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeInvoke
  * Signature: (J)V
  */
 JNIEXPORT void JNICALL Java_org_restrpc_client_NativeRpcClient_nativeDestroy
-(JNIEnv *, jobject, jlong) {
-
+(JNIEnv *, jobject, jlong rpcClientPointer) {
+    auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
+    native_rpc_client->close();
+    delete native_rpc_client;
 }
 
 #ifdef __cplusplus

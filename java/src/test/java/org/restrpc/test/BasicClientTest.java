@@ -16,6 +16,11 @@ public class BasicClientTest {
         rpcClient.connect("127.0.0.1:9000");
         CompletableFuture<Object> future = rpcClient.asyncFunc("add").invoke(Integer.class, 2, 3);
         System.out.println("The result of add(2, 3) is " + future.get());
+
+        {
+           CompletableFuture<Object> future1 = rpcClient.asyncFunc("echo").invoke(String.class, "hello world!");
+            System.out.println("The result of echo is " + future1.get());
+        }
     }
 
     private String getClassStr(Object o) {
