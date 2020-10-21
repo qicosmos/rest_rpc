@@ -8,14 +8,28 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+inline std::string JavaByteArrayToNativeString(JNIEnv *env, const jbyteArray &bytes) {
+    const auto size = env->GetArrayLength(bytes);
+    std::string str(size, 0);
+    env->GetByteArrayRegion(bytes, 0, size, reinterpret_cast<jbyte *>(&str.front()));
+    return str;
+}
+
+// TODO(qwang)
+// JavaByteArrayToSBuffer
+
+
 /*
  * Class:     org_restrpc_client_NativeRpcClient
  * Method:    nativeNewRpcClient
  * Signature: ()J
  */
 JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeNewRpcClient
-        (JNIEnv *, jobject) {
-    return 10009;
+        (JNIEnv *, jobject o) {
+    rest_rpc::rpc_client *native_rpc_client = new rest_rpc::rpc_client();
+    return reinterpret_cast<long>(native_rpc_client);
 }
 
 /*
@@ -24,17 +38,22 @@ JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeNewRpcClie
  * Signature: (JLjava/lang/String;)V
  */
 JNIEXPORT void JNICALL Java_org_restrpc_client_NativeRpcClient_nativeConnect
-(JNIEnv *, jobject, jlong, jstring) {
+(JNIEnv *, jobject o, jlong rpcClientPointer, jstring serverAddress) {
+    auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
+    // TODO(qwang): Do not hard code this.
+    native_rpc_client->connect("127.0.0.1", 9000);
 }
 
 /*
  * Class:     org_restrpc_client_NativeRpcClient
  * Method:    nativeInvoke
- * Signature: (J[[B)J
+ * Signature: (J[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeInvoke
-        (JNIEnv *, jobject, jlong, jobjectArray) {
-    return 20009;
+        (JNIEnv *env, jobject o, jlong rpcClientPointer, jbyteArray encodedBytes) {
+    auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
+    auto encodedFuncNameAndArgs = JavaByteArrayToNativeString(env, encodedBytes);
+    return native_rpc_client->wq_async_call(encodedFuncNameAndArgs);
 }
 
 /*

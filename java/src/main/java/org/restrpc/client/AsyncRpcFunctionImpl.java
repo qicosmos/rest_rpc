@@ -54,6 +54,6 @@ public class AsyncRpcFunctionImpl implements AsyncRpcFunction {
     }
 
     private CompletableFuture<Object> internalInvoke(Object[] args) {
-        return rpcClient.invoke(args);
+        return rpcClient.invoke(funcName, args);
     }
 }

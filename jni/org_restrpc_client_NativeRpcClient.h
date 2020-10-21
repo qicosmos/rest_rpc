@@ -26,10 +26,10 @@ JNIEXPORT void JNICALL Java_org_restrpc_client_NativeRpcClient_nativeConnect
 /*
  * Class:     org_restrpc_client_NativeRpcClient
  * Method:    nativeInvoke
- * Signature: (J[[B)J
+ * Signature: (J[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeInvoke
-  (JNIEnv *, jobject, jlong, jobjectArray);
+  (JNIEnv *, jobject, jlong, jbyteArray);
 
 /*
  * Class:     org_restrpc_client_NativeRpcClient

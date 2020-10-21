@@ -248,6 +248,24 @@ namespace rest_rpc {
 			return future;
 		}
 
+    long wq_async_call(const std::string& encoded_func_name_and_args) {
+        auto p = std::make_shared<std::promise<req_result>>();
+        std::future<req_result> future = p->get_future();
+
+        uint64_t fu_id = 0;
+        {
+            std::unique_lock<std::mutex> lock(cb_mtx_);
+            fu_id_++;
+            fu_id = fu_id_;
+            future_map_.emplace(fu_id, std::move(p));
+        }
+
+        msgpack::sbuffer sbuffer;
+		sbuffer.write(encoded_func_name_and_args.data(), encoded_func_name_and_args.size());
+        write(fu_id, request_type::req_res, std::move(sbuffer));
+        return fu_id;
+    }
+
 		template<size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
 		void async_call(const std::string& rpc_name, std::function<void(boost::system::error_code, string_view)> cb, Args&& ... args) {
 			if (!has_connected_) {
