@@ -12,7 +12,7 @@ public:
 	qps() : counter_(0) {
 		thd_ = std::thread([this] {
 			while (!stop_) {
-				std::cout << "qps: " << counter_.load(std::memory_order_acquire) << '\n';
+//				std::cout << "qps: " << counter_.load(std::memory_order_acquire) << '\n';
 				std::this_thread::sleep_for(std::chrono::seconds(1));
 				//counter_.store(0, std::memory_order_release);
 			}

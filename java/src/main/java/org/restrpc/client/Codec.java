@@ -2,9 +2,19 @@ package org.restrpc.client;
 
 import org.msgpack.core.MessageBufferPacker;
 import org.msgpack.core.MessagePack;
+import org.msgpack.core.MessageUnpacker;
+
+import java.awt.print.PrinterGraphics;
 import java.io.IOException;
 
 public class Codec {
+
+    private final static String INT_TYPE_NAME = "java.lang.Integer";
+
+    private final static String LONG_TYPE_NAME = "java.lang.Long";
+
+    private final static String STRING_TYPE_NAME = "java.lang.String";
+
     public byte[] encode(String funcName, Object[] args) throws IOException {
         // assert args != nullptr.
 
@@ -20,19 +30,50 @@ public class Codec {
 
             final String argTypeName = arg.getClass().getName();
             switch (argTypeName) {
-                case "java.lang.Integer":
+                case INT_TYPE_NAME:
                     messagePacker.packInt((int) arg);
                     break;
-                case "java.lang.Long":
+                case LONG_TYPE_NAME:
                     messagePacker.packLong((long) arg);
                     break;
-                case "java.lang.String":
+                case STRING_TYPE_NAME:
                     messagePacker.packString((String) arg);
                     break;
                 default:
-                    throw new RuntimeException("Unknown type" + argTypeName);
+                    throw new RuntimeException("Unknown type: " + argTypeName);
             }
         }
         return messagePacker.toByteArray();
+    }
+
+    public Object decodeSingleValue(String targetTypeName, byte[] encodedBytes) throws IOException {
+        if (targetTypeName == null) {
+            throw new RuntimeException("Internal bug.");
+        }
+
+        if (encodedBytes == null) {
+            return null;
+        }
+
+        // TODO(qwang): unpack nil.
+        MessageUnpacker messageUnpacker = MessagePack.newDefaultUnpacker(encodedBytes);
+        switch (targetTypeName) {
+            case INT_TYPE_NAME:
+                return messageUnpacker.unpackInt();
+            case LONG_TYPE_NAME:
+                return messageUnpacker.unpackLong();
+            case STRING_TYPE_NAME:
+                return messageUnpacker.unpackString();
+            default:
+                throw new RuntimeException("Unknown type: " + targetTypeName);
+        }
+
+    }
+
+    public int myDecodeInt(byte[] encodedBytes) throws IOException {
+        MessageUnpacker messageUnpacker = MessagePack.newDefaultUnpacker(encodedBytes);
+        messageUnpacker.unpackArrayHeader();
+        messageUnpacker.unpackInt();
+        return messageUnpacker.unpackInt();
     }
 }

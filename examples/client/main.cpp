@@ -16,8 +16,8 @@ void test_add() {
 		}
 
 		{
-			auto result = client.call<int>("add", 1, 2);
-			std::cout << result << std::endl;
+//			auto result = client.call<int>("add", 1, 2);
+//			std::cout << result << std::endl;
 		}
 
 		{
@@ -622,12 +622,12 @@ void benchmark_test(){
 
 int main() {
 //  benchmark_test();
-	test_sub1();
-	test_connect();
-	test_callback();
-	test_echo();
-	test_sync_client();
-	test_async_client();
+	test_add();
+//	test_connect();
+//	test_callback();
+//	test_echo();
+//	test_sync_client();
+//	test_async_client();
 	//test_threads();
 	//test_sub();
 	//test_call_with_timeout();

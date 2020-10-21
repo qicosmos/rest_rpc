@@ -3,14 +3,25 @@
 #include <string>
 #include <deque>
 #include <future>
+#include <utility>
 #include "use_asio.hpp"
 #include "client_util.hpp"
 #include "const_vars.h"
 #include "meta_util.hpp"
+#include <functional>
 
 using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
+
+    /**
+     * The type to indicate the language of the client.
+     */
+    enum class client_language_t {
+        CPP = 0,
+        JAVA = 1,
+    };
+
 	class req_result {
 	public:
 		req_result() = default;
@@ -48,15 +59,39 @@ namespace rest_rpc {
 
 	class rpc_client : private asio::noncopyable {
 	public:
-		rpc_client() : socket_(ios_), work_(ios_), 
+		rpc_client() : socket_(ios_), work_(ios_),
 			deadline_(ios_), body_(INIT_BUF_SIZE) {
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
 			});
 		}
 
-		rpc_client(const std::string& host, unsigned short port) : socket_(ios_), work_(ios_), 
-			deadline_(ios_), host_(host), port_(port), body_(INIT_BUF_SIZE) {
+		rpc_client(client_language_t client_language,
+                  std::function<void(long, const std::string &)> on_result_received_callback)
+                      : socket_(ios_), work_(ios_),
+                  deadline_(ios_), body_(INIT_BUF_SIZE),
+                  client_language_(client_language),
+                  on_result_received_callback_(std::move(on_result_received_callback)) {
+            thd_ = std::make_shared<std::thread>([this] {
+                ios_.run();
+            });
+		}
+
+        rpc_client(const std::string& host, unsigned short port)
+                : rpc_client(client_language_t::CPP, nullptr, host, port) {}
+
+		rpc_client(client_language_t client_language,
+                   std::function<void(long, const std::string&)> on_result_received_callback,
+                   std::string host,
+                   unsigned short port)
+		        : socket_(ios_),
+		        work_(ios_),
+		        deadline_(ios_),
+		        host_(std::move(host)),
+		        port_(port),
+		        body_(INIT_BUF_SIZE),
+		        client_language_(client_language),
+		        on_result_received_callback_(std::move(on_result_received_callback)) {
 			thd_ = std::make_shared<std::thread>([this] {
 				ios_.run();
 			});
@@ -251,7 +286,6 @@ namespace rest_rpc {
     long wq_async_call(const std::string& encoded_func_name_and_args) {
         auto p = std::make_shared<std::promise<req_result>>();
         std::future<req_result> future = p->get_future();
-
         uint64_t fu_id = 0;
         {
             std::unique_lock<std::mutex> lock(cb_mtx_);
@@ -539,42 +573,48 @@ namespace rest_rpc {
 		}
 
 		void call_back(uint64_t req_id, const boost::system::error_code& ec, string_view data) {
-			temp_req_id_ = req_id;
-			auto cb_flag = req_id >> 63;
-			if (cb_flag) {
-				std::shared_ptr<call_t> cl = nullptr;
-				{
-					std::unique_lock<std::mutex> lock(cb_mtx_);
-					cl = std::move(callback_map_[req_id]);
-				}
+		    if (client_language_ == client_language_t::JAVA) {
+                // For Java client.
+                // TODO(qwang): Call java callback.
+                // handle error.
+                on_result_received_callback_(req_id, data.to_string());
+		    } else {
+                // For CPP client.
+                temp_req_id_ = req_id;
+                auto cb_flag = req_id >> 63;
+                if (cb_flag) {
+                    std::shared_ptr<call_t> cl = nullptr;
+                    {
+                        std::unique_lock<std::mutex> lock(cb_mtx_);
+                        cl = std::move(callback_map_[req_id]);
+                    }
 
-				assert(cl);
-				if (!cl->has_timeout()) {
-					cl->cancel();
-					cl->callback(ec, data);
-				}
-				else {
-					cl->callback(asio::error::make_error_code(asio::error::timed_out), {});
-				}
+                    assert(cl);
+                    if (!cl->has_timeout()) {
+                        cl->cancel();
+                        cl->callback(ec, data);
+                    } else {
+                        cl->callback(asio::error::make_error_code(asio::error::timed_out), {});
+                    }
 
-				std::unique_lock<std::mutex> lock(cb_mtx_);
-				callback_map_.erase(req_id);
-			}
-			else {
-				std::unique_lock<std::mutex> lock(cb_mtx_);
-				auto& f = future_map_[req_id];
-				if (ec) {
-					//LOG<<ec.message();
-					if (!f) {
-						//std::cout << "invalid req_id" << std::endl;
-						return;
-					}
-				}
+                    std::unique_lock<std::mutex> lock(cb_mtx_);
+                    callback_map_.erase(req_id);
+                } else {
+                    std::unique_lock<std::mutex> lock(cb_mtx_);
+                    auto &f = future_map_[req_id];
+                    if (ec) {
+                        //LOG<<ec.message();
+                        if (!f) {
+                            //std::cout << "invalid req_id" << std::endl;
+                            return;
+                        }
+                    }
 
-				assert(f);
-				f->set_value(req_result{ data });
-				future_map_.erase(req_id);
-			}
+                    assert(f);
+                    f->set_value(req_result{data});
+                    future_map_.erase(req_id);
+                }
+            }
 		}
 
 		void callback_sub(const boost::system::error_code& ec, string_view result) {
@@ -811,5 +851,8 @@ namespace rest_rpc {
 
 		std::unordered_map<std::string, std::function<void(string_view)>> sub_map_;
 		std::set<std::pair<std::string, std::string>> key_token_set_;
+
+		client_language_t client_language_ = client_language_t::CPP;
+        std::function<void(long, const std::string&)> on_result_received_callback_;
 	};
 }

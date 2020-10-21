@@ -4,6 +4,9 @@
 
 #ifndef _Included_org_restrpc_client_NativeRpcClient
 #define _Included_org_restrpc_client_NativeRpcClient
+
+extern JavaVM *jvm;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

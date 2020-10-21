@@ -2,13 +2,45 @@
 
 #include "org_restrpc_client_NativeRpcClient.h"
 #include <rest_rpc.hpp>
+#include <iostream>
 
 #include <jni.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+JavaVM *jvm;
 
+jclass java_class_NativeRpcClient;
+jmethodID java_method_onResultReceived;
+jobject java_object_native_rpc_client;
+
+inline jclass LoadClass(JNIEnv *env, const char *class_name) {
+    jclass tempLocalClassRef = env->FindClass(class_name);
+    jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);
+//    assert(ret);
+    env->DeleteLocalRef(tempLocalClassRef);
+    return ret;
+}
+
+/// Load and cache frequently-used Java classes and methods
+jint JNI_OnLoad(JavaVM *vm, void *reserved) {
+    JNIEnv *env;
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), 0x00010008) != JNI_OK) {
+        return JNI_ERR;
+    }
+    jvm = vm;
+    java_class_NativeRpcClient = LoadClass(env, "org/restrpc/client/NativeRpcClient");
+    java_method_onResultReceived = env->GetMethodID(java_class_NativeRpcClient, "onResultReceived", "(J[B)V");
+    return 0x00010008;
+}
+
+//void JNI_OnUnload(JavaVM *vm, void *reserved) {}
+
+/// Convert C++ String to a Java ByteArray.
+inline jbyteArray NativeStringToJavaByteArray(JNIEnv *env, const std::string &str) {
+    jbyteArray array = env->NewByteArray(str.size());
+    env->SetByteArrayRegion(array, 0, str.size(),
+    reinterpret_cast<const jbyte *>(str.c_str()));
+    return array;
+}
 
 inline std::string JavaByteArrayToNativeString(JNIEnv *env, const jbyteArray &bytes) {
     const auto size = env->GetArrayLength(bytes);
@@ -21,16 +53,38 @@ inline std::string JavaByteArrayToNativeString(JNIEnv *env, const jbyteArray &by
 // JavaByteArrayToSBuffer
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Class:     org_restrpc_client_NativeRpcClient
  * Method:    nativeNewRpcClient
  * Signature: ()J
  */
 JNIEXPORT jlong JNICALL Java_org_restrpc_client_NativeRpcClient_nativeNewRpcClient
-        (JNIEnv *, jobject o) {
-    rest_rpc::rpc_client *native_rpc_client = new rest_rpc::rpc_client();
+        (JNIEnv *env, jobject o) {
+
+    java_object_native_rpc_client = (jobject) env->NewGlobalRef(o);
+
+    auto on_result_received = [](long request_id, const std::string &data) {
+        JNIEnv *env = nullptr;
+        std::cout << "on_result_received Callback invoked." << std::endl;
+        jvm->AttachCurrentThreadAsDaemon(reinterpret_cast<void **>(&env), nullptr);
+        std::cout << "---------------env:" << env << std::endl;
+        jbyteArray javaByteArray = NativeStringToJavaByteArray(env, data);
+
+        std::cout << "---------------a" << std::endl;
+        env->CallVoidMethod(java_object_native_rpc_client, java_method_onResultReceived, request_id, javaByteArray);
+        std::cout << "---------------e" << std::endl;
+    };
+
+    rest_rpc::rpc_client *native_rpc_client = new rest_rpc::rpc_client(
+            rest_rpc::client_language_t::JAVA, on_result_received);
+    std::cout << "------native_rpc_client=" << reinterpret_cast<long>(native_rpc_client) << std::endl;
     return reinterpret_cast<long>(native_rpc_client);
 }
+
 
 /*
  * Class:     org_restrpc_client_NativeRpcClient
@@ -41,7 +95,8 @@ JNIEXPORT void JNICALL Java_org_restrpc_client_NativeRpcClient_nativeConnect
 (JNIEnv *, jobject o, jlong rpcClientPointer, jstring serverAddress) {
     auto *native_rpc_client = reinterpret_cast<rest_rpc::rpc_client *>(rpcClientPointer);
     // TODO(qwang): Do not hard code this.
-    native_rpc_client->connect("127.0.0.1", 9000);
+    const bool connected = native_rpc_client->connect("127.0.0.1", 9000);
+    std::cout << "Connected:" << connected << std::endl;
 }
 
 /*

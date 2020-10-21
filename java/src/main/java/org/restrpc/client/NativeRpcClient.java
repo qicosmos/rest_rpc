@@ -1,19 +1,24 @@
 package org.restrpc.client;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class NativeRpcClient implements RpcClient {
 
     static {
         JniUtils.loadLibrary("restrpc_jni");
     }
+
     private long rpcClientPointer = -1;
 
     private Codec codec;
 
-    private HashMap<Long, CompletableFuture<Object>> localFutureCache = new HashMap<>();
+    // The map to cache return type.
+    private ConcurrentHashMap<Long, String> localFutureReturnTypenameCache = new ConcurrentHashMap<>();
+
+    private ConcurrentHashMap<Long, RestFuture<?>> localFutureCache = new ConcurrentHashMap<>();
 
     public NativeRpcClient() {
         rpcClientPointer = nativeNewRpcClient();
@@ -34,7 +39,7 @@ public class NativeRpcClient implements RpcClient {
         return new AsyncRpcFunctionImpl(this, funcName);
     }
 
-    public CompletableFuture<Object> invoke(String funcName, Object[] args) {
+    public <ReturnType> RestFuture<ReturnType> invoke(String funcName, Object[] args) {
         if (rpcClientPointer == -1) {
             throw new RuntimeException("no init");
         }
@@ -51,7 +56,7 @@ public class NativeRpcClient implements RpcClient {
         }
 
         final long requestId = nativeInvoke(rpcClientPointer, encodedBytes);
-        CompletableFuture<Object> futureToReturn = new CompletableFuture<>();
+        RestFuture<ReturnType> futureToReturn = new RestFuture<ReturnType>() {};
         localFutureCache.put(requestId, futureToReturn);
         return futureToReturn;
     }
@@ -63,6 +68,23 @@ public class NativeRpcClient implements RpcClient {
 
         nativeDestroy(rpcClientPointer);
         this.rpcClientPointer = -1;
+    }
+
+    /**
+     * The callback that will be invoked once the reuslt of rpc request received.
+     * Note that this method will be invoked in JNI.
+     */
+    private void onResultReceived(long requestId, byte[] encodedReturnValueBytes) throws IOException {
+//        if (requestId not is local_cache) {//error}
+//        codec.decodeReturnValue(encodedReturnValueBytes);
+        System.out.println("-----------oo java-----------");
+        System.out.println("result is " + codec.myDecodeInt(encodedReturnValueBytes));
+        System.out.println("-----------end java-----------");
+
+        RestFuture<?> future = localFutureCache.get(requestId);
+        future.getClass().getGenericSuperclass().getTypeName();
+        Object o = codec.decodeSingleValue(
+                future.getClass().getGenericSuperclass().getTypeName(), encodedReturnValueBytes);
     }
 
     private native long nativeNewRpcClient();
