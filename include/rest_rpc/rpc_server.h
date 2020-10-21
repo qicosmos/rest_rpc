@@ -15,11 +15,12 @@ namespace rest_rpc {
 		using rpc_conn = std::weak_ptr<connection>;
 		class rpc_server : private asio::noncopyable {
 		public:
-			rpc_server(unsigned short port, size_t size, size_t timeout_seconds = 15, size_t check_seconds = 10)
+			rpc_server(unsigned short port, size_t size, size_t timeout_seconds = 15, size_t check_seconds = 10, std::size_t send_queue_maximum_size = UINT_MAX)
 				: io_service_pool_(size),
 				acceptor_(io_service_pool_.get_io_service(), tcp::endpoint(tcp::v4(), port)),
 				timeout_seconds_(timeout_seconds),
-				check_seconds_(check_seconds) {
+				check_seconds_(check_seconds),
+				send_queue_maximum_size_(send_queue_maximum_size) {
 				do_accept();
 				check_thread_ = std::make_shared<std::thread>([this] { clean(); });
 				pub_sub_thread_ = std::make_shared<std::thread>([this] { clean_sub_pub(); });
@@ -92,9 +93,32 @@ namespace rest_rpc {
 				return token_list_;
 			}
 
+            std::map<int64_t, size_t> get_send_queue_size(std::string key, std::string token = "")
+			{
+				std::map<int64_t, size_t> send_queue_map;
+				decltype(sub_map_.equal_range(key)) range;
+				{
+					if (sub_map_.empty())
+						return send_queue_map;
+
+					range = sub_map_.equal_range(key + token);
+				}
+				for (auto it = range.first; it != range.second; ++it) {
+					auto conn = it->second.lock();
+					if (conn == nullptr || conn->has_closed()) {
+						continue;
+					}
+
+					auto conn_id = conn->conn_id();
+					auto queue_size = conn->send_queue_size();
+					send_queue_map.emplace(conn_id, queue_size);
+				}
+				return send_queue_map;
+			}
+
 		private:
 			void do_accept() {
-				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_));
+				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_, send_queue_maximum_size_));
 				conn_->set_callback([this](std::string key, std::string token, std::weak_ptr<connection> conn) {
 					std::unique_lock<std::mutex> lock(sub_mtx_);
 					sub_map_.emplace(std::move(key) + token, conn);
@@ -218,6 +242,7 @@ namespace rest_rpc {
 
 			std::shared_ptr<std::thread> pub_sub_thread_;
 			bool stop_check_pub_sub_ = false;
+			std::size_t send_queue_maximum_size_;
 
             ssl_configure ssl_conf_;
 		};
