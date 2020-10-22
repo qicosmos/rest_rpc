@@ -6,8 +6,8 @@ using namespace rpc_service;
 #include "qps.h"
 
 struct dummy{
-	int add(rpc_conn conn, int a, int b) { 
-		return a + b; 
+	int add(rpc_conn conn, int a, int b) {
+		return a + b;
 	}
 };
 
