@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.1)
 project(example)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11")
+set(ASIO_STANDALONE 1)
 
 SET(ENABLE_SSL OFF)
 
@@ -10,12 +11,17 @@ if (ENABLE_SSL)
     message(STATUS "Use SSL")
 endif()
 
-find_package(Boost COMPONENTS system filesystem REQUIRED)
+find_package(JNI REQUIRED)
+#find_package(Boost COMPONENTS system filesystem REQUIRED)
 include_directories(
-        "/usr/local/include"
-        "../../include"
-        "../../third/msgpack/include"
-)
+        #        "/usr/local/include"
+        "../include"
+        "../jni"
+        ${JNI_INCLUDE_DIRS}
+        #        "/usr/local/opt/openjdk/include/"
+        "/Users/qingwang/workspace/opensource/rest_rpc/third/msgpack/include")
+INCLUDE_DIRECTORIES(SYSTEM "/Users/qingwang/workspace/opensource/dousi/build/external/boost/src/boost_ep")
+INCLUDE_DIRECTORIES(SYSTEM "/Users/qingwang/workspace/opensource/rest_rpc/third/msgpack/include")
 
 add_executable(basic_server server/main.cpp)
 add_executable(basic_client client/main.cpp)
