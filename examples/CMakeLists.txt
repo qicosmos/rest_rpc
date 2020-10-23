@@ -11,11 +11,12 @@ if (ENABLE_SSL)
 endif()
 
 find_package(Boost COMPONENTS system filesystem REQUIRED)
+find_package(JNI REQUIRED)
+
 include_directories(
         "/usr/local/include"
         "../../include"
-        "../../third/msgpack/include"
-)
+        "../../third/msgpack/include")
 
 add_executable(basic_server server/main.cpp)
 add_executable(basic_client client/main.cpp)

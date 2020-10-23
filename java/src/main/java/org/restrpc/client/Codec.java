@@ -1,11 +1,14 @@
 package org.restrpc.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.msgpack.core.MessageBufferPacker;
 import org.msgpack.core.MessagePack;
 import org.msgpack.core.MessageUnpacker;
-
-import java.awt.print.PrinterGraphics;
+import org.msgpack.jackson.dataformat.JsonArrayFormat;
+import org.msgpack.jackson.dataformat.MessagePackFactory;
 import java.io.IOException;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
 
 public class Codec {
 
@@ -39,13 +42,15 @@ public class Codec {
                     messagePacker.packString((String) arg);
                     break;
                 default:
-                    throw new RuntimeException("Unknown type: " + argTypeName);
+                    ObjectMapper objectMapper = new ObjectMapper(new MessagePackFactory());
+                    objectMapper.setAnnotationIntrospector(new JsonArrayFormat());
+                    messagePacker.writePayload(objectMapper.writeValueAsBytes(arg));
             }
         }
         return messagePacker.toByteArray();
     }
 
-    public Object decodeReturnValue(Class returnClz, byte[] encodedBytes) throws IOException {
+    public Object decodeReturnValue(Class<?> returnClz, byte[] encodedBytes) throws IOException {
         if (returnClz == null) {
             throw new RuntimeException("Internal bug.");
         }
@@ -66,7 +71,12 @@ public class Codec {
             return messageUnpacker.unpackLong();
         } else if (String.class.equals(returnClz)) {
             return messageUnpacker.unpackString();
+        } else {
+            final int remainder = (int) (encodedBytes.length - messageUnpacker.getTotalReadBytes());
+            byte[] payload = messageUnpacker.readPayload(remainder);
+            ObjectMapper objectMapper = new ObjectMapper(new MessagePackFactory());
+            objectMapper.setAnnotationIntrospector(new JsonArrayFormat());
+            return objectMapper.readValue(payload, returnClz);
         }
-        throw new RuntimeException("Unknown type: " + returnClz);
     }
 }
