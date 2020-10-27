@@ -161,17 +161,15 @@ namespace rest_rpc {
 
 			template<typename T>
 			void publish(std::string key, std::string token, T data) {
-				decltype(sub_map_.equal_range(key)) range;
-
 				{
 					std::unique_lock<std::mutex> lock(sub_mtx_);
 					if (sub_map_.empty())
 						return;
-
-					range = sub_map_.equal_range(key + token);
 				}
 
-				std::shared_ptr<std::string> shared_data = get_shared_data<T>(std::move(data));				
+				std::shared_ptr<std::string> shared_data = get_shared_data<T>(std::move(data));		
+				std::unique_lock<std::mutex> lock(sub_mtx_);
+				auto range = sub_map_.equal_range(key + token);
 				for (auto it = range.first; it != range.second; ++it) {
 					auto conn = it->second.lock();
 					if (conn == nullptr || conn->has_closed()) {
