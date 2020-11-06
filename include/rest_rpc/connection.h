@@ -21,12 +21,13 @@ namespace rest_rpc {
 
 		class connection : public std::enable_shared_from_this<connection>, private asio::noncopyable {
 		public:
-			connection(boost::asio::io_service& io_service, std::size_t timeout_seconds)
+			connection(boost::asio::io_service& io_service, std::size_t timeout_seconds, std::size_t send_queue_maximum_size)
 				: socket_(io_service),
 				body_(INIT_BUF_SIZE),
 				timer_(io_service),
 				timeout_seconds_(timeout_seconds),
-				has_closed_(false) {
+				has_closed_(false),
+				send_queue_maximum_size_(send_queue_maximum_size) {
 			}
 
 			~connection() { 
@@ -52,6 +53,9 @@ namespace rest_rpc {
 			void response(uint64_t req_id, std::string data, request_type req_type = request_type::req_res) {
 				auto len = data.size();
 				assert(len < MAX_BUF_LEN);
+
+                if (write_queue_.size() >= send_queue_maximum_size_)
+					return;
 
 				std::unique_lock<std::mutex> lock(write_mtx_);
 				write_queue_.emplace_back(message_type{ req_id, req_type, std::make_shared<std::string>(std::move(data)) });
@@ -120,6 +124,11 @@ namespace rest_rpc {
                 }
 #endif
             }
+
+            std::size_t send_queue_size() const
+			{
+				return write_queue_.size();
+			}
 
 		private:
 			void read_head() {
@@ -330,7 +339,7 @@ namespace rest_rpc {
             template<typename... Args>
             void print(Args... args) {
 #ifdef _DEBUG
-                std::initializer_list<int>{( std::cout << args << ' ', 0)...};
+                std::initializer_list<int>{(std::cout << args << ' ', 0)...};
                 std::cout << "\n";
 #endif
             }
@@ -362,6 +371,7 @@ namespace rest_rpc {
 			bool has_closed_;
 
 			std::deque<message_type> write_queue_;
+			std::size_t send_queue_maximum_size_;
 			std::function<void(std::string, std::string, std::weak_ptr<connection>)> callback_;
 		};
 	}  // namespace rpc_service
