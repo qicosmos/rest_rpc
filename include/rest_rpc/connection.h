@@ -21,12 +21,13 @@ namespace rest_rpc {
 
 		class connection : public std::enable_shared_from_this<connection>, private asio::noncopyable {
 		public:
-			connection(boost::asio::io_service& io_service, std::size_t timeout_seconds)
+			connection(boost::asio::io_service& io_service, std::size_t timeout_seconds, router& router)
 				: socket_(io_service),
 				body_(INIT_BUF_SIZE),
 				timer_(io_service),
 				timeout_seconds_(timeout_seconds),
-				has_closed_(false) {
+				has_closed_(false),
+				router_(router){
 			}
 
 			~connection() { 
@@ -173,8 +174,7 @@ namespace rest_rpc {
 					if (!ec) {
 						read_head();
 						if (req_type_ == request_type::req_res) {
-							router& _router = router::get();
-							_router.route<connection>(body_.data(), length, this->shared_from_this());
+							router_.route<connection>(body_.data(), length, this->shared_from_this());
 						}
 						else if (req_type_ == request_type::sub_pub) {
 							try {
@@ -363,6 +363,7 @@ namespace rest_rpc {
 
 			std::deque<message_type> write_queue_;
 			std::function<void(std::string, std::string, std::weak_ptr<connection>)> callback_;
+      router& router_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc

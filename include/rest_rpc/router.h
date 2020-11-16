@@ -15,11 +15,6 @@ namespace rest_rpc {
 
 		class router : asio::noncopyable {
 		public:
-			static router& get() {
-				static router instance;
-				return instance;
-			}
-
 			template<ExecMode model, typename Function>
 			void register_handler(std::string const& name, Function f) {
 				return register_nonmember_func<model>(name, std::move(f));

@@ -65,12 +65,12 @@ namespace rest_rpc {
 
 			template<ExecMode model = ExecMode::sync, typename Function>
 			void register_handler(std::string const& name, const Function& f) {
-				router::get().register_handler<model>(name, f);
+        router_.register_handler<model>(name, f);
 			}
 
 			template<ExecMode model = ExecMode::sync, typename Function, typename Self>
 			void register_handler(std::string const& name, const Function& f, Self* self) {
-				router::get().register_handler<model>(name, f, self);
+        router_.register_handler<model>(name, f, self);
 			}
 
 			void set_conn_timeout_callback(std::function<void(int64_t)> callback) {
@@ -94,7 +94,7 @@ namespace rest_rpc {
 
 		private:
 			void do_accept() {
-				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_));
+				conn_.reset(new connection(io_service_pool_.get_io_service(), timeout_seconds_, router_));
 				conn_->set_callback([this](std::string key, std::string token, std::weak_ptr<connection> conn) {
 					std::unique_lock<std::mutex> lock(sub_mtx_);
 					sub_map_.emplace(std::move(key) + token, conn);
@@ -217,7 +217,8 @@ namespace rest_rpc {
 			std::shared_ptr<std::thread> pub_sub_thread_;
 			bool stop_check_pub_sub_ = false;
 
-            ssl_configure ssl_conf_;
+      ssl_configure ssl_conf_;
+      router router_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc
