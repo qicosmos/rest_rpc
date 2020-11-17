@@ -579,7 +579,7 @@ namespace rest_rpc {
                 // For Java client.
                 // TODO(qwang): Call java callback.
                 // handle error.
-                on_result_received_callback_(req_id, std::string(data.data(),data.size()));
+                on_result_received_callback_(req_id, std::string(data.data(), data.size()));
 		    } else {
                 // For CPP client.
                 temp_req_id_ = req_id;
