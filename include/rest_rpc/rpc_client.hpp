@@ -103,7 +103,9 @@ namespace rest_rpc {
 		}
 
 		void run(){
-            thd_->join();
+		    if (thd_ != nullptr && thd_->joinable()) {
+                thd_->join();
+            }
 		}
 
 		void set_connect_timeout(size_t milliseconds) {
@@ -329,7 +331,9 @@ namespace rest_rpc {
 		void stop() {
 			if (thd_ != nullptr) {
 				ios_.stop();
-				thd_->join();
+				if (thd_->joinable()) {
+                    thd_->join();
+                }
 				thd_ = nullptr;
 			}
 		}
