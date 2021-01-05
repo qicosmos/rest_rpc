@@ -1,4 +1,6 @@
 # rest_rpc
+[![Build Status](https://travis-ci.org/qicosmos/rest_rpc.svg?branch=master)](https://travis-ci.org/qicosmos/rest_rpc)
+
 c++11, high performance, cross platform, easy to use rpc framework.
 
 It's so easy to love RPC.
