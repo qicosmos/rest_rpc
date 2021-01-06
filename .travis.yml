@@ -1,0 +1,27 @@
+language: cpp
+dist: trusty
+os: linux
+compiler:
+  - gcc
+
+jobs:
+  include:
+    - env: COMPILER=g++-8 BUILD=Release STANDARD=17
+      compiler: gcc
+      addons:
+        apt:
+          update: true
+          sources:
+            - sourceline: 'ppa:mhier/libboost-latest'
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-8
+            - boost1.67
+            - cmake
+
+script:
+  - cd examples
+  - mkdir build
+  - cd build
+  - cmake ..
+  - make
