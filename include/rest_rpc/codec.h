@@ -35,7 +35,7 @@ namespace rpc_service {
   template<typename T>
   T unpack(char const* data, size_t length) {
     try {
-      msgpack::unpack(&msg_, data, length);
+      msgpack::unpack(msg_, data, length);
       return msg_.get().as<T>();
     } catch (...) { throw std::invalid_argument("unpack failed: Args not match!"); }
   }
