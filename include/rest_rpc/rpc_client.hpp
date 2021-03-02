@@ -51,7 +51,7 @@ const constexpr auto FUTURE = CallModel::future;
 
 const constexpr size_t DEFAULT_TIMEOUT = 5000; // milliseconds
 
-class rpc_client : private asio::noncopyable {
+class rpc_client : private boost::asio::noncopyable {
 public:
   rpc_client()
       : socket_(ios_), work_(ios_), deadline_(ios_), body_(INIT_BUF_SIZE) {
@@ -518,7 +518,7 @@ private:
               // LOG(INFO) << "invalid body len";
               close();
               error_callback(
-                  asio::error::make_error_code(asio::error::message_size));
+                  boost::asio::error::make_error_code(boost::asio::error::message_size));
               return;
             }
           } else {
@@ -536,7 +536,7 @@ private:
       if (!socket_.is_open()) {
         // LOG(INFO) << "socket already closed";
         call_back(req_id,
-                  asio::error::make_error_code(asio::error::connection_aborted),
+            boost::asio::error::make_error_code(boost::asio::error::connection_aborted),
                   {});
         return;
       }
@@ -550,7 +550,7 @@ private:
         } else {
           close();
           error_callback(
-              asio::error::make_error_code(asio::error::invalid_argument));
+              boost::asio::error::make_error_code(boost::asio::error::invalid_argument));
           return;
         }
 
@@ -603,7 +603,7 @@ private:
           cl->cancel();
           cl->callback(ec, data);
         } else {
-          cl->callback(asio::error::make_error_code(asio::error::timed_out),
+          cl->callback(boost::asio::error::make_error_code(boost::asio::error::timed_out),
                        {});
         }
 
@@ -644,7 +644,7 @@ private:
       it->second(data);
     } catch (const std::exception & /*ex*/) {
       error_callback(
-          asio::error::make_error_code(asio::error::invalid_argument));
+          boost::asio::error::make_error_code(boost::asio::error::invalid_argument));
     }
   }
 
@@ -673,10 +673,10 @@ private:
     }
   }
 
-  class call_t : asio::noncopyable,
+  class call_t : boost::asio::noncopyable,
                  public std::enable_shared_from_this<call_t> {
   public:
-    call_t(asio::io_service &ios,
+    call_t(boost::asio::io_service &ios,
            std::function<void(boost::system::error_code, string_view)> cb,
            size_t timeout)
         : timer_(ios), cb_(std::move(cb)), timeout_(timeout) {}
@@ -820,7 +820,7 @@ private:
   }
 
   boost::asio::io_service ios_;
-  asio::ip::tcp::socket socket_;
+  boost::asio::ip::tcp::socket socket_;
 #ifdef CINATRA_ENABLE_SSL
   std::unique_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket &>>
       ssl_stream_;
@@ -838,7 +838,7 @@ private:
   std::condition_variable conn_cond_;
   bool has_wait_ = false;
 
-  asio::steady_timer deadline_;
+  boost::asio::steady_timer deadline_;
 
   struct client_message_type {
     std::uint64_t req_id;

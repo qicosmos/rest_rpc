@@ -19,7 +19,7 @@ namespace rest_rpc {
             std::string key_file;
         };
 
-		class connection : public std::enable_shared_from_this<connection>, private asio::noncopyable {
+		class connection : public std::enable_shared_from_this<connection>, private boost::asio::noncopyable {
 		public:
 			connection(boost::asio::io_service& io_service, std::size_t timeout_seconds, router& router)
 				: socket_(io_service),
@@ -356,7 +356,7 @@ namespace rest_rpc {
 			uint32_t write_size_ = 0;
 			std::mutex write_mtx_;
 
-			asio::steady_timer timer_;
+			boost::asio::steady_timer timer_;
 			std::size_t timeout_seconds_;
 			int64_t conn_id_ = 0;
 			bool has_closed_;
