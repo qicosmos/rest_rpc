@@ -9,6 +9,7 @@
 #include "const_vars.h"
 #include "router.h"
 #include "cplusplus_14.h"
+#include "nonstd_any.hpp"
 
 using boost::asio::ip::tcp;
 
@@ -72,6 +73,16 @@ namespace rest_rpc {
 			void set_conn_id(int64_t id) { conn_id_ = id; }
 
 			int64_t conn_id() const { return conn_id_; }
+
+			template<typename T>
+			void set_user_data(const T &data) {
+				user_data_ = data;
+			}
+
+			template<typename T>
+			T get_user_data() {
+				return nonstd::any_cast<T>(user_data_);
+			}
 
 			const std::vector<char>& body() const {
 				return body_;
@@ -364,6 +375,7 @@ namespace rest_rpc {
 			std::deque<message_type> write_queue_;
 			std::function<void(std::string, std::string, std::weak_ptr<connection>)> callback_;
       router& router_;
+			nonstd::any user_data_;
 		};
 	}  // namespace rpc_service
 }  // namespace rest_rpc

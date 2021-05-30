@@ -76,8 +76,8 @@
     <IncludePath>..\..\include;..\..\third\msgpack\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\..\include;..\..\third\msgpack\include;D:\boost_1_73_0;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\boost_1_73_0\lib64-msvc-14.2;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\include;..\..\thirdparty\msgpack-c\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>..\..\include;..\..\third\msgpack\include;$(IncludePath)</IncludePath>
