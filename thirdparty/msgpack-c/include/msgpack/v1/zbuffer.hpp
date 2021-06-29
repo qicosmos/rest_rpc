@@ -15,8 +15,6 @@
 #include <stdexcept>
 #include <zlib.h>
 
-#include <boost/assert.hpp>
-
 namespace msgpack {
 
 /// @cond
@@ -48,11 +46,8 @@ public:
 public:
     void write(const char* buf, size_t len)
     {
-        BOOST_ASSERT(buf || len == 0);
-        if (!buf) return;
-
         m_stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(buf));
-        m_stream.avail_in = static_cast<uInt>(len);
+        m_stream.avail_in = len;
 
         while(m_stream.avail_in > 0) {
             if(m_stream.avail_out < MSGPACK_ZBUFFER_RESERVE_SIZE) {
@@ -74,7 +69,6 @@ public:
             case Z_STREAM_END:
                 return m_data;
             case Z_OK:
-            case Z_BUF_ERROR:
                 if(!expand()) {
                     throw std::bad_alloc();
                 }
@@ -97,7 +91,7 @@ public:
 
     size_t size() const
     {
-        return static_cast<size_t>(reinterpret_cast<char*>(m_stream.next_out) - m_data);
+        return reinterpret_cast<char*>(m_stream.next_out) - m_data;
     }
 
     void reset()
@@ -110,7 +104,7 @@ public:
 
     void reset_buffer()
     {
-        m_stream.avail_out += static_cast<uInt>(reinterpret_cast<char*>(m_stream.next_out) - m_data);
+        m_stream.avail_out += reinterpret_cast<char*>(m_stream.next_out) - m_data;
         m_stream.next_out = reinterpret_cast<Bytef*>(m_data);
     }
 
@@ -126,7 +120,7 @@ public:
 private:
     bool expand()
     {
-        size_t used = static_cast<size_t>(reinterpret_cast<char*>(m_stream.next_out) - m_data);
+        size_t used = reinterpret_cast<char*>(m_stream.next_out) - m_data;
         size_t csize = used + m_stream.avail_out;
         size_t nsize = (csize == 0) ? m_init_size : csize * 2;
 
@@ -137,7 +131,7 @@ private:
 
         m_data = tmp;
         m_stream.next_out  = reinterpret_cast<Bytef*>(tmp + used);
-        m_stream.avail_out = static_cast<uInt>(nsize - used);
+        m_stream.avail_out = nsize - used;
 
         return true;
     }

@@ -15,8 +15,6 @@
 #include <stdexcept>
 #include <cstring>
 
-#include <boost/assert.hpp>
-
 namespace msgpack {
 
 /// @cond
@@ -70,10 +68,6 @@ public:
 
     void write(const char* buf, size_t len)
     {
-        BOOST_ASSERT(buf || len == 0);
-
-        if (!buf) return;
-
         if(m_alloc - m_size < len) {
             expand_buffer(len);
         }

@@ -22,7 +22,6 @@
 #if __GNUC__ >= 4
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-#pragma GCC diagnostic ignored "-Wconversion"
 #endif // __GNUC__ >= 4
 
 #include <boost/config/warning_disable.hpp>
@@ -203,7 +202,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                std::int8_t val = static_cast<std::int8_t>(_attr(ctx));
+                std::int8_t val = _attr(ctx);
                 app_specific.vis.visit_negative_integer(val);
             }
         )
@@ -254,7 +253,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                std::int8_t val = static_cast<std::int8_t>(_attr(ctx));
+                std::int8_t val = _attr(ctx);
                 app_specific.vis.visit_negative_integer(val);
             }
         )
@@ -265,7 +264,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                std::int16_t val = static_cast<std::int16_t>(_attr(ctx));
+                std::int16_t val = _attr(ctx);
                 app_specific.vis.visit_negative_integer(val);
             }
         )
@@ -276,7 +275,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                std::int32_t val = static_cast<std::int32_t>(_attr(ctx));
+                std::int32_t val = _attr(ctx);
                 app_specific.vis.visit_negative_integer(val);
             }
         )
@@ -287,7 +286,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                std::int64_t val = static_cast<std::int64_t>(_attr(ctx));
+                std::int64_t val = _attr(ctx);
                 app_specific.vis.visit_negative_integer(val);
             }
         )
@@ -340,7 +339,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& str = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(str.begin(), str.end()));
+                std::size_t size = std::distance(str.begin(), str.end());
                 app_specific.vis.visit_str(size ? &str.front() : nullptr, size);
             }
         )
@@ -364,7 +363,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& str = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(str.begin(), str.end()));
+                std::size_t size = std::distance(str.begin(), str.end());
                 app_specific.vis.visit_str(size ? &str.front() : nullptr, size);
             }
         )
@@ -388,7 +387,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& str = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(str.begin(), str.end()));
+                std::size_t size = std::distance(str.begin(), str.end());
                 app_specific.vis.visit_str(size ? &str.front() : nullptr, size);
             }
         )
@@ -412,7 +411,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& str = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(str.begin(), str.end()));
+                std::size_t size = std::distance(str.begin(), str.end());
                 app_specific.vis.visit_str(size ? &str.front() : nullptr, size);
             }
         )
@@ -436,7 +435,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& bin = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(bin.begin(), bin.end()));
+                std::size_t size = std::distance(bin.begin(), bin.end());
                 app_specific.vis.visit_bin(size ? &bin.front() : nullptr, size);
             }
         )
@@ -460,7 +459,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& bin = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(bin.begin(), bin.end()));
+                std::size_t size = std::distance(bin.begin(), bin.end());
                 app_specific.vis.visit_bin(size ? &bin.front() : nullptr, size);
             }
         )
@@ -484,7 +483,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& bin = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(bin.begin(), bin.end()));
+                std::size_t size = std::distance(bin.begin(), bin.end());
                 app_specific.vis.visit_bin(size ? &bin.front() : nullptr, size);
             }
         )
@@ -495,7 +494,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                uint32_t size = _attr(ctx) & 0b00001111;
+                std::size_t size = _attr(ctx) & 0b00001111;
                 app_specific.index_sizes.emplace_back(size, index_size::type_t::array);
                 app_specific.vis.start_array(size);
             }
@@ -509,7 +508,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                uint32_t size = _attr(ctx);
+                std::size_t size = _attr(ctx);
                 app_specific.index_sizes.emplace_back(size, index_size::type_t::array);
                 app_specific.vis.start_array(size);
             }
@@ -523,7 +522,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                uint32_t size = _attr(ctx);
+                std::size_t size = _attr(ctx);
                 app_specific.index_sizes.emplace_back(size, index_size::type_t::array);
                 app_specific.vis.start_array(size);
             }
@@ -537,7 +536,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                uint32_t size = _attr(ctx) & 0b00001111;
+                std::size_t size = _attr(ctx) & 0b00001111;
                 app_specific.index_sizes.emplace_back(size, index_size::type_t::map);
                 app_specific.vis.start_map(size);
             }
@@ -551,7 +550,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                uint32_t size = _attr(ctx);
+                std::size_t size = _attr(ctx);
                 app_specific.index_sizes.emplace_back(size, index_size::type_t::map);
                 app_specific.vis.start_map(size);
             }
@@ -565,7 +564,7 @@ const auto mp_object_def =
         (
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
-                uint32_t size = _attr(ctx);
+                std::size_t size = _attr(ctx);
                 app_specific.index_sizes.emplace_back(size, index_size::type_t::map);
                 app_specific.vis.start_map(size);
             }
@@ -592,7 +591,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -616,7 +615,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -640,7 +639,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -664,7 +663,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -688,7 +687,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -712,7 +711,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -736,7 +735,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -760,7 +759,7 @@ const auto mp_object_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 auto const& ext = _attr(ctx);
-                auto size = static_cast<uint32_t>(std::distance(ext.begin(), ext.end()));
+                std::size_t size = std::distance(ext.begin(), ext.end());
                 app_specific.vis.visit_ext(size ? &ext.front() : nullptr, size);
             }
         )
@@ -772,7 +771,6 @@ const auto array_item_def =
             [](auto& ctx){
                 auto& app_specific = x3::get<tag_app_specific>(ctx).get();
                 app_specific.vis.start_array_item();
-
                 _pass(ctx) = true;
             }
         )

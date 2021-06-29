@@ -40,7 +40,7 @@ struct object_bin {
 };
 
 struct object_ext {
-    int8_t type() const { return static_cast<int8_t>(ptr[0]); }
+    int8_t type() const { return ptr[0]; }
     const char* data() const { return &ptr[1]; }
     uint32_t size;
     const char* ptr;
@@ -179,6 +179,9 @@ struct object {
     /// Default constructor. The object is set to nil.
     object();
 
+    /// Copy constructor. Object is shallow copied.
+    object(const msgpack_object& o);
+
     /// Construct object from T
     /**
      * If `v` is the type that is corresponding to MessegePack format str, bin, ext, array, or map,
@@ -218,6 +221,8 @@ struct object {
 
     template <typename T>
     object& operator=(const T& v);
+
+    operator msgpack_object() const;
 
     struct with_zone;
 

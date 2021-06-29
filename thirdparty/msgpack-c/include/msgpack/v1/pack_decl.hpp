@@ -12,7 +12,7 @@
 
 #include "msgpack/versioning.hpp"
 #include "msgpack/cpp_config.hpp"
-#include "msgpack/sysdep.hpp"
+#include "msgpack/sysdep.h"
 
 namespace msgpack {
 

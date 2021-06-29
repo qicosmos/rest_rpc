@@ -33,9 +33,9 @@ inline msgpack::object_handle unpack(
         data, len, off, *z, obj, referenced, f, user_data, limit);
 
     switch(ret) {
-    case PARSE_SUCCESS:
+    case msgpack::PARSE_SUCCESS:
         return msgpack::object_handle(obj, msgpack::move(z));
-    case PARSE_EXTRA_BYTES:
+    case msgpack::PARSE_EXTRA_BYTES:
         return msgpack::object_handle(obj, msgpack::move(z));
     default:
         break;
@@ -84,11 +84,11 @@ inline void unpack(
         data, len, off, *z, obj, referenced, f, user_data, limit);
 
     switch(ret) {
-    case PARSE_SUCCESS:
+    case msgpack::PARSE_SUCCESS:
         result.set(obj);
         result.zone() = msgpack::move(z);
         return;
-    case PARSE_EXTRA_BYTES:
+    case msgpack::PARSE_EXTRA_BYTES:
         result.set(obj);
         result.zone() = msgpack::move(z);
         return;
@@ -141,9 +141,9 @@ inline msgpack::object unpack(
         data, len, off, z, obj, referenced, f, user_data, limit);
 
     switch(ret) {
-    case PARSE_SUCCESS:
+    case msgpack::PARSE_SUCCESS:
         return obj;
-    case PARSE_EXTRA_BYTES:
+    case msgpack::PARSE_EXTRA_BYTES:
         return obj;
     default:
         break;

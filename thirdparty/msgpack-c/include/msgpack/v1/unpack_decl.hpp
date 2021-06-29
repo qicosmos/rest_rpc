@@ -11,11 +11,11 @@
 #define MSGPACK_V1_UNPACK_DECL_HPP
 
 #include "msgpack/versioning.hpp"
-#include "msgpack/unpack_define.hpp"
+#include "msgpack/unpack_define.h"
 #include "msgpack/object.hpp"
 #include "msgpack/zone.hpp"
 #include "msgpack/cpp_config.hpp"
-#include "msgpack/sysdep.hpp"
+#include "msgpack/sysdep.h"
 #include "msgpack/parse_return.hpp"
 
 #include <memory>
