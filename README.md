@@ -134,6 +134,36 @@ client.async_call("echo", [](boost::system::error_code ec, string_view data){
 });
 ```
 
+## async_call接口说明
+有两个重载的async_call接口，一个是返回future的接口，一个是带超时的异步接口。
+
+返回future的async_call接口：
+```
+std::future<std::string> future = client.async_call<CallModel::future>("echo", "purecpp");
+```
+
+带超时的异步回调接口：
+```
+async_call<timeout_ms>("some_rpc_service_name", callback, service_args...);
+```
+
+如果不显式设置超时时间的话，则会用默认的5s超时.
+```
+async_call("some_rpc_service_name", callback, args...);
+```
+
+```
+client.async_call("echo", [](boost::system::error_code ec, string_view data) {
+    if (ec) {                
+        std::cout << ec.message() <<" "<< data << "\n";
+        return;
+    }
+
+    auto result = as<std::string>(data);
+    std::cout << result << " async\n";
+}, "purecpp");
+```
+
 客户端异步future接口
 
 ```
