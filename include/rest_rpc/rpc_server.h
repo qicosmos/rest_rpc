@@ -13,7 +13,7 @@ using boost::asio::ip::tcp;
 namespace rest_rpc {
 	namespace rpc_service {        
 		using rpc_conn = std::weak_ptr<connection>;
-		class rpc_server : private asio::noncopyable {
+		class rpc_server : private boost::asio::noncopyable {
 		public:
 			rpc_server(unsigned short port, size_t size, size_t timeout_seconds = 15, size_t check_seconds = 10)
 				: io_service_pool_(size),
