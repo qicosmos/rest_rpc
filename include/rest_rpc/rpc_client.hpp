@@ -1,21 +1,21 @@
 #pragma once
-#include <iostream>
-#include <string>
-#include <deque>
-#include <future>
-#include <utility>
-#include "use_asio.hpp"
 #include "client_util.hpp"
 #include "const_vars.h"
 #include "meta_util.hpp"
+#include "use_asio.hpp"
+#include <deque>
 #include <functional>
+#include <future>
+#include <iostream>
+#include <string>
+#include <utility>
 
 using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
 
 /**
-     * The type to indicate the language of the client.
+ * The type to indicate the language of the client.
  */
 enum class client_language_t {
   CPP = 0,
@@ -192,7 +192,7 @@ public:
   // sync call
 #if __cplusplus > 201402L
   template <size_t TIMEOUT, typename T = void, typename... Args>
-  auto call(const std::string &rpc_name, Args &&... args) {
+  auto call(const std::string &rpc_name, Args &&...args) {
     std::future<req_result> future =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
     auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
@@ -209,13 +209,13 @@ public:
   }
 
   template <typename T = void, typename... Args>
-  auto call(const std::string &rpc_name, Args &&... args) {
+  auto call(const std::string &rpc_name, Args &&...args) {
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 #else
   template <size_t TIMEOUT, typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
-  call(const std::string &rpc_name, Args &&... args) {
+  call(const std::string &rpc_name, Args &&...args) {
     std::future<req_result> future =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
     auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
@@ -229,13 +229,13 @@ public:
 
   template <typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
-  call(const std::string &rpc_name, Args &&... args) {
+  call(const std::string &rpc_name, Args &&...args) {
     call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 
   template <size_t TIMEOUT, typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
-  call(const std::string &rpc_name, Args &&... args) {
+  call(const std::string &rpc_name, Args &&...args) {
     std::future<req_result> future =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
     auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
@@ -249,14 +249,14 @@ public:
 
   template <typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
-  call(const std::string &rpc_name, Args &&... args) {
+  call(const std::string &rpc_name, Args &&...args) {
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 #endif
 
   template <CallModel model, typename... Args>
   std::future<req_result> async_call(const std::string &rpc_name,
-                                     Args &&... args) {
+                                     Args &&...args) {
     auto p = std::make_shared<std::promise<req_result>>();
     std::future<req_result> future = p->get_future();
 
@@ -275,9 +275,9 @@ public:
   }
 
   /**
-	     * This internal_async_call is used for other language client.
-	     * We use callback to handle the result is received, so we should not
-	     * add the future to the future map.
+   * This internal_async_call is used for other language client.
+   * We use callback to handle the result is received, so we should not
+   * add the future to the future map.
    */
   long internal_async_call(const std::string &encoded_func_name_and_args) {
     auto p = std::make_shared<std::promise<req_result>>();
@@ -298,7 +298,7 @@ public:
   void
   async_call(const std::string &rpc_name,
              std::function<void(boost::system::error_code, string_view)> cb,
-             Args &&... args) {
+             Args &&...args) {
     if (!has_connected_) {
       if (cb)
         cb(boost::asio::error::make_error_code(
@@ -503,7 +503,8 @@ private:
           if (!ec) {
             // const uint32_t body_len = *((uint32_t*)(head_));
             // auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
-            // auto req_type = *(request_type*)(head_ + sizeof(int32_t) + sizeof(int64_t));
+            // auto req_type = *(request_type*)(head_ + sizeof(int32_t) +
+            // sizeof(int64_t));
             rpc_header *header = (rpc_header *)(head_);
             const uint32_t body_len = header->body_len;
             if (body_len > 0 && body_len < MAX_BUF_LEN) {
@@ -776,7 +777,8 @@ private:
                                                                   ssl_context);
     // verify peer TODO
 #else
-    assert(is_ssl()); // please add definition CINATRA_ENABLE_SSL, not allowed coming in this branch
+    assert(is_ssl()); // please add definition CINATRA_ENABLE_SSL, not allowed
+                      // coming in this branch
 #endif
   }
 
@@ -869,4 +871,4 @@ private:
   client_language_t client_language_ = client_language_t::CPP;
   std::function<void(long, const std::string &)> on_result_received_callback_;
 };
-}
+} // namespace rest_rpc

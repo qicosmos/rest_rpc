@@ -1,24 +1,23 @@
 #pragma once
 
 #if defined(ASIO_STANDALONE)
-//MSVC : define environment path 'ASIO_STANDALONE_INCLUDE', e.g. 'E:\bdlibs\asio-1.10.6\include'
+// MSVC : define environment path 'ASIO_STANDALONE_INCLUDE', e.g.
+// 'E:\bdlibs\asio-1.10.6\include'
 
 #include <asio.hpp>
 #ifdef CINATRA_ENABLE_SSL
 #include <asio/ssl.hpp>
 #endif
-#include <asio/steady_timer.hpp>
 #include <asio/detail/noncopyable.hpp>
-namespace boost
-{
-	namespace asio
-	{
-		using namespace ::asio;
-	}
-	namespace system {
-		using ::std::error_code;
-	}
+#include <asio/steady_timer.hpp>
+namespace boost {
+namespace asio {
+using namespace ::asio;
 }
+namespace system {
+using ::std::error_code;
+}
+} // namespace boost
 #else
 #include <boost/asio.hpp>
 #ifdef CINATRA_ENABLE_SSL
@@ -47,7 +46,7 @@ using string_view = boost::string_view;
 
 #ifdef CINATRA_ENABLE_SSL
 #if __cplusplus > 201402L
-#if defined (__GNUC__)
+#if defined(__GNUC__)
 #if __GNUC__ < 8
 #include <experimental/filesystem>
 namespace rpcfs = std::experimental::filesystem;
