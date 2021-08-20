@@ -140,7 +140,11 @@ int main() {
                                     std::string token, std::string val) {
                             server.publish(std::move(key), std::move(val));
                           });
-
+  server.set_network_err_callback(
+      [](std::shared_ptr<connection> conn, std::string reason) {
+        std::cout << "remote client address: " << conn->remote_address()
+                  << " networking error, reason: " << reason << "\n";
+      });
   std::thread thd([&server] {
     person p{1, "tom", 20};
     while (true) {

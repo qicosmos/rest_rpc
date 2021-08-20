@@ -79,6 +79,12 @@ public:
     conn_timeout_callback_ = std::move(callback);
   }
 
+  void set_network_err_callback(
+      std::function<void(std::shared_ptr<connection>, std::string /*reason*/)>
+          on_net_err) {
+    on_net_err_callback_ = std::move(on_net_err);
+  }
+
   template <typename T> void publish(const std::string &key, T data) {
     publish(key, "", std::move(data));
   }
@@ -105,6 +111,9 @@ private:
         token_list_.emplace(std::move(token));
       }
     });
+    if (on_net_err_callback_) {
+      conn_->on_network_error(on_net_err_callback_);
+    }
 
     acceptor_.async_accept(conn_->socket(),
                            [this](boost::system::error_code ec) {
@@ -214,6 +223,8 @@ private:
   std::condition_variable cv_;
 
   std::function<void(int64_t)> conn_timeout_callback_;
+  std::function<void(std::shared_ptr<connection>, std::string)>
+      on_net_err_callback_ = nullptr;
   std::unordered_multimap<std::string, std::weak_ptr<connection>> sub_map_;
   std::set<std::string> token_list_;
   std::mutex sub_mtx_;

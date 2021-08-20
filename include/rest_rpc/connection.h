@@ -96,6 +96,11 @@ public:
     callback_ = std::move(callback);
   }
 
+  void on_network_error(std::function<void(std::shared_ptr<connection>,
+                                           std::string)> &on_net_err) {
+    on_net_err_ = &on_net_err;
+  }
+
   void init_ssl_context(const ssl_configure &ssl_conf) {
 #ifdef CINATRA_ENABLE_SSL
     unsigned long ssl_options = boost::asio::ssl::context::default_workarounds |
@@ -136,7 +141,9 @@ private:
     async_read_head(
         [this, self](boost::system::error_code ec, std::size_t length) {
           if (!socket_.is_open()) {
-            // LOG(INFO) << "socket already closed";
+            if (on_net_err_) {
+              (*on_net_err_)(self, "socket already closed");
+            }
             return;
           }
 
@@ -160,10 +167,16 @@ private:
               read_head();
             } else {
               print("invalid body len");
+              if (on_net_err_) {
+                (*on_net_err_)(self, "invalid body len");
+              }
               close();
             }
           } else {
             print(ec);
+            if (on_net_err_) {
+              (*on_net_err_)(self, ec.message());
+            }
             close();
           }
         });
@@ -176,7 +189,9 @@ private:
           cancel_timer();
 
           if (!socket_.is_open()) {
-            // LOG(INFO) << "socket already closed";
+            if (on_net_err_) {
+              (*on_net_err_)(self, "socket already closed");
+            }
             return;
           }
 
@@ -194,10 +209,15 @@ private:
                           this->shared_from_this());
               } catch (const std::exception &ex) {
                 print(ex);
+                if (on_net_err_) {
+                  (*on_net_err_)(self, ex.what());
+                }
               }
             }
           } else {
-            // LOG(INFO) << ec.message();
+            if (on_net_err_) {
+              (*on_net_err_)(self, ec.message());
+            }
           }
         });
   }
@@ -221,6 +241,9 @@ private:
   void on_write(boost::system::error_code ec, std::size_t length) {
     if (ec) {
       print(ec);
+      if (on_net_err_) {
+        (*on_net_err_)(shared_from_this(), ec.message());
+      }
       close(false);
       return;
     }
@@ -245,6 +268,9 @@ private:
         [this, self](const boost::system::error_code &error) {
           if (error) {
             print(error);
+            if (on_net_err_) {
+              (*on_net_err_)(self, error.message());
+            }
             close();
             return;
           }
@@ -385,6 +411,8 @@ private:
   std::deque<message_type> write_queue_;
   std::function<void(std::string, std::string, std::weak_ptr<connection>)>
       callback_;
+  std::function<void(std::shared_ptr<connection>, std::string)> *on_net_err_ =
+      nullptr;
   router &router_;
   nonstd::any user_data_;
 };
