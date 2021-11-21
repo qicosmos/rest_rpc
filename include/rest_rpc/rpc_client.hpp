@@ -46,6 +46,20 @@ private:
   std::string data_;
 };
 
+template<typename T>
+struct future_result {
+    uint64_t id;
+    std::future<T> future;
+    template <class Rep, class Per>
+    std::future_status wait_for(const std::chrono::duration<Rep, Per>& rel_time) {
+        return future.wait_for(rel_time);
+    }
+
+    T get() {
+        return future.get();
+    }
+};
+
 enum class CallModel { future, callback };
 const constexpr auto FUTURE = CallModel::future;
 
@@ -216,15 +230,17 @@ public:
   template <size_t TIMEOUT, typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
   call(const std::string &rpc_name, Args &&...args) {
-    std::future<req_result> future =
+    auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
+    auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
       throw std::out_of_range("timeout or deferred");
     }
 
-    future.get().as();
+    future_result.get().as();
+    std::unique_lock<std::mutex> lock(cb_mtx_);
+    future_map_.erase(future_result.id);
   }
 
   template <typename T = void, typename... Args>
@@ -236,15 +252,20 @@ public:
   template <size_t TIMEOUT, typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
   call(const std::string &rpc_name, Args &&...args) {
-    std::future<req_result> future =
+    auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
+    auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
       throw std::out_of_range("timeout or deferred");
     }
 
-    return future.get().as<T>();
+    auto t = future_result.get().as<T>();
+    {
+        std::unique_lock<std::mutex> lock(cb_mtx_);
+        future_map_.erase(future_result.id);
+    }
+    return t;
   }
 
   template <typename T, typename... Args>
@@ -255,7 +276,7 @@ public:
 #endif
 
   template <CallModel model, typename... Args>
-  std::future<req_result> async_call(const std::string &rpc_name,
+  future_result<req_result> async_call(const std::string &rpc_name,
                                      Args &&...args) {
     auto p = std::make_shared<std::promise<req_result>>();
     std::future<req_result> future = p->get_future();
@@ -271,7 +292,7 @@ public:
     msgpack_codec codec;
     auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
     write(fu_id, request_type::req_res, std::move(ret));
-    return future;
+    return future_result<req_result>{ fu_id, std::move(future) };
   }
 
   /**
@@ -617,13 +638,13 @@ private:
           // LOG<<ec.message();
           if (!f) {
             // std::cout << "invalid req_id" << std::endl;
+            f->set_value(req_result{ "" });
             return;
           }
         }
 
         assert(f);
         f->set_value(req_result{data});
-        future_map_.erase(req_id);
       }
     }
   }
