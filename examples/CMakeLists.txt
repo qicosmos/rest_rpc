@@ -4,6 +4,7 @@ project(example)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11")
 
 SET(ENABLE_SSL OFF)
+SET(ENABLE_JAVA OFF)
 
 if (ENABLE_SSL)
     add_definitions(-DCINATRA_ENABLE_SSL)
@@ -11,7 +12,10 @@ if (ENABLE_SSL)
 endif()
 
 find_package(Boost COMPONENTS system filesystem REQUIRED)
-find_package(JNI REQUIRED)
+if (ENABLE_JAVA)
+    find_package(JNI REQUIRED)
+    message(STATUS "Use Java")
+endif()
 
 include_directories(
         "/usr/local/include"
