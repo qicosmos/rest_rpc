@@ -218,7 +218,7 @@ public:
     if constexpr (std::is_void_v<T>) {
       future.get().as();
     } else {
-      return future.get().as<T>();
+      return future.get().template as<T>();
     }
   }
 
@@ -260,7 +260,7 @@ public:
       throw std::out_of_range("timeout or deferred");
     }
 
-    auto t = future_result.get().as<T>();
+    auto t = future_result.get().template as<T>();
     {
         std::unique_lock<std::mutex> lock(cb_mtx_);
         future_map_.erase(future_result.id);
