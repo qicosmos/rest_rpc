@@ -9,7 +9,8 @@ Modern C++开发的RPC库就是这么简单好用！
 
 # rest_rpc简介
 
-rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。
+rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(commit id:f70f65ae54351c209c3a24704624144bfe8e70a3) 
+
 可以快速上手，使用者只需要关注自己的业务逻辑即可。
 
 # 谁在用rest_rpc
@@ -128,7 +129,7 @@ auto result = client.call<std::string>("echo", "hello");
 客户端异步回调接口
 
 ```
-client.async_call("echo", [](boost::system::error_code ec, string_view data){
+client.async_call("echo", [](asio::error_code ec, string_view data){
 	auto str = as<std::string>(data);
 	std::cout << "echo " << str << '\n';
 });
@@ -153,7 +154,7 @@ async_call("some_rpc_service_name", callback, args...);
 ```
 
 ```
-client.async_call("echo", [](boost::system::error_code ec, string_view data) {
+client.async_call("echo", [](asio::error_code ec, string_view data) {
     if (ec) {                
         std::cout << ec.message() <<" "<< data << "\n";
         return;

@@ -14,8 +14,8 @@ public:
       throw std::runtime_error("io_service_pool size is 0");
 
     for (std::size_t i = 0; i < pool_size; ++i) {
-      io_service_ptr io_service(new boost::asio::io_service);
-      work_ptr work(new boost::asio::io_service::work(*io_service));
+      io_service_ptr io_service(new asio::io_context);
+      work_ptr work(new asio::io_context::work(*io_service));
       io_services_.push_back(io_service);
       work_.push_back(work);
     }
@@ -38,8 +38,8 @@ public:
     }
   }
 
-  boost::asio::io_service &get_io_service() {
-    boost::asio::io_service &io_service = *io_services_[next_io_service_];
+  asio::io_context &get_io_service() {
+    asio::io_context &io_service = *io_services_[next_io_service_];
     ++next_io_service_;
     if (next_io_service_ == io_services_.size())
       next_io_service_ = 0;
@@ -47,8 +47,8 @@ public:
   }
 
 private:
-  typedef std::shared_ptr<boost::asio::io_service> io_service_ptr;
-  typedef std::shared_ptr<boost::asio::io_service::work> work_ptr;
+  typedef std::shared_ptr<asio::io_context> io_service_ptr;
+  typedef std::shared_ptr<asio::io_context::work> work_ptr;
 
   /// The pool of io_services.
   std::vector<io_service_ptr> io_services_;

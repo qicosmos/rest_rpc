@@ -8,7 +8,7 @@
 #include <mutex>
 #include <thread>
 
-using boost::asio::ip::tcp;
+using asio::ip::tcp;
 
 namespace rest_rpc {
 namespace rpc_service {
@@ -115,25 +115,24 @@ private:
       conn_->on_network_error(on_net_err_callback_);
     }
 
-    acceptor_.async_accept(conn_->socket(),
-                           [this](boost::system::error_code ec) {
-                             if (ec) {
-                               // LOG(INFO) << "acceptor error: " <<
-                               // ec.message();
-                             } else {
+    acceptor_.async_accept(conn_->socket(), [this](asio::error_code ec) {
+      if (ec) {
+        // LOG(INFO) << "acceptor error: " <<
+        // ec.message();
+      } else {
 #ifdef CINATRA_ENABLE_SSL
-                               if (!ssl_conf_.cert_file.empty()) {
-                                 conn_->init_ssl_context(ssl_conf_);
-                               }
+        if (!ssl_conf_.cert_file.empty()) {
+          conn_->init_ssl_context(ssl_conf_);
+        }
 #endif
-                               conn_->start();
-                               std::unique_lock<std::mutex> lock(mtx_);
-                               conn_->set_conn_id(conn_id_);
-                               connections_.emplace(conn_id_++, conn_);
-                             }
+        conn_->start();
+        std::unique_lock<std::mutex> lock(mtx_);
+        conn_->set_conn_id(conn_id_);
+        connections_.emplace(conn_id_++, conn_);
+      }
 
-                             do_accept();
-                           });
+      do_accept();
+    });
   }
 
   void clean() {

@@ -11,7 +11,7 @@
 #include <iostream>
 #include <memory>
 
-using boost::asio::ip::tcp;
+using asio::ip::tcp;
 
 namespace rest_rpc {
 namespace rpc_service {
@@ -23,7 +23,7 @@ struct ssl_configure {
 class connection : public std::enable_shared_from_this<connection>,
                    private asio::noncopyable {
 public:
-  connection(boost::asio::io_service &io_service, std::size_t timeout_seconds,
+  connection(asio::io_service &io_service, std::size_t timeout_seconds,
              router &router)
       : socket_(io_service), body_(INIT_BUF_SIZE), timer_(io_service),
         timeout_seconds_(timeout_seconds), has_closed_(false), router_(router) {
@@ -103,31 +103,31 @@ public:
 
   void init_ssl_context(const ssl_configure &ssl_conf) {
 #ifdef CINATRA_ENABLE_SSL
-    unsigned long ssl_options = boost::asio::ssl::context::default_workarounds |
-                                boost::asio::ssl::context::no_sslv2 |
-                                boost::asio::ssl::context::single_dh_use;
+    unsigned long ssl_options = asio::ssl::context::default_workarounds |
+                                asio::ssl::context::no_sslv2 |
+                                asio::ssl::context::single_dh_use;
     try {
-      boost::asio::ssl::context ssl_context(boost::asio::ssl::context::sslv23);
+      asio::ssl::context ssl_context(asio::ssl::context::sslv23);
       ssl_context.set_options(ssl_options);
       ssl_context.set_password_callback(
           [](std::size_t size,
-             boost::asio::ssl::context_base::password_purpose purpose) {
+             asio::ssl::context_base::password_purpose purpose) {
             return "123456";
           });
 
-      boost::system::error_code ec;
+      asio::error_code ec;
       if (rpcfs::exists(ssl_conf.cert_file, ec)) {
         ssl_context.use_certificate_chain_file(ssl_conf.cert_file);
       }
 
       if (rpcfs::exists(ssl_conf.key_file, ec))
         ssl_context.use_private_key_file(ssl_conf.key_file,
-                                         boost::asio::ssl::context::pem);
+                                         asio::ssl::context::pem);
 
       // ssl_context_callback(ssl_context);
-      ssl_stream_ = std::make_unique<
-          boost::asio::ssl::stream<boost::asio::ip::tcp::socket &>>(
-          socket_, ssl_context);
+      ssl_stream_ =
+          std::make_unique<asio::ssl::stream<asio::ip::tcp::socket &>>(
+              socket_, ssl_context);
     } catch (const std::exception &e) {
       print(e);
     }
@@ -138,107 +138,105 @@ private:
   void read_head() {
     reset_timer();
     auto self(this->shared_from_this());
-    async_read_head(
-        [this, self](boost::system::error_code ec, std::size_t length) {
-          if (!socket_.is_open()) {
-            if (on_net_err_) {
-              (*on_net_err_)(self, "socket already closed");
-            }
-            return;
-          }
+    async_read_head([this, self](asio::error_code ec, std::size_t length) {
+      if (!socket_.is_open()) {
+        if (on_net_err_) {
+          (*on_net_err_)(self, "socket already closed");
+        }
+        return;
+      }
 
-          if (!ec) {
-            // const uint32_t body_len = *((int*)(head_));
-            // req_id_ = *((std::uint64_t*)(head_ + sizeof(int32_t)));
-            rpc_header *header = (rpc_header *)(head_);
-            req_id_ = header->req_id;
-            const uint32_t body_len = header->body_len;
-            req_type_ = header->req_type;
-            if (body_len > 0 && body_len < MAX_BUF_LEN) {
-              if (body_.size() < body_len) {
-                body_.resize(body_len);
-              }
-              read_body(body_len);
-              return;
-            }
-
-            if (body_len == 0) { // nobody, just head, maybe as heartbeat.
-              cancel_timer();
-              read_head();
-            } else {
-              print("invalid body len");
-              if (on_net_err_) {
-                (*on_net_err_)(self, "invalid body len");
-              }
-              close();
-            }
-          } else {
-            print(ec);
-            if (on_net_err_) {
-              (*on_net_err_)(self, ec.message());
-            }
-            close();
+      if (!ec) {
+        // const uint32_t body_len = *((int*)(head_));
+        // req_id_ = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+        rpc_header *header = (rpc_header *)(head_);
+        req_id_ = header->req_id;
+        const uint32_t body_len = header->body_len;
+        req_type_ = header->req_type;
+        if (body_len > 0 && body_len < MAX_BUF_LEN) {
+          if (body_.size() < body_len) {
+            body_.resize(body_len);
           }
-        });
+          read_body(body_len);
+          return;
+        }
+
+        if (body_len == 0) { // nobody, just head, maybe as heartbeat.
+          cancel_timer();
+          read_head();
+        } else {
+          print("invalid body len");
+          if (on_net_err_) {
+            (*on_net_err_)(self, "invalid body len");
+          }
+          close();
+        }
+      } else {
+        print(ec);
+        if (on_net_err_) {
+          (*on_net_err_)(self, ec.message());
+        }
+        close();
+      }
+    });
   }
 
   void read_body(std::size_t size) {
     auto self(this->shared_from_this());
-    async_read(
-        size, [this, self](boost::system::error_code ec, std::size_t length) {
-          cancel_timer();
+    async_read(size, [this, self](asio::error_code ec, std::size_t length) {
+      cancel_timer();
 
-          if (!socket_.is_open()) {
-            if (on_net_err_) {
-              (*on_net_err_)(self, "socket already closed");
-            }
-            return;
-          }
+      if (!socket_.is_open()) {
+        if (on_net_err_) {
+          (*on_net_err_)(self, "socket already closed");
+        }
+        return;
+      }
 
-          if (!ec) {
-            read_head();
-            if (req_type_ == request_type::req_res) {
-              router_.route<connection>(body_.data(), length,
-                                        this->shared_from_this());
-            } else if (req_type_ == request_type::sub_pub) {
-              try {
-                msgpack_codec codec;
-                auto p = codec.unpack<std::tuple<std::string, std::string>>(
-                    body_.data(), length);
-                callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)),
-                          this->shared_from_this());
-              } catch (const std::exception &ex) {
-                print(ex);
-                if (on_net_err_) {
-                  (*on_net_err_)(self, ex.what());
-                }
-              }
-            }
-          } else {
+      if (!ec) {
+        read_head();
+        if (req_type_ == request_type::req_res) {
+          router_.route<connection>(body_.data(), length,
+                                    this->shared_from_this());
+        } else if (req_type_ == request_type::sub_pub) {
+          try {
+            msgpack_codec codec;
+            auto p = codec.unpack<std::tuple<std::string, std::string>>(
+                body_.data(), length);
+            callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)),
+                      this->shared_from_this());
+          } catch (const std::exception &ex) {
+            print(ex);
             if (on_net_err_) {
-              (*on_net_err_)(self, ec.message());
+              (*on_net_err_)(self, ex.what());
             }
           }
-        });
+        }
+      } else {
+        if (on_net_err_) {
+          (*on_net_err_)(self, ec.message());
+        }
+      }
+    });
   }
 
   void write() {
     auto &msg = write_queue_.front();
     write_size_ = (uint32_t)msg.content->size();
-    std::array<boost::asio::const_buffer, 4> write_buffers;
-    write_buffers[0] = boost::asio::buffer(&write_size_, sizeof(uint32_t));
-    write_buffers[1] = boost::asio::buffer(&msg.req_id, sizeof(uint64_t));
-    write_buffers[2] = boost::asio::buffer(&msg.req_type, sizeof(request_type));
-    write_buffers[3] = boost::asio::buffer(msg.content->data(), write_size_);
+    std::array<asio::const_buffer, 4> write_buffers;
+    write_buffers[0] = asio::buffer(&write_size_, sizeof(uint32_t));
+    write_buffers[1] = asio::buffer(&msg.req_id, sizeof(uint64_t));
+    write_buffers[2] = asio::buffer(&msg.req_type, sizeof(request_type));
+    write_buffers[3] = asio::buffer(msg.content->data(), write_size_);
 
     auto self = this->shared_from_this();
     async_write(write_buffers,
-                [this, self](boost::system::error_code ec, std::size_t length) {
+                [this, self](asio::error_code ec, std::size_t length) {
                   on_write(ec, length);
                 });
   }
 
-  void on_write(boost::system::error_code ec, std::size_t length) {
+  void on_write(asio::error_code ec, std::size_t length) {
     if (ec) {
       print(ec);
       if (on_net_err_) {
@@ -263,21 +261,20 @@ private:
   void async_handshake() {
 #ifdef CINATRA_ENABLE_SSL
     auto self = this->shared_from_this();
-    ssl_stream_->async_handshake(
-        boost::asio::ssl::stream_base::server,
-        [this, self](const boost::system::error_code &error) {
-          if (error) {
-            print(error);
-            if (on_net_err_) {
-              (*on_net_err_)(self, error.message());
-            }
-            close();
-            return;
-          }
+    ssl_stream_->async_handshake(asio::ssl::stream_base::server,
+                                 [this, self](const asio::error_code &error) {
+                                   if (error) {
+                                     print(error);
+                                     if (on_net_err_) {
+                                       (*on_net_err_)(self, error.message());
+                                     }
+                                     close();
+                                     return;
+                                   }
 
-          has_shake_ = true;
-          read_head();
-        });
+                                   has_shake_ = true;
+                                   read_head();
+                                 });
 #endif
   }
 
@@ -292,13 +289,12 @@ private:
   template <typename Handler> void async_read_head(Handler handler) {
     if (is_ssl()) {
 #ifdef CINATRA_ENABLE_SSL
-      boost::asio::async_read(*ssl_stream_,
-                              boost::asio::buffer(head_, HEAD_LEN),
-                              std::move(handler));
+      asio::async_read(*ssl_stream_, asio::buffer(head_, HEAD_LEN),
+                       std::move(handler));
 #endif
     } else {
-      boost::asio::async_read(socket_, boost::asio::buffer(head_, HEAD_LEN),
-                              std::move(handler));
+      asio::async_read(socket_, asio::buffer(head_, HEAD_LEN),
+                       std::move(handler));
     }
   }
 
@@ -306,14 +302,12 @@ private:
   void async_read(size_t size_to_read, Handler handler) {
     if (is_ssl()) {
 #ifdef CINATRA_ENABLE_SSL
-      boost::asio::async_read(*ssl_stream_,
-                              boost::asio::buffer(body_.data(), size_to_read),
-                              std::move(handler));
+      asio::async_read(*ssl_stream_, asio::buffer(body_.data(), size_to_read),
+                       std::move(handler));
 #endif
     } else {
-      boost::asio::async_read(socket_,
-                              boost::asio::buffer(body_.data(), size_to_read),
-                              std::move(handler));
+      asio::async_read(socket_, asio::buffer(body_.data(), size_to_read),
+                       std::move(handler));
     }
   }
 
@@ -321,10 +315,10 @@ private:
   void async_write(const BufferType &buffers, Handler handler) {
     if (is_ssl()) {
 #ifdef CINATRA_ENABLE_SSL
-      boost::asio::async_write(*ssl_stream_, buffers, std::move(handler));
+      asio::async_write(*ssl_stream_, buffers, std::move(handler));
 #endif
     } else {
-      boost::asio::async_write(socket_, buffers, std::move(handler));
+      asio::async_write(socket_, buffers, std::move(handler));
     }
   }
 
@@ -335,7 +329,7 @@ private:
 
     auto self(this->shared_from_this());
     timer_.expires_from_now(std::chrono::seconds(timeout_seconds_));
-    timer_.async_wait([this, self](const boost::system::error_code &ec) {
+    timer_.async_wait([this, self](const asio::error_code &ec) {
       if (has_closed()) {
         return;
       }
@@ -360,7 +354,7 @@ private:
   void close(bool close_ssl = true) {
 #ifdef CINATRA_ENABLE_SSL
     if (close_ssl && ssl_stream_) {
-      boost::system::error_code ec;
+      asio::error_code ec;
       ssl_stream_->shutdown(ec);
       ssl_stream_ = nullptr;
     }
@@ -369,7 +363,7 @@ private:
       return;
     }
 
-    boost::system::error_code ignored_ec;
+    asio::error_code ignored_ec;
     socket_.shutdown(tcp::socket::shutdown_both, ignored_ec);
     socket_.close(ignored_ec);
     has_closed_ = true;
@@ -383,16 +377,14 @@ private:
 #endif
   }
 
-  void print(const boost::system::error_code &ec) {
-    print(ec.value(), ec.message());
-  }
+  void print(const asio::error_code &ec) { print(ec.value(), ec.message()); }
 
   void print(const std::exception &ex) { print(ex.what()); }
 
   tcp::socket socket_;
 #ifdef CINATRA_ENABLE_SSL
-  std::unique_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket &>>
-      ssl_stream_ = nullptr;
+  std::unique_ptr<asio::ssl::stream<asio::ip::tcp::socket &>> ssl_stream_ =
+      nullptr;
 #endif
   bool has_shake_ = false;
   char head_[HEAD_LEN];
