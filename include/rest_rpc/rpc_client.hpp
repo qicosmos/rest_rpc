@@ -229,6 +229,10 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
+    std::shared_ptr<bool> guard(nullptr, [this, &future_result](auto) {
+      std::unique_lock<std::mutex> lock(cb_mtx_);
+      future_map_.erase(future_result.id);
+    });
     auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
@@ -236,8 +240,6 @@ public:
     }
 
     future_result.get().as();
-    std::unique_lock<std::mutex> lock(cb_mtx_);
-    future_map_.erase(future_result.id);
   }
 
   template <typename T = void, typename... Args>
@@ -251,18 +253,17 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
+    std::shared_ptr<bool> guard(nullptr, [this, &future_result](auto) {
+      std::unique_lock<std::mutex> lock(cb_mtx_);
+      future_map_.erase(future_result.id);
+    });
     auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
       throw std::out_of_range("timeout or deferred");
     }
 
-    auto t = future_result.get().template as<T>();
-    {
-      std::unique_lock<std::mutex> lock(cb_mtx_);
-      future_map_.erase(future_result.id);
-    }
-    return t;
+    return future_result.get().template as<T>();
   }
 
   template <typename T, typename... Args>
