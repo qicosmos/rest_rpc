@@ -109,9 +109,8 @@ void test_async_client() {
     return;
   }
 
-  client.set_error_callback([](boost::system::error_code ec) {
-    std::cout << ec.message() << std::endl;
-  });
+  client.set_error_callback(
+      [](asio::error_code ec) { std::cout << ec.message() << std::endl; });
 
   auto f = client.async_call<FUTURE>("get_person");
   if (f.wait_for(std::chrono::milliseconds(50)) ==
@@ -343,7 +342,7 @@ void test_callback() {
     // set timeout 100ms
     client.async_call<100>(
         "async_echo",
-        [](const boost::system::error_code &ec, string_view data) {
+        [](const asio::error_code &ec, string_view data) {
           if (ec) {
             std::cout << ec.value() << " timeout" << std::endl;
             return;
@@ -358,7 +357,7 @@ void test_callback() {
     // zero means no timeout check, no param means using default timeout(5s)
     client.async_call<0>(
         "echo",
-        [](const boost::system::error_code &ec, string_view data) {
+        [](const asio::error_code &ec, string_view data) {
           auto str = as<std::string>(data);
           std::cout << "echo " << str << '\n';
         },
@@ -369,13 +368,13 @@ void test_callback() {
 }
 
 void wait_for_notification(rpc_client &client) {
-  client.async_call<0>(
-      "sub", [&client](const boost::system::error_code &ec, string_view data) {
-        auto str = as<std::string>(data);
-        std::cout << str << '\n';
+  client.async_call<0>("sub",
+                       [&client](const asio::error_code &ec, string_view data) {
+                         auto str = as<std::string>(data);
+                         std::cout << str << '\n';
 
-        wait_for_notification(client);
-      });
+                         wait_for_notification(client);
+                       });
 }
 
 void test_sub1() {
@@ -463,7 +462,7 @@ void test_multiple_thread() {
         for (size_t i = 0; i < 1000000; i++) {
           client->async_call<0>(
               "get_name",
-              [](const boost::system::error_code &ec, string_view data) {
+              [](const asio::error_code &ec, string_view data) {
                 if (ec) {
                   std::cout << ec.message() << '\n';
                 }
@@ -517,7 +516,7 @@ void test_threads() {
     for (size_t i = 1000000; i < 2 * 1000000; i++) {
       client.async_call(
           "get_int",
-          [i](boost::system::error_code ec, string_view data) {
+          [i](asio::error_code ec, string_view data) {
             if (ec) {
               std::cout << ec.message() << '\n';
               return;
@@ -554,11 +553,11 @@ void test_ssl() {
   bool is_ssl = true;
   rpc_client client;
   client.set_error_callback(
-      [](boost::system::error_code ec) { std::cout << ec.message() << "\n"; });
+      [](asio::error_code ec) { std::cout << ec.message() << "\n"; });
 
 #ifdef CINATRA_ENABLE_SSL
-  client.set_ssl_context_callback([](boost::asio::ssl::context &ctx) {
-    ctx.set_verify_mode(boost::asio::ssl::context::verify_peer);
+  client.set_ssl_context_callback([](asio::ssl::context &ctx) {
+    ctx.set_verify_mode(asio::ssl::context::verify_peer);
     ctx.load_verify_file("server.crt");
   });
 #endif
@@ -587,7 +586,7 @@ void test_ssl() {
 
     client.async_call(
         "echo",
-        [](boost::system::error_code ec, string_view data) {
+        [](asio::error_code ec, string_view data) {
           if (ec) {
             std::cout << ec.message() << " " << data << "\n";
             return;
@@ -612,7 +611,7 @@ void benchmark_test() {
   for (size_t i = 0; i < 1000000; i++) {
     client.async_call(
         "echo",
-        [i](boost::system::error_code ec, string_view data) {
+        [i](asio::error_code ec, string_view data) {
           if (ec) {
             return;
           }
