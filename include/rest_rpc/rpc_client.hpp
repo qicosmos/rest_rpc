@@ -1,21 +1,21 @@
 #pragma once
-#include <iostream>
-#include <string>
-#include <deque>
-#include <future>
-#include <utility>
-#include "use_asio.hpp"
 #include "client_util.hpp"
 #include "const_vars.h"
 #include "meta_util.hpp"
+#include "use_asio.hpp"
+#include <deque>
 #include <functional>
+#include <future>
+#include <iostream>
+#include <string>
+#include <utility>
 
 using namespace rest_rpc::rpc_service;
 
 namespace rest_rpc {
 
 /**
-     * The type to indicate the language of the client.
+ * The type to indicate the language of the client.
  */
 enum class client_language_t {
   CPP = 0,
@@ -44,6 +44,17 @@ public:
 
 private:
   std::string data_;
+};
+
+template <typename T> struct future_result {
+  uint64_t id;
+  std::future<T> future;
+  template <class Rep, class Per>
+  std::future_status wait_for(const std::chrono::duration<Rep, Per> &rel_time) {
+    return future.wait_for(rel_time);
+  }
+
+  T get() { return future.get(); }
 };
 
 enum class CallModel { future, callback };
@@ -162,7 +173,7 @@ public:
   }
 
   void close(bool close_ssl = true) {
-    boost::system::error_code ec;
+    asio::error_code ec;
     if (close_ssl) {
 #ifdef CINATRA_ENABLE_SSL
       if (ssl_stream_) {
@@ -176,12 +187,12 @@ public:
       return;
 
     has_connected_ = false;
-    socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+    socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
     socket_.close(ec);
     clear_cache();
   }
 
-  void set_error_callback(std::function<void(boost::system::error_code)> f) {
+  void set_error_callback(std::function<void(asio::error_code)> f) {
     err_cb_ = std::move(f);
   }
 
@@ -192,7 +203,7 @@ public:
   // sync call
 #if __cplusplus > 201402L
   template <size_t TIMEOUT, typename T = void, typename... Args>
-  auto call(const std::string &rpc_name, Args &&... args) {
+  auto call(const std::string &rpc_name, Args &&...args) {
     std::future<req_result> future =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
     auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
@@ -204,59 +215,67 @@ public:
     if constexpr (std::is_void_v<T>) {
       future.get().as();
     } else {
-      return future.get().as<T>();
+      return future.get().template as<T>();
     }
   }
 
   template <typename T = void, typename... Args>
-  auto call(const std::string &rpc_name, Args &&... args) {
+  auto call(const std::string &rpc_name, Args &&...args) {
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 #else
   template <size_t TIMEOUT, typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
-  call(const std::string &rpc_name, Args &&... args) {
-    std::future<req_result> future =
+  call(const std::string &rpc_name, Args &&...args) {
+    auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
+    std::shared_ptr<bool> guard(nullptr, [this, &future_result](auto) {
+      std::unique_lock<std::mutex> lock(cb_mtx_);
+      future_map_.erase(future_result.id);
+    });
+    auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
       throw std::out_of_range("timeout or deferred");
     }
 
-    future.get().as();
+    future_result.get().as();
   }
 
   template <typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
-  call(const std::string &rpc_name, Args &&... args) {
+  call(const std::string &rpc_name, Args &&...args) {
     call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 
   template <size_t TIMEOUT, typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
-  call(const std::string &rpc_name, Args &&... args) {
-    std::future<req_result> future =
+  call(const std::string &rpc_name, Args &&...args) {
+    auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
+    std::shared_ptr<bool> guard(nullptr, [this, &future_result](auto) {
+      std::unique_lock<std::mutex> lock(cb_mtx_);
+      future_map_.erase(future_result.id);
+    });
+    auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
       throw std::out_of_range("timeout or deferred");
     }
 
-    return future.get().as<T>();
+    return future_result.get().template as<T>();
   }
 
   template <typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
-  call(const std::string &rpc_name, Args &&... args) {
+  call(const std::string &rpc_name, Args &&...args) {
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 #endif
 
   template <CallModel model, typename... Args>
-  std::future<req_result> async_call(const std::string &rpc_name,
-                                     Args &&... args) {
+  future_result<req_result> async_call(const std::string &rpc_name,
+                                       Args &&...args) {
     auto p = std::make_shared<std::promise<req_result>>();
     std::future<req_result> future = p->get_future();
 
@@ -271,13 +290,13 @@ public:
     msgpack_codec codec;
     auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
     write(fu_id, request_type::req_res, std::move(ret));
-    return future;
+    return future_result<req_result>{fu_id, std::move(future)};
   }
 
   /**
-	     * This internal_async_call is used for other language client.
-	     * We use callback to handle the result is received, so we should not
-	     * add the future to the future map.
+   * This internal_async_call is used for other language client.
+   * We use callback to handle the result is received, so we should not
+   * add the future to the future map.
    */
   long internal_async_call(const std::string &encoded_func_name_and_args) {
     auto p = std::make_shared<std::promise<req_result>>();
@@ -295,14 +314,12 @@ public:
   }
 
   template <size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
-  void
-  async_call(const std::string &rpc_name,
-             std::function<void(boost::system::error_code, string_view)> cb,
-             Args &&... args) {
+  void async_call(const std::string &rpc_name,
+                  std::function<void(asio::error_code, string_view)> cb,
+                  Args &&...args) {
     if (!has_connected_) {
       if (cb)
-        cb(boost::asio::error::make_error_code(
-               boost::asio::error::not_connected),
+        cb(asio::error::make_error_code(asio::error::not_connected),
            "not connected");
       return;
     }
@@ -377,7 +394,7 @@ public:
 
 #ifdef CINATRA_ENABLE_SSL
   void set_ssl_context_callback(
-      std::function<void(boost::asio::ssl::context &)> ssl_context_callback) {
+      std::function<void(asio::ssl::context &)> ssl_context_callback) {
     ssl_context_callback_ = std::move(ssl_context_callback);
   }
 #endif
@@ -385,41 +402,40 @@ public:
 private:
   void async_connect() {
     assert(port_ != 0);
-    auto addr = boost::asio::ip::address::from_string(host_);
-    socket_.async_connect({addr, port_},
-                          [this](const boost::system::error_code &ec) {
-                            if (has_connected_) {
-                              return;
-                            }
+    auto addr = asio::ip::address::from_string(host_);
+    socket_.async_connect({addr, port_}, [this](const asio::error_code &ec) {
+      if (has_connected_) {
+        return;
+      }
 
-                            if (ec) {
-                              // std::cout << ec.message() << std::endl;
+      if (ec) {
+        // std::cout << ec.message() << std::endl;
 
-                              has_connected_ = false;
+        has_connected_ = false;
 
-                              if (reconnect_cnt_ <= 0) {
-                                return;
-                              }
+        if (reconnect_cnt_ <= 0) {
+          return;
+        }
 
-                              if (reconnect_cnt_ > 0) {
-                                reconnect_cnt_--;
-                              }
+        if (reconnect_cnt_ > 0) {
+          reconnect_cnt_--;
+        }
 
-                              async_reconnect();
-                            } else {
-                              // std::cout<<"connected ok"<<std::endl;
-                              if (is_ssl()) {
-                                handshake();
-                                return;
-                              }
+        async_reconnect();
+      } else {
+        // std::cout<<"connected ok"<<std::endl;
+        if (is_ssl()) {
+          handshake();
+          return;
+        }
 
-                              has_connected_ = true;
-                              do_read();
-                              resend_subscribe();
-                              if (has_wait_)
-                                conn_cond_.notify_one();
-                            }
-                          });
+        has_connected_ = true;
+        do_read();
+        resend_subscribe();
+        if (has_wait_)
+          conn_cond_.notify_one();
+      }
+    });
   }
 
   void async_reconnect() {
@@ -430,7 +446,7 @@ private:
 
   void reset_deadline_timer(size_t timeout) {
     deadline_.expires_from_now(std::chrono::seconds(timeout));
-    deadline_.async_wait([this, timeout](const boost::system::error_code &ec) {
+    deadline_.async_wait([this, timeout](const asio::error_code &ec) {
       if (!ec) {
         if (has_connected_) {
           write(0, request_type::req_res, buffer_type(0));
@@ -459,78 +475,77 @@ private:
   void write() {
     auto &msg = outbox_[0];
     write_size_ = (uint32_t)msg.content.length();
-    std::array<boost::asio::const_buffer, 4> write_buffers;
-    write_buffers[0] = boost::asio::buffer(&write_size_, sizeof(int32_t));
-    write_buffers[1] = boost::asio::buffer(&msg.req_id, sizeof(uint64_t));
-    write_buffers[2] = boost::asio::buffer(&msg.req_type, sizeof(request_type));
-    write_buffers[3] =
-        boost::asio::buffer((char *)msg.content.data(), write_size_);
+    std::array<asio::const_buffer, 4> write_buffers;
+    write_buffers[0] = asio::buffer(&write_size_, sizeof(int32_t));
+    write_buffers[1] = asio::buffer(&msg.req_id, sizeof(uint64_t));
+    write_buffers[2] = asio::buffer(&msg.req_type, sizeof(request_type));
+    write_buffers[3] = asio::buffer((char *)msg.content.data(), write_size_);
 
-    async_write(write_buffers, [this](const boost::system::error_code &ec,
-                                      const size_t length) {
-      if (ec) {
+    async_write(write_buffers,
+                [this](const asio::error_code &ec, const size_t length) {
+                  if (ec) {
+                    has_connected_ = false;
+                    close(false);
+                    error_callback(ec);
+
+                    return;
+                  }
+
+                  std::unique_lock<std::mutex> lock(write_mtx_);
+                  if (outbox_.empty()) {
+                    return;
+                  }
+
+                  ::free((char *)outbox_.front().content.data());
+                  outbox_.pop_front();
+
+                  if (!outbox_.empty()) {
+                    // more messages to send
+                    this->write();
+                  }
+                });
+  }
+
+  void do_read() {
+    async_read_head([this](const asio::error_code &ec, const size_t length) {
+      if (!socket_.is_open()) {
+        // LOG(INFO) << "socket already closed";
         has_connected_ = false;
+        return;
+      }
+
+      if (!ec) {
+        // const uint32_t body_len = *((uint32_t*)(head_));
+        // auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
+        // auto req_type = *(request_type*)(head_ + sizeof(int32_t) +
+        // sizeof(int64_t));
+        rpc_header *header = (rpc_header *)(head_);
+        const uint32_t body_len = header->body_len;
+        if (body_len > 0 && body_len < MAX_BUF_LEN) {
+          if (body_.size() < body_len) {
+            body_.resize(body_len);
+          }
+          read_body(header->req_id, header->req_type, body_len);
+          return;
+        }
+
+        if (body_len == 0 || body_len > MAX_BUF_LEN) {
+          // LOG(INFO) << "invalid body len";
+          close();
+          error_callback(
+              asio::error::make_error_code(asio::error::message_size));
+          return;
+        }
+      } else {
         close(false);
         error_callback(ec);
-
-        return;
-      }
-
-      std::unique_lock<std::mutex> lock(write_mtx_);
-      if (outbox_.empty()) {
-        return;
-      }
-
-      ::free((char *)outbox_.front().content.data());
-      outbox_.pop_front();
-
-      if (!outbox_.empty()) {
-        // more messages to send
-        this->write();
       }
     });
   }
 
-  void do_read() {
-    async_read_head(
-        [this](const boost::system::error_code &ec, const size_t length) {
-          if (!socket_.is_open()) {
-            // LOG(INFO) << "socket already closed";
-            has_connected_ = false;
-            return;
-          }
-
-          if (!ec) {
-            // const uint32_t body_len = *((uint32_t*)(head_));
-            // auto req_id = *((std::uint64_t*)(head_ + sizeof(int32_t)));
-            // auto req_type = *(request_type*)(head_ + sizeof(int32_t) + sizeof(int64_t));
-            rpc_header *header = (rpc_header *)(head_);
-            const uint32_t body_len = header->body_len;
-            if (body_len > 0 && body_len < MAX_BUF_LEN) {
-              if (body_.size() < body_len) {
-                body_.resize(body_len);
-              }
-              read_body(header->req_id, header->req_type, body_len);
-              return;
-            }
-
-            if (body_len == 0 || body_len > MAX_BUF_LEN) {
-              // LOG(INFO) << "invalid body len";
-              close();
-              error_callback(
-                  asio::error::make_error_code(asio::error::message_size));
-              return;
-            }
-          } else {
-            close(false);
-            error_callback(ec);
-          }
-        });
-  }
-
   void read_body(std::uint64_t req_id, request_type req_type, size_t body_len) {
-    async_read(body_len, [this, req_id, req_type, body_len](
-                             boost::system::error_code ec, std::size_t length) {
+    async_read(body_len, [this, req_id, req_type,
+                          body_len](asio::error_code ec, std::size_t length) {
       // cancel_timer();
 
       if (!socket_.is_open()) {
@@ -579,7 +594,7 @@ private:
     }
   }
 
-  void call_back(uint64_t req_id, const boost::system::error_code &ec,
+  void call_back(uint64_t req_id, const asio::error_code &ec,
                  string_view data) {
     if (client_language_ == client_language_t::JAVA) {
       // For Java client.
@@ -616,18 +631,18 @@ private:
           // LOG<<ec.message();
           if (!f) {
             // std::cout << "invalid req_id" << std::endl;
+            f->set_value(req_result{""});
             return;
           }
         }
 
         assert(f);
         f->set_value(req_result{data});
-        future_map_.erase(req_id);
       }
     }
   }
 
-  void callback_sub(const boost::system::error_code &ec, string_view result) {
+  void callback_sub(const asio::error_code &ec, string_view result) {
     rpc_service::msgpack_codec codec;
     try {
       auto tp = codec.unpack<std::tuple<int, std::string, std::string>>(
@@ -665,11 +680,11 @@ private:
   }
 
   void reset_socket() {
-    boost::system::error_code igored_ec;
+    asio::error_code igored_ec;
     socket_.close(igored_ec);
     socket_ = decltype(socket_)(ios_);
     if (!socket_.is_open()) {
-      socket_.open(boost::asio::ip::tcp::v4());
+      socket_.open(asio::ip::tcp::v4());
     }
   }
 
@@ -677,7 +692,7 @@ private:
                  public std::enable_shared_from_this<call_t> {
   public:
     call_t(asio::io_service &ios,
-           std::function<void(boost::system::error_code, string_view)> cb,
+           std::function<void(asio::error_code, string_view)> cb,
            size_t timeout)
         : timer_(ios), cb_(std::move(cb)), timeout_(timeout) {}
 
@@ -688,7 +703,7 @@ private:
 
       timer_.expires_from_now(std::chrono::milliseconds(timeout_));
       auto self = this->shared_from_this();
-      timer_.async_wait([this, self](boost::system::error_code ec) {
+      timer_.async_wait([this, self](asio::error_code ec) {
         if (ec) {
           return;
         }
@@ -697,9 +712,7 @@ private:
       });
     }
 
-    void callback(boost::system::error_code ec, string_view data) {
-      cb_(ec, data);
-    }
+    void callback(asio::error_code ec, string_view data) { cb_(ec, data); }
 
     bool has_timeout() const { return has_timeout_; }
 
@@ -708,18 +721,18 @@ private:
         return;
       }
 
-      boost::system::error_code ec;
+      asio::error_code ec;
       timer_.cancel(ec);
     }
 
   private:
-    boost::asio::steady_timer timer_;
-    std::function<void(boost::system::error_code, string_view)> cb_;
+    asio::steady_timer timer_;
+    std::function<void(asio::error_code, string_view)> cb_;
     size_t timeout_;
     bool has_timeout_ = false;
   };
 
-  void error_callback(const boost::system::error_code &ec) {
+  void error_callback(const asio::error_code &ec) {
     if (err_cb_) {
       err_cb_(ec);
     }
@@ -730,7 +743,7 @@ private:
   }
 
   void set_default_error_cb() {
-    err_cb_ = [this](boost::system::error_code) { async_connect(); };
+    err_cb_ = [this](asio::error_code) { async_connect(); };
   }
 
   bool is_ssl() const {
@@ -743,8 +756,8 @@ private:
 
   void handshake() {
 #ifdef CINATRA_ENABLE_SSL
-    ssl_stream_->async_handshake(boost::asio::ssl::stream_base::client,
-                                 [this](const boost::system::error_code &ec) {
+    ssl_stream_->async_handshake(asio::ssl::stream_base::client,
+                                 [this](const asio::error_code &ec) {
                                    if (!ec) {
                                      has_connected_ = true;
                                      do_read();
@@ -764,32 +777,31 @@ private:
     if (ssl_stream_)
       return;
 
-    boost::asio::ssl::context ssl_context(boost::asio::ssl::context::sslv23);
+    asio::ssl::context ssl_context(asio::ssl::context::sslv23);
     ssl_context.set_default_verify_paths();
-    boost::system::error_code ec;
-    ssl_context.set_options(boost::asio::ssl::context::default_workarounds, ec);
+    asio::error_code ec;
+    ssl_context.set_options(asio::ssl::context::default_workarounds, ec);
     if (ssl_context_callback_) {
       ssl_context_callback_(ssl_context);
     }
-    ssl_stream_ = std::make_unique<
-        boost::asio::ssl::stream<boost::asio::ip::tcp::socket &>>(socket_,
-                                                                  ssl_context);
+    ssl_stream_ = std::make_unique<asio::ssl::stream<asio::ip::tcp::socket &>>(
+        socket_, ssl_context);
     // verify peer TODO
 #else
-    assert(is_ssl()); // please add definition CINATRA_ENABLE_SSL, not allowed coming in this branch
+    assert(is_ssl()); // please add definition CINATRA_ENABLE_SSL, not allowed
+                      // coming in this branch
 #endif
   }
 
   template <typename Handler> void async_read_head(Handler handler) {
     if (is_ssl()) {
 #ifdef CINATRA_ENABLE_SSL
-      boost::asio::async_read(*ssl_stream_,
-                              boost::asio::buffer(head_, HEAD_LEN),
-                              std::move(handler));
+      asio::async_read(*ssl_stream_, asio::buffer(head_, HEAD_LEN),
+                       std::move(handler));
 #endif
     } else {
-      boost::asio::async_read(socket_, boost::asio::buffer(head_, HEAD_LEN),
-                              std::move(handler));
+      asio::async_read(socket_, asio::buffer(head_, HEAD_LEN),
+                       std::move(handler));
     }
   }
 
@@ -797,14 +809,12 @@ private:
   void async_read(size_t size_to_read, Handler handler) {
     if (is_ssl()) {
 #ifdef CINATRA_ENABLE_SSL
-      boost::asio::async_read(*ssl_stream_,
-                              boost::asio::buffer(body_.data(), size_to_read),
-                              std::move(handler));
+      asio::async_read(*ssl_stream_, asio::buffer(body_.data(), size_to_read),
+                       std::move(handler));
 #endif
     } else {
-      boost::asio::async_read(socket_,
-                              boost::asio::buffer(body_.data(), size_to_read),
-                              std::move(handler));
+      asio::async_read(socket_, asio::buffer(body_.data(), size_to_read),
+                       std::move(handler));
     }
   }
 
@@ -812,21 +822,20 @@ private:
   void async_write(const BufferType &buffers, Handler handler) {
     if (is_ssl()) {
 #ifdef CINATRA_ENABLE_SSL
-      boost::asio::async_write(*ssl_stream_, buffers, std::move(handler));
+      asio::async_write(*ssl_stream_, buffers, std::move(handler));
 #endif
     } else {
-      boost::asio::async_write(socket_, buffers, std::move(handler));
+      asio::async_write(socket_, buffers, std::move(handler));
     }
   }
 
-  boost::asio::io_service ios_;
+  asio::io_context ios_;
   asio::ip::tcp::socket socket_;
 #ifdef CINATRA_ENABLE_SSL
-  std::unique_ptr<boost::asio::ssl::stream<boost::asio::ip::tcp::socket &>>
-      ssl_stream_;
-  std::function<void(boost::asio::ssl::context &)> ssl_context_callback_;
+  std::unique_ptr<asio::ssl::stream<asio::ip::tcp::socket &>> ssl_stream_;
+  std::function<void(asio::ssl::context &)> ssl_context_callback_;
 #endif
-  boost::asio::io_service::work work_;
+  asio::io_context::work work_;
   std::shared_ptr<std::thread> thd_ = nullptr;
 
   std::string host_;
@@ -849,7 +858,7 @@ private:
   uint32_t write_size_ = 0;
   std::mutex write_mtx_;
   uint64_t fu_id_ = 0;
-  std::function<void(boost::system::error_code)> err_cb_;
+  std::function<void(asio::error_code)> err_cb_;
   bool enable_reconnect_ = false;
 
   std::unordered_map<std::uint64_t, std::shared_ptr<std::promise<req_result>>>
@@ -869,4 +878,4 @@ private:
   client_language_t client_language_ = client_language_t::CPP;
   std::function<void(long, const std::string &)> on_result_received_callback_;
 };
-}
+} // namespace rest_rpc

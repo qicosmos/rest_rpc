@@ -4,19 +4,24 @@ project(example)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11")
 
 SET(ENABLE_SSL OFF)
+SET(ENABLE_JAVA OFF)
 
 if (ENABLE_SSL)
     add_definitions(-DCINATRA_ENABLE_SSL)
     message(STATUS "Use SSL")
+    find_package(Boost COMPONENTS system filesystem REQUIRED)
 endif()
 
-find_package(Boost COMPONENTS system filesystem REQUIRED)
-find_package(JNI REQUIRED)
+if (ENABLE_JAVA)
+    find_package(JNI REQUIRED)
+    message(STATUS "Use Java")
+endif()
 
 include_directories(
         "/usr/local/include"
         "../include"
-        "../thirdparty/msgpack-c/include")
+        "../thirdparty/msgpack-c/include"
+        "../thirdparty/asio")
 
 add_executable(basic_server server/main.cpp)
 add_executable(basic_client client/main.cpp)
