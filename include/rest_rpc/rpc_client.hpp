@@ -229,7 +229,7 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    std::shared_ptr<bool> guard(nullptr, [this, &future_result](auto) {
+    std::shared_ptr<bool> guard(nullptr, [this, &future_result](bool *) {
       std::unique_lock<std::mutex> lock(cb_mtx_);
       future_map_.erase(future_result.id);
     });
@@ -253,7 +253,7 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    std::shared_ptr<bool> guard(nullptr, [this, &future_result](auto) {
+    std::shared_ptr<bool> guard(nullptr, [this, &future_result](bool *) {
       std::unique_lock<std::mutex> lock(cb_mtx_);
       future_map_.erase(future_result.id);
     });

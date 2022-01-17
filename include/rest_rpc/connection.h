@@ -82,7 +82,12 @@ public:
       return "";
     }
 
-    return socket_.remote_endpoint().address().to_string();
+    asio::error_code ec;
+    auto endpoint = socket_.remote_endpoint(ec);
+    if (ec) {
+      return "";
+    }
+    return endpoint.address().to_string();
   }
 
   void publish(const std::string &key, const std::string &data) {
