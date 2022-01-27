@@ -145,9 +145,11 @@ int main() {
         std::cout << "remote client address: " << conn->remote_address()
                   << " networking error, reason: " << reason << "\n";
       });
-  std::thread thd([&server] {
+
+  bool stop = false;
+  std::thread thd([&server, &stop] {
     person p{1, "tom", 20};
-    while (true) {
+    while (!stop) {
       server.publish("key", "hello subscriber");
       auto list = server.get_token_list();
       for (auto &token : list) {
@@ -159,7 +161,6 @@ int main() {
   });
 
   server.run();
-
-  std::string str;
-  std::cin >> str;
+  stop = true;
+  thd.join();
 }
