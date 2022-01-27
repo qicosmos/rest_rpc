@@ -19,11 +19,18 @@ public:
              size_t check_seconds = 10)
       : io_service_pool_(size), acceptor_(io_service_pool_.get_io_service(),
                                           tcp::endpoint(tcp::v4(), port)),
-        timeout_seconds_(timeout_seconds), check_seconds_(check_seconds) {
+        timeout_seconds_(timeout_seconds), check_seconds_(check_seconds),
+        signals_(io_service_pool_.get_io_service()) {
     do_accept();
     check_thread_ = std::make_shared<std::thread>([this] { clean(); });
     pub_sub_thread_ =
         std::make_shared<std::thread>([this] { clean_sub_pub(); });
+    signals_.add(SIGINT);
+    signals_.add(SIGTERM);
+#if defined(SIGQUIT)
+    signals_.add(SIGQUIT);
+#endif // defined(SIGQUIT)
+    do_await_stop();
   }
 
   rpc_server(unsigned short port, size_t size, ssl_configure ssl_conf,
@@ -37,26 +44,7 @@ public:
 #endif
   }
 
-  ~rpc_server() {
-    {
-      std::unique_lock<std::mutex> lock(mtx_);
-      stop_check_ = true;
-      cv_.notify_all();
-    }
-    check_thread_->join();
-
-    {
-      std::unique_lock<std::mutex> lock(sub_mtx_);
-      stop_check_pub_sub_ = true;
-      sub_cv_.notify_all();
-    }
-    pub_sub_thread_->join();
-
-    io_service_pool_.stop();
-    if (thd_) {
-      thd_->join();
-    }
-  }
+  ~rpc_server() { stop(); }
 
   void async_run() {
     thd_ = std::make_shared<std::thread>([this] { io_service_pool_.run(); });
@@ -97,6 +85,32 @@ public:
   std::set<std::string> get_token_list() {
     std::unique_lock<std::mutex> lock(sub_mtx_);
     return token_list_;
+  }
+
+  void stop() {
+    if (has_stoped_) {
+      return;
+    }
+
+    {
+      std::unique_lock<std::mutex> lock(mtx_);
+      stop_check_ = true;
+      cv_.notify_all();
+    }
+    check_thread_->join();
+
+    {
+      std::unique_lock<std::mutex> lock(sub_mtx_);
+      stop_check_pub_sub_ = true;
+      sub_cv_.notify_all();
+    }
+    pub_sub_thread_->join();
+
+    io_service_pool_.stop();
+    if (thd_) {
+      thd_->join();
+    }
+    has_stoped_ = true;
   }
 
 private:
@@ -207,6 +221,11 @@ private:
     return std::make_shared<std::string>(buf.data(), buf.size());
   }
 
+  void do_await_stop() {
+    signals_.async_wait(
+        [this](std::error_code /*ec*/, int /*signo*/) { stop(); });
+  }
+
   io_service_pool io_service_pool_;
   tcp::acceptor acceptor_;
   std::shared_ptr<connection> conn_;
@@ -221,6 +240,8 @@ private:
   bool stop_check_ = false;
   std::condition_variable cv_;
 
+  asio::signal_set signals_;
+
   std::function<void(int64_t)> conn_timeout_callback_;
   std::function<void(std::shared_ptr<connection>, std::string)>
       on_net_err_callback_ = nullptr;
@@ -234,6 +255,7 @@ private:
 
   ssl_configure ssl_conf_;
   router router_;
+  std::atomic_bool has_stoped_ = {false};
 };
 } // namespace rpc_service
 } // namespace rest_rpc
