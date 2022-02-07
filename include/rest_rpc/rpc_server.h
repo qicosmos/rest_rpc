@@ -87,32 +87,6 @@ public:
     return token_list_;
   }
 
-  void stop() {
-    if (has_stoped_) {
-      return;
-    }
-
-    {
-      std::unique_lock<std::mutex> lock(mtx_);
-      stop_check_ = true;
-      cv_.notify_all();
-    }
-    check_thread_->join();
-
-    {
-      std::unique_lock<std::mutex> lock(sub_mtx_);
-      stop_check_pub_sub_ = true;
-      sub_cv_.notify_all();
-    }
-    pub_sub_thread_->join();
-
-    io_service_pool_.stop();
-    if (thd_) {
-      thd_->join();
-    }
-    has_stoped_ = true;
-  }
-
 private:
   void do_accept() {
     conn_.reset(new connection(io_service_pool_.get_io_service(),
@@ -224,6 +198,32 @@ private:
   void do_await_stop() {
     signals_.async_wait(
         [this](std::error_code /*ec*/, int /*signo*/) { stop(); });
+  }
+
+  void stop() {
+    if (has_stoped_) {
+      return;
+    }
+
+    {
+      std::unique_lock<std::mutex> lock(mtx_);
+      stop_check_ = true;
+      cv_.notify_all();
+    }
+    check_thread_->join();
+
+    {
+      std::unique_lock<std::mutex> lock(sub_mtx_);
+      stop_check_pub_sub_ = true;
+      sub_cv_.notify_all();
+    }
+    pub_sub_thread_->join();
+
+    io_service_pool_.stop();
+    if (thd_) {
+      thd_->join();
+    }
+    has_stoped_ = true;
   }
 
   io_service_pool io_service_pool_;
