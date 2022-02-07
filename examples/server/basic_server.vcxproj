@@ -76,7 +76,7 @@
     <IncludePath>..\..\include;..\..\third\msgpack\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>..\..\include;..\..\thirdparty\msgpack-c\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\include;..\..\thirdparty\msgpack-c\include;..\..\thirdparty\asio;$(IncludePath)</IncludePath>
     <LibraryPath>$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">

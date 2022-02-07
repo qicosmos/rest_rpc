@@ -624,7 +624,7 @@ void benchmark_test() {
 }
 
 int main() {
-  benchmark_test();
+  //benchmark_test();
   test_connect();
   test_callback();
   test_echo();
