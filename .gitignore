@@ -44,3 +44,10 @@ cmake_install.cmake
 target/
 
 build/
+
+# Windows
+.vs
+.vscode
+**.sln
+**.user
+x64
