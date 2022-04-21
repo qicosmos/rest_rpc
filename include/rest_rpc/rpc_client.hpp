@@ -630,7 +630,7 @@ private:
         auto &f = future_map_[req_id];
         if (ec) {
           // LOG<<ec.message();
-          if (!f) {
+          if (f) {
             // std::cout << "invalid req_id" << std::endl;
             f->set_value(req_result{""});
             return;
