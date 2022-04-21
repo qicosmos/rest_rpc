@@ -202,29 +202,6 @@ public:
   bool has_connected() const { return has_connected_; }
 
   // sync call
-#if __cplusplus > 201402L
-  template <size_t TIMEOUT, typename T = void, typename... Args>
-  auto call(const std::string &rpc_name, Args &&...args) {
-    std::future<req_result> future =
-        async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    auto status = future.wait_for(std::chrono::milliseconds(TIMEOUT));
-    if (status == std::future_status::timeout ||
-        status == std::future_status::deferred) {
-      throw std::out_of_range("timeout or deferred");
-    }
-
-    if constexpr (std::is_void_v<T>) {
-      future.get().as();
-    } else {
-      return future.get().template as<T>();
-    }
-  }
-
-  template <typename T = void, typename... Args>
-  auto call(const std::string &rpc_name, Args &&...args) {
-    return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
-  }
-#else
   template <size_t TIMEOUT, typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
   call(const std::string &rpc_name, Args &&...args) {
@@ -272,7 +249,6 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
-#endif
 
   template <CallModel model, typename... Args>
   future_result<req_result> async_call(const std::string &rpc_name,
