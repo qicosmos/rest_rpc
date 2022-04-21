@@ -8,6 +8,7 @@
 #include <future>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <utility>
 
 using namespace rest_rpc::rpc_service;
