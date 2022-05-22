@@ -149,6 +149,21 @@ private:
       for (auto it = sub_map_.cbegin(); it != sub_map_.cend();) {
         auto conn = it->second.lock();
         if (conn == nullptr || conn->has_closed()) {
+          //remove token
+          for (auto t = token_list_.begin(); t != token_list_.end(); ) {
+            if (it->first.find(*t) != std::string::npos) {
+              t = token_list_.erase(t);
+            }
+            else {
+              ++t;
+            }
+          }
+
+          for (auto& item : token_list_) {
+            if (it->first.find(item) != std::string::npos) {
+
+            }
+          }
           it = sub_map_.erase(it);
         } else {
           ++it;
