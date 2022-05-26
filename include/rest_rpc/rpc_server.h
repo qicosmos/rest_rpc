@@ -159,11 +159,6 @@ private:
             }
           }
 
-          for (auto& item : token_list_) {
-            if (it->first.find(item) != std::string::npos) {
-
-            }
-          }
           it = sub_map_.erase(it);
         } else {
           ++it;
