@@ -11,6 +11,7 @@
 #define MSGPACK_V1_SBUFFER_HPP
 
 #include "msgpack/v1/sbuffer_decl.hpp"
+#include "msgpack/assert.hpp"
 
 #include <stdexcept>
 #include <cstring>
@@ -68,6 +69,10 @@ public:
 
     void write(const char* buf, size_t len)
     {
+        MSGPACK_ASSERT(buf || len == 0);
+
+        if (!buf) return;
+
         if(m_alloc - m_size < len) {
             expand_buffer(len);
         }

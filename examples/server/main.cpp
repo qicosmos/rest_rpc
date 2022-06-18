@@ -111,12 +111,23 @@ void benchmark_test() {
   server.run();
 }
 
+struct dummy1 {
+  size_t id;
+  std::wstring str;
+  MSGPACK_DEFINE(id, str);
+};
+
+dummy1 get_dummy(rpc_conn conn, dummy1 d) { return d; }
+
 int main() {
   //  benchmark_test();
   rpc_server server(9000, std::thread::hardware_concurrency());
 
   dummy d;
   server.register_handler("add", &dummy::add, &d);
+
+  server.register_handler("get_dummy", get_dummy);
+
   server.register_handler("translate", translate);
   server.register_handler("hello", hello);
   server.register_handler("get_person_name", get_person_name);

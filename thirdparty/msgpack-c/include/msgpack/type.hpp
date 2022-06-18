@@ -8,6 +8,7 @@
 #include "adaptor/fixint.hpp"
 #include "adaptor/float.hpp"
 #include "adaptor/int.hpp"
+#include "adaptor/complex.hpp"
 #include "adaptor/list.hpp"
 #include "adaptor/map.hpp"
 #include "adaptor/nil.hpp"
@@ -21,6 +22,7 @@
 #include "adaptor/vector_bool.hpp"
 #include "adaptor/vector_char.hpp"
 #include "adaptor/vector_unsigned_char.hpp"
+#include "adaptor/wstring.hpp"
 #include "adaptor/msgpack_tuple.hpp"
 #include "adaptor/define.hpp"
 
@@ -34,10 +36,15 @@
 #include "adaptor/cpp11/array.hpp"
 #include "adaptor/cpp11/array_char.hpp"
 #include "adaptor/cpp11/array_unsigned_char.hpp"
+
+#if !defined(MSGPACK_NO_BOOST)
 #include "adaptor/cpp11/chrono.hpp"
+#endif // !defined(MSGPACK_NO_BOOST)
+
 #include "adaptor/cpp11/forward_list.hpp"
 #include "adaptor/cpp11/reference_wrapper.hpp"
 #include "adaptor/cpp11/shared_ptr.hpp"
+#include "adaptor/cpp11/timespec.hpp"
 #include "adaptor/cpp11/tuple.hpp"
 #include "adaptor/cpp11/unique_ptr.hpp"
 #include "adaptor/cpp11/unordered_map.hpp"
@@ -51,18 +58,21 @@
 #include "adaptor/cpp17/string_view.hpp"
 #endif // MSGPACK_HAS_INCLUDE(<string_view>)
 
+#include "adaptor/cpp17/array_byte.hpp"
 #include "adaptor/cpp17/byte.hpp"
 #include "adaptor/cpp17/carray_byte.hpp"
 #include "adaptor/cpp17/vector_byte.hpp"
 
+#if MSGPACK_HAS_INCLUDE(<span>)
+#include "adaptor/cpp20/span.hpp"
+#endif // MSGPACK_HAS_INCLUDE(<span>)
+
 #endif // defined(MSGPACK_USE_CPP03)
 
-#if defined(MSGPACK_USE_BOOST)
-
+#if !defined(MSGPACK_NO_BOOST)
 #include "adaptor/boost/fusion.hpp"
 #include "adaptor/boost/msgpack_variant.hpp"
 #include "adaptor/boost/optional.hpp"
 #include "adaptor/boost/string_ref.hpp"
 #include "adaptor/boost/string_view.hpp"
-
-#endif // defined(MSGPACK_USE_BOOST)
+#endif // !defined(MSGPACK_NO_BOOST)

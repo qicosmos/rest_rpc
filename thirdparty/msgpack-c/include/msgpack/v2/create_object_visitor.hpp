@@ -14,6 +14,7 @@
 #include "msgpack/unpack_exception.hpp"
 #include "msgpack/v2/create_object_visitor_decl.hpp"
 #include "msgpack/v2/null_visitor.hpp"
+#include "msgpack/assert.hpp"
 
 namespace msgpack {
 
@@ -85,7 +86,7 @@ public:
         msgpack::object* obj = m_stack.back();
         if(v >= 0) {
             obj->type = msgpack::type::POSITIVE_INTEGER;
-            obj->via.u64 = v;
+            obj->via.u64 = static_cast<uint64_t>(v);
         }
         else {
             obj->type = msgpack::type::NEGATIVE_INTEGER;
@@ -106,51 +107,75 @@ public:
         return true;
     }
     bool visit_str(const char* v, uint32_t size) {
+        MSGPACK_ASSERT(v || size == 0);
         if (size > m_limit.str()) throw msgpack::str_size_overflow("str size overflow");
         msgpack::object* obj = m_stack.back();
         obj->type = msgpack::type::STR;
         if (m_func && m_func(obj->type, size, m_user_data)) {
             obj->via.str.ptr = v;
+            obj->via.str.size = size;
             set_referenced(true);
         }
         else {
-            char* tmp = static_cast<char*>(zone().allocate_align(size, MSGPACK_ZONE_ALIGNOF(char)));
-            std::memcpy(tmp, v, size);
-            obj->via.str.ptr = tmp;
+            if (v) {
+                char* tmp = static_cast<char*>(zone().allocate_align(size, MSGPACK_ZONE_ALIGNOF(char)));
+                std::memcpy(tmp, v, size);
+                obj->via.str.ptr = tmp;
+                obj->via.str.size = size;
+            }
+            else {
+                obj->via.str.ptr = MSGPACK_NULLPTR;
+                obj->via.str.size = 0;
+            }
         }
-        obj->via.str.size = size;
         return true;
     }
     bool visit_bin(const char* v, uint32_t size) {
+        MSGPACK_ASSERT(v || size == 0);
         if (size > m_limit.bin()) throw msgpack::bin_size_overflow("bin size overflow");
         msgpack::object* obj = m_stack.back();
         obj->type = msgpack::type::BIN;
         if (m_func && m_func(obj->type, size, m_user_data)) {
             obj->via.bin.ptr = v;
+            obj->via.bin.size = size;
             set_referenced(true);
         }
         else {
-            char* tmp = static_cast<char*>(zone().allocate_align(size, MSGPACK_ZONE_ALIGNOF(char)));
-            std::memcpy(tmp, v, size);
-            obj->via.bin.ptr = tmp;
+            if (v) {
+                char* tmp = static_cast<char*>(zone().allocate_align(size, MSGPACK_ZONE_ALIGNOF(char)));
+                std::memcpy(tmp, v, size);
+                obj->via.bin.ptr = tmp;
+                obj->via.bin.size = size;
+            }
+            else {
+                obj->via.bin.ptr = MSGPACK_NULLPTR;
+                obj->via.bin.size = 0;
+            }
         }
-        obj->via.bin.size = size;
         return true;
     }
     bool visit_ext(const char* v, uint32_t size) {
+        MSGPACK_ASSERT(v || size == 0);
         if (size > m_limit.ext()) throw msgpack::ext_size_overflow("ext size overflow");
         msgpack::object* obj = m_stack.back();
         obj->type = msgpack::type::EXT;
         if (m_func && m_func(obj->type, size, m_user_data)) {
             obj->via.ext.ptr = v;
+            obj->via.ext.size = static_cast<uint32_t>(size - 1);
             set_referenced(true);
         }
         else {
-            char* tmp = static_cast<char*>(zone().allocate_align(size, MSGPACK_ZONE_ALIGNOF(char)));
-            std::memcpy(tmp, v, size);
-            obj->via.ext.ptr = tmp;
+            if (v) {
+                char* tmp = static_cast<char*>(zone().allocate_align(size, MSGPACK_ZONE_ALIGNOF(char)));
+                std::memcpy(tmp, v, size);
+                obj->via.ext.ptr = tmp;
+                obj->via.ext.size = static_cast<uint32_t>(size - 1);
+            }
+            else {
+                obj->via.ext.ptr = MSGPACK_NULLPTR;
+                obj->via.ext.size = 0;
+            }
         }
-        obj->via.ext.size = static_cast<uint32_t>(size - 1);
         return true;
     }
     bool start_array(uint32_t num_elements) {
@@ -163,10 +188,13 @@ public:
             obj->via.array.ptr = MSGPACK_NULLPTR;
         }
         else {
-            size_t size = num_elements*sizeof(msgpack::object);
-            if (size / sizeof(msgpack::object) != num_elements) {
+
+#if SIZE_MAX == UINT_MAX
+            if (num_elements > SIZE_MAX/sizeof(msgpack::object))
                 throw msgpack::array_size_overflow("array size overflow");
-            }
+#endif // SIZE_MAX == UINT_MAX
+
+            size_t size = num_elements*sizeof(msgpack::object);
             obj->via.array.ptr =
                 static_cast<msgpack::object*>(m_zone->allocate_align(size, MSGPACK_ZONE_ALIGNOF(msgpack::object)));
         }
@@ -194,10 +222,12 @@ public:
             obj->via.map.ptr = MSGPACK_NULLPTR;
         }
         else {
-            size_t size = num_kv_pairs*sizeof(msgpack::object_kv);
-            if (size / sizeof(msgpack::object_kv) != num_kv_pairs) {
+
+#if SIZE_MAX == UINT_MAX
+            if (num_kv_pairs > SIZE_MAX/sizeof(msgpack::object_kv))
                 throw msgpack::map_size_overflow("map size overflow");
-            }
+#endif // SIZE_MAX == UINT_MAX
+            size_t size = num_kv_pairs*sizeof(msgpack::object_kv);
             obj->via.map.ptr =
                 static_cast<msgpack::object_kv*>(m_zone->allocate_align(size, MSGPACK_ZONE_ALIGNOF(msgpack::object_kv)));
         }

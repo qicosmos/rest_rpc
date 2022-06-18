@@ -7,19 +7,10 @@
  *    (See accompanying file LICENSE_1_0.txt or copy at
  *    http://www.boost.org/LICENSE_1_0.txt)
  */
-#ifndef MSGPACK_UNPACK_DEFINE_H
-#define MSGPACK_UNPACK_DEFINE_H
+#ifndef MSGPACK_UNPACK_DEFINE_HPP
+#define MSGPACK_UNPACK_DEFINE_HPP
 
-#include "msgpack/sysdep.h"
-#include <stdlib.h>
-#include <string.h>
-#include <assert.h>
-#include <stdio.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
+#include "msgpack/sysdep.hpp"
 
 #ifndef MSGPACK_EMBED_STACK_SIZE
 #define MSGPACK_EMBED_STACK_SIZE 32
@@ -81,9 +72,4 @@ typedef enum {
 } msgpack_container_type;
 
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* msgpack/unpack_define.h */
-
+#endif /* msgpack/unpack_define.hpp */

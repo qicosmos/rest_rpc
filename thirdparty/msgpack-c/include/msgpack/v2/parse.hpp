@@ -14,10 +14,11 @@
 
 #include <cstddef>
 
-#include "msgpack/unpack_define.h"
+#include "msgpack/unpack_define.hpp"
 #include "msgpack/parse_return.hpp"
 #include "msgpack/unpack_exception.hpp"
 #include "msgpack/unpack_decl.hpp"
+#include "msgpack/assert.hpp"
 
 namespace msgpack {
 
@@ -71,27 +72,27 @@ private:
         ++m_current;
         if (size == 0) {
             if (!sv(size)) {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 return PARSE_STOP_VISITOR;
             }
             if (!ev()) {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 return PARSE_STOP_VISITOR;
             }
             parse_return ret = m_stack.consume(holder());
             if (ret != PARSE_CONTINUE) {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 return ret;
             }
         }
         else {
             if (!sv(size)) {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 return PARSE_STOP_VISITOR;
             }
             parse_return ret = m_stack.push(holder(), sv.type(), static_cast<uint32_t>(size));
             if (ret != PARSE_CONTINUE) {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 return ret;
             }
         }
@@ -102,12 +103,12 @@ private:
     parse_return after_visit_proc(bool visit_result, std::size_t& off) {
         ++m_current;
         if (!visit_result) {
-            off = m_current - m_start;
+            off = static_cast<std::size_t>(m_current - m_start);
             return PARSE_STOP_VISITOR;
         }
         parse_return ret = m_stack.consume(holder());
         if (ret != PARSE_CONTINUE) {
-            off = m_current - m_start;
+            off = static_cast<std::size_t>(m_current - m_start);
         }
         m_cs = MSGPACK_CS_HEADER;
         return ret;
@@ -165,10 +166,10 @@ private:
             case MSGPACK_CT_MAP_KEY:
                 return visitor_holder.visitor().start_map_key() ? PARSE_CONTINUE : PARSE_STOP_VISITOR;
             case MSGPACK_CT_MAP_VALUE:
-                assert(0);
+                MSGPACK_ASSERT(0);
                 return PARSE_STOP_VISITOR;
             }
-            assert(0);
+            MSGPACK_ASSERT(0);
             return PARSE_STOP_VISITOR;
         }
         parse_return consume(VisitorHolder& visitor_holder) {
@@ -234,17 +235,15 @@ inline void check_ext_size<4>(std::size_t size) {
 template <typename VisitorHolder>
 inline parse_return context<VisitorHolder>::execute(const char* data, std::size_t len, std::size_t& off)
 {
-    assert(len >= off);
+    MSGPACK_ASSERT(len >= off);
 
     m_start = data;
     m_current = data + off;
     const char* const pe = data + len;
     const char* n = MSGPACK_NULLPTR;
 
-    msgpack::object obj;
-
     if(m_current == pe) {
-        off = m_current - m_start;
+        off = static_cast<std::size_t>(m_current - m_start);
         return PARSE_CONTINUE;
     }
     bool fixed_trail_again = false;
@@ -326,7 +325,7 @@ inline parse_return context<VisitorHolder>::execute(const char* data, std::size_
                 parse_return upr = after_visit_proc(visret, off);
                 if (upr != PARSE_CONTINUE) return upr;
             } else {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 holder().visitor().parse_error(off - 1, off);
                 return PARSE_PARSE_ERROR;
             }
@@ -338,7 +337,7 @@ inline parse_return context<VisitorHolder>::execute(const char* data, std::size_
                 fixed_trail_again = false;
             }
             if(static_cast<std::size_t>(pe - m_current) < m_trail) {
-                off = m_current - m_start;
+                off = static_cast<std::size_t>(m_current - m_start);
                 return PARSE_CONTINUE;
             }
             n = m_current;
@@ -608,14 +607,14 @@ inline parse_return context<VisitorHolder>::execute(const char* data, std::size_
                 if (ret != PARSE_CONTINUE) return ret;
             } break;
             default:
-                off = m_current - m_start;
-                holder().visitor().parse_error(n - m_start - 1, n - m_start);
+                off = static_cast<std::size_t>(m_current - m_start);
+                holder().visitor().parse_error(static_cast<std::size_t>(n - m_start - 1), static_cast<std::size_t>(n - m_start));
                 return PARSE_PARSE_ERROR;
             }
         }
     } while(m_current != pe);
 
-    off = m_current - m_start;
+    off = static_cast<std::size_t>(m_current - m_start);
     return PARSE_CONTINUE;
 }
 

@@ -14,7 +14,6 @@
 #include "msgpack/adaptor/check_container_size.hpp"
 #include <cstring>
 #include <string>
-#include <cassert>
 
 namespace msgpack {
 
@@ -38,7 +37,7 @@ public:
         m_data.resize(static_cast<std::size_t>(s) + 1);
         m_data[0] = static_cast<char>(t);
     }
-    ext(ext_ref const&);
+    explicit ext(ext_ref const&);
     int8_t type() const {
         return static_cast<int8_t>(m_data[0]);
     }
@@ -168,6 +167,7 @@ public:
         if (m_size < x.m_size) return false;
         return std::memcmp(m_ptr, x.m_ptr, m_size) > 0;
     }
+
 private:
     const char* m_ptr;
     uint32_t m_size;
@@ -178,7 +178,7 @@ inline ext::ext(ext_ref const& x) {
     // size limit has already been checked at ext_ref's constructor
     m_data.reserve(x.size() + 1);
 
-    m_data.push_back(x.type());
+    m_data.push_back(static_cast<char>(x.type()));
     m_data.insert(m_data.end(), x.data(), x.data() + x.size());
 }
 

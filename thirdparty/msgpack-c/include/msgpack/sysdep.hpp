@@ -7,16 +7,14 @@
  *    (See accompanying file LICENSE_1_0.txt or copy at
  *    http://www.boost.org/LICENSE_1_0.txt)
  */
-#ifndef MSGPACK_SYSDEP_H
-#define MSGPACK_SYSDEP_H
-
-#include <msgpack/predef.h>
+#ifndef MSGPACK_SYSDEP_HPP
+#define MSGPACK_SYSDEP_HPP
 
 #include <stdlib.h>
 #include <stddef.h>
 
 #if defined(_MSC_VER) && _MSC_VER <= 1800
-#   define snprintf(buf, len, format,...) _snprintf_s(buf, len, len, format, __VA_ARGS__)
+#   define snprintf(buf, len, format,...) _snprintf_s(buf, len, _TRUNCATE, format, __VA_ARGS__)
 #endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1600
@@ -28,6 +26,13 @@
     typedef unsigned __int32 uint32_t;
     typedef signed __int64 int64_t;
     typedef unsigned __int64 uint64_t;
+#   if defined(_WIN64)
+        typedef signed __int64 intptr_t;
+        typedef unsigned __int64 uintptr_t;
+#   else
+        typedef signed __int32 intptr_t;
+        typedef unsigned __int32 uintptr_t;
+#   endif
 #elif defined(_MSC_VER)  // && _MSC_VER >= 1600
 #   include <stdint.h>
 #else
@@ -44,20 +49,25 @@
 #endif
 
 #ifdef _WIN32
-#   define _msgpack_atomic_counter_header <windows.h>
-#   if !defined(WIN32_LEAN_AND_MEAN)
-#       define WIN32_LEAN_AND_MEAN
-#   endif /* WIN32_LEAN_AND_MEAN */
+#   if defined(_KERNEL_MODE)
+#       define _msgpack_atomic_counter_header <ntddk.h>
+#   else
+#       define _msgpack_atomic_counter_header <windows.h>
+#       if !defined(WIN32_LEAN_AND_MEAN)
+#           define WIN32_LEAN_AND_MEAN
+#       endif /* WIN32_LEAN_AND_MEAN */
+#   endif
     typedef long _msgpack_atomic_counter_t;
-#   define _msgpack_sync_decr_and_fetch(ptr) InterlockedDecrement(ptr)
-#   define _msgpack_sync_incr_and_fetch(ptr) InterlockedIncrement(ptr)
+#if defined(_AMD64_) || defined(_M_X64) || defined(_M_ARM64)
+#    define _msgpack_sync_decr_and_fetch(ptr) _InterlockedDecrement(ptr)
+#    define _msgpack_sync_incr_and_fetch(ptr) _InterlockedIncrement(ptr)
+#else
+#    define _msgpack_sync_decr_and_fetch(ptr) InterlockedDecrement(ptr)
+#    define _msgpack_sync_incr_and_fetch(ptr) InterlockedIncrement(ptr)
+#endif
 #elif defined(__GNUC__) && ((__GNUC__*10 + __GNUC_MINOR__) < 41)
 
-#   if defined(__cplusplus)
-#       define _msgpack_atomic_counter_header "msgpack/gcc_atomic.hpp"
-#   else
-#       define _msgpack_atomic_counter_header "msgpack/gcc_atomic.h"
-#   endif
+#   define _msgpack_atomic_counter_header "msgpack/gcc_atomic.hpp"
 
 #else
     typedef unsigned int _msgpack_atomic_counter_t;
@@ -67,14 +77,12 @@
 
 #ifdef _WIN32
 
-#   ifdef __cplusplus
     /* numeric_limits<T>::min,max */
-#       ifdef max
-#           undef max
-#       endif
-#       ifdef min
-#           undef min
-#       endif
+#   ifdef max
+#       undef max
+#   endif
+#   ifdef min
+#       undef min
 #   endif
 
 #elif defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__)
@@ -86,10 +94,24 @@
 
 #endif
 
+#if !defined(MSGPACK_ENDIAN_LITTLE_BYTE) && !defined(MSGPACK_ENDIAN_BIG_BYTE)
+
+#if defined(MSGPACK_NO_BOOST)
+#include <msgpack/predef/other/endian.h>
+#else  // defined(MSGPACK_NO_BOOST)
+#include <boost/predef/other/endian.h>
+
+#define MSGPACK_ENDIAN_LITTLE_BYTE BOOST_ENDIAN_LITTLE_BYTE
+#define MSGPACK_ENDIAN_BIG_BYTE BOOST_ENDIAN_BIG_BYTE
+
+#endif // defined(MSGPACK_NO_BOOST)
+
+#endif // !defined(MSGPACK_ENDIAN_LITTLE_BYTE) && !defined(MSGPACK_ENDIAN_BIG_BYTE)
+
 #if MSGPACK_ENDIAN_LITTLE_BYTE
 
 #   if defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__)
-#       define _msgpack_be16(x) ntohs(x)
+#       define _msgpack_be16(x) ntohs((uint16_t)x)
 #   else
 #       if defined(ntohs)
 #           define _msgpack_be16(x) ntohs(x)
@@ -103,7 +125,7 @@
 #   endif
 
 #   if defined(unix) || defined(__unix) || defined(__APPLE__) || defined(__OpenBSD__)
-#       define _msgpack_be32(x) ntohl(x)
+#       define _msgpack_be32(x) ntohl((uint32_t)x)
 #   else
 #       if defined(ntohl)
 #           define _msgpack_be32(x) ntohl(x)
@@ -148,16 +170,16 @@
 
 #define _msgpack_load16(cast, from, to) do {       \
         memcpy((cast*)(to), (from), sizeof(cast)); \
-        *(to) = _msgpack_be16(*(to));              \
+        *(to) = (cast)_msgpack_be16(*(to));      \
     } while (0);
 
 #define _msgpack_load32(cast, from, to) do {       \
         memcpy((cast*)(to), (from), sizeof(cast)); \
-        *(to) = _msgpack_be32(*(to));              \
+        *(to) = (cast)_msgpack_be32(*(to));        \
     } while (0);
 #define _msgpack_load64(cast, from, to) do {       \
         memcpy((cast*)(to), (from), sizeof(cast)); \
-        *(to) = _msgpack_be64(*(to));              \
+        *(to) = (cast)_msgpack_be64(*(to));        \
     } while (0);
 
 #define _msgpack_store16(to, num) \
@@ -177,25 +199,8 @@
 */
 
 
-#if !defined(__cplusplus) && defined(_MSC_VER)
-#  if !defined(FALSE)
-#    define FALSE (0)
-#  endif
-#  if !defined(TRUE)
-#    define TRUE (!FALSE)
-#  endif
-#  if _MSC_VER >= 1800
-#    include <stdbool.h>
-#  else
-#    define bool int
-#    define true TRUE
-#    define false FALSE
-#  endif
-#  define inline __inline
-#endif
-
 #ifdef __APPLE__
 #  include <TargetConditionals.h>
 #endif
 
-#endif /* msgpack/sysdep.h */
+#endif /* msgpack/sysdep.hpp */

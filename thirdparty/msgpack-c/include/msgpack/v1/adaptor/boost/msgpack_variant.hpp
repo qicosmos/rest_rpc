@@ -10,8 +10,6 @@
 #ifndef MSGPACK_V1_TYPE_BOOST_MSGPACK_VARIANT_HPP
 #define MSGPACK_V1_TYPE_BOOST_MSGPACK_VARIANT_HPP
 
-#if defined(MSGPACK_USE_BOOST)
-
 #include "msgpack/v1/adaptor/boost/msgpack_variant_decl.hpp"
 
 #include "msgpack/adaptor/check_container_size.hpp"
@@ -28,7 +26,18 @@
 #include "msgpack/adaptor/vector.hpp"
 #include "msgpack/adaptor/map.hpp"
 
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
+#endif // defined(__GNUC__)
+
 #include <boost/variant.hpp>
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif // defined(__GNUC__)
+
 #include <boost/operators.hpp>
 
 namespace msgpack {
@@ -439,5 +448,4 @@ struct object_with_zone<type::basic_variant<STR, BIN, EXT> > {
 
 } // namespace msgpack
 
-#endif // MSGPACK_USE_BOOST
 #endif // MSGPACK_V1_TYPE_BOOST_MSGPACK_VARIANT_HPP

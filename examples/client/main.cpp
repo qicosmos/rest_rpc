@@ -191,12 +191,24 @@ void test_download() {
   }
 }
 
+struct dummy1 {
+  size_t id;
+  std::wstring str;
+  MSGPACK_DEFINE(id, str);
+};
+
 void test_echo() {
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
   if (!r) {
     std::cout << "connect timeout" << std::endl;
     return;
+  }
+
+  {
+    dummy1 d1{42, L"test"};
+    auto result = client.call<dummy1>("get_dummy", d1);
+    std::cout << result.id << std::endl;
   }
 
   {
@@ -624,7 +636,7 @@ void benchmark_test() {
 }
 
 int main() {
-  //benchmark_test();
+  // benchmark_test();
   test_connect();
   test_callback();
   test_echo();

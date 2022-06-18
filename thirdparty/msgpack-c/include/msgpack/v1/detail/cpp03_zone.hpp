@@ -10,7 +10,15 @@
 #ifndef MSGPACK_V1_CPP03_ZONE_HPP
 #define MSGPACK_V1_CPP03_ZONE_HPP
 
+#include "msgpack/versioning.hpp"
+#include "msgpack/cpp_config.hpp"
 #include "msgpack/zone_decl.hpp"
+#include "msgpack/assert.hpp"
+
+#include <stdint.h>
+#include <cstdlib>
+#include <memory>
+#include <vector>
 
 
 namespace msgpack {
@@ -55,7 +63,7 @@ class zone {
             ++m_tail;
         }
         void push_expand(void (*func)(void*), void* data) {
-            const size_t nused = m_end - m_array;
+            const size_t nused = static_cast<size_t>(m_end - m_array);
             size_t nnext;
             if(nused == 0) {
                 nnext = (sizeof(finalizer) < 72/2) ?
@@ -237,21 +245,22 @@ inline zone::zone(size_t chunk_size) /* throw() */ :m_chunk_size(chunk_size), m_
 
 inline char* zone::get_aligned(char* ptr, size_t align)
 {
+    MSGPACK_ASSERT(align != 0 && (align & (align - 1)) == 0); // align must be 2^n (n >= 0)
     return
         reinterpret_cast<char*>(
-            reinterpret_cast<size_t>(
-            (ptr + (align - 1))) / align * align);
+            reinterpret_cast<uintptr_t>(ptr + (align - 1)) & ~static_cast<uintptr_t>(align - 1)
+        );
 }
 
 inline void* zone::allocate_align(size_t size, size_t align)
 {
     char* aligned = get_aligned(m_chunk_list.m_ptr, align);
-    size_t adjusted_size = size + (aligned - m_chunk_list.m_ptr);
+    size_t adjusted_size = size + static_cast<size_t>(aligned - m_chunk_list.m_ptr);
     if (m_chunk_list.m_free < adjusted_size) {
         size_t enough_size = size + align - 1;
         char* ptr = allocate_expand(enough_size);
         aligned = get_aligned(ptr, align);
-        adjusted_size = size + (aligned - m_chunk_list.m_ptr);
+        adjusted_size = size + static_cast<size_t>(aligned - m_chunk_list.m_ptr);
     }
     m_chunk_list.m_free -= adjusted_size;
     m_chunk_list.m_ptr  += adjusted_size;
