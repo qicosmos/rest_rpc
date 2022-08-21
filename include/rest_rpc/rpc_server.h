@@ -104,6 +104,10 @@ private:
     }
 
     acceptor_.async_accept(conn_->socket(), [this](asio::error_code ec) {
+      if (!acceptor_.is_open()) {
+        return;
+      }
+
       if (ec) {
         // LOG(INFO) << "acceptor error: " <<
         // ec.message();
@@ -149,12 +153,11 @@ private:
       for (auto it = sub_map_.cbegin(); it != sub_map_.cend();) {
         auto conn = it->second.lock();
         if (conn == nullptr || conn->has_closed()) {
-          //remove token
-          for (auto t = token_list_.begin(); t != token_list_.end(); ) {
+          // remove token
+          for (auto t = token_list_.begin(); t != token_list_.end();) {
             if (it->first.find(*t) != std::string::npos) {
               t = token_list_.erase(t);
-            }
-            else {
+            } else {
               ++t;
             }
           }
