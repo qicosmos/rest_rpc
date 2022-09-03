@@ -208,10 +208,6 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    std::shared_ptr<bool> guard(nullptr, [this, &future_result](bool *) {
-      std::unique_lock<std::mutex> lock(cb_mtx_);
-      future_map_.erase(future_result.id);
-    });
     auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
@@ -232,10 +228,6 @@ public:
   call(const std::string &rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
-    std::shared_ptr<bool> guard(nullptr, [this, &future_result](bool *) {
-      std::unique_lock<std::mutex> lock(cb_mtx_);
-      future_map_.erase(future_result.id);
-    });
     auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
     if (status == std::future_status::timeout ||
         status == std::future_status::deferred) {
@@ -611,12 +603,14 @@ private:
           if (f) {
             // std::cout << "invalid req_id" << std::endl;
             f->set_value(req_result{""});
+            future_map_.erase(req_id);
             return;
           }
         }
 
         assert(f);
         f->set_value(req_result{data});
+        future_map_.erase(req_id);
       }
     }
   }
