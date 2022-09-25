@@ -508,6 +508,14 @@ private:
         }
       } else {
         std::cout << ec.message() << "\n";
+        
+        {
+          std::unique_lock<std::mutex> lock(cb_mtx_);
+          for (auto& item : callback_map_) {
+            item.second->callback(ec, {});
+          }
+        }
+        
         close(false);
         error_callback(ec);
       }
@@ -544,6 +552,7 @@ private:
       } else {
         // LOG(INFO) << ec.message();
         has_connected_ = false;
+        call_back(req_id, ec, {});
         close();
         error_callback(ec);
       }
