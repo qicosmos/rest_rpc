@@ -155,6 +155,12 @@ private:
         // const uint32_t body_len = *((int*)(head_));
         // req_id_ = *((std::uint64_t*)(head_ + sizeof(int32_t)));
         rpc_header *header = (rpc_header *)(head_);
+        if (header->magic != MAGIC_NUM) {
+          print("protocol error");
+          close();
+          return;
+        }
+
         req_id_ = header->req_id;
         const uint32_t body_len = header->body_len;
         req_type_ = header->req_type;
