@@ -25,15 +25,15 @@ struct message_type {
   std::shared_ptr<std::string> content;
 };
 
-#pragma pack(1)
+static const uint8_t MAGIC_NUM = 39;
 struct rpc_header {
+  uint8_t magic;
+  request_type req_type;
   uint32_t body_len;
   uint64_t req_id;
-  request_type req_type;
 };
-#pragma pack()
 
 static const size_t MAX_BUF_LEN = 1048576 * 10;
-static const size_t HEAD_LEN = 13;
+static const size_t HEAD_LEN = sizeof(rpc_header);
 static const size_t INIT_BUF_SIZE = 2 * 1024;
 } // namespace rest_rpc

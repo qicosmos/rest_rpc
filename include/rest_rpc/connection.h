@@ -228,11 +228,10 @@ private:
   void write() {
     auto &msg = write_queue_.front();
     write_size_ = (uint32_t)msg.content->size();
-    std::array<asio::const_buffer, 4> write_buffers;
-    write_buffers[0] = asio::buffer(&write_size_, sizeof(uint32_t));
-    write_buffers[1] = asio::buffer(&msg.req_id, sizeof(uint64_t));
-    write_buffers[2] = asio::buffer(&msg.req_type, sizeof(request_type));
-    write_buffers[3] = asio::buffer(msg.content->data(), write_size_);
+    header_ = {MAGIC_NUM, msg.req_type, write_size_, msg.req_id};
+    std::array<asio::const_buffer, 2> write_buffers;
+    write_buffers[0] = asio::buffer(&header_, sizeof(rpc_header));
+    write_buffers[1] = asio::buffer(msg.content->data(), write_size_);
 
     auto self = this->shared_from_this();
     async_write(write_buffers,
@@ -396,6 +395,8 @@ private:
   std::vector<char> body_;
   std::uint64_t req_id_;
   request_type req_type_;
+
+  rpc_header header_;
 
   uint32_t write_size_ = 0;
   std::mutex write_mtx_;
