@@ -206,6 +206,6 @@ https://github.com/qicosmos/rest_rpc/tree/master/examples
 make an IDL tool to genrate the client code.
 
 ## 社区和群
-purecpp.org
+purecpp.cn
 
 qq群:546487929
