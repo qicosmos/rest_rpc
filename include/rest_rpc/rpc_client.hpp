@@ -1,6 +1,7 @@
 #pragma once
 #include "client_util.hpp"
 #include "const_vars.h"
+#include "md5.hpp"
 #include "meta_util.hpp"
 #include "use_asio.hpp"
 #include <deque>
@@ -258,8 +259,9 @@ public:
     }
 
     msgpack_codec codec;
-    auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
-    write(fu_id, request_type::req_res, std::move(ret));
+    auto ret = codec.pack_args(std::forward<Args>(args)...);
+    write(fu_id, request_type::req_res, std::move(ret),
+          MD5::MD5Hash32(rpc_name.data()));
     return future_result<req_result>{fu_id, std::move(future)};
   }
 
@@ -279,7 +281,8 @@ public:
     msgpack::sbuffer sbuffer;
     sbuffer.write(encoded_func_name_and_args.data(),
                   encoded_func_name_and_args.size());
-    write(fu_id, request_type::req_res, std::move(sbuffer));
+    write(fu_id, request_type::req_res, std::move(sbuffer),
+          MD5::MD5Hash32(encoded_func_name_and_args.data()));
     return fu_id;
   }
 
@@ -306,8 +309,9 @@ public:
     }
 
     msgpack_codec codec;
-    auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
-    write(cb_id, request_type::req_res, std::move(ret));
+    auto ret = codec.pack_args(std::forward<Args>(args)...);
+    write(cb_id, request_type::req_res, std::move(ret),
+          MD5::MD5Hash32(rpc_name.data()));
   }
 
   void stop() {
@@ -419,7 +423,7 @@ private:
     deadline_.async_wait([this, timeout](const asio::error_code &ec) {
       if (!ec) {
         if (has_connected_) {
-          write(0, request_type::req_res, buffer_type(0));
+          write(0, request_type::req_res, buffer_type(0), 0);
         }
       }
 
@@ -427,10 +431,11 @@ private:
     });
   }
 
-  void write(std::uint64_t req_id, request_type type, buffer_type &&message) {
+  void write(std::uint64_t req_id, request_type type, buffer_type &&message,
+             uint32_t func_id) {
     size_t size = message.size();
     assert(size < MAX_BUF_LEN);
-    client_message_type msg{req_id, type, {message.release(), size}};
+    client_message_type msg{req_id, type, {message.release(), size}, func_id};
 
     std::unique_lock<std::mutex> lock(write_mtx_);
     outbox_.emplace_back(std::move(msg));
@@ -446,7 +451,7 @@ private:
     auto &msg = outbox_[0];
     write_size_ = (uint32_t)msg.content.length();
     std::array<asio::const_buffer, 2> write_buffers;
-    header_ = {MAGIC_NUM, msg.req_type, write_size_, msg.req_id};
+    header_ = {MAGIC_NUM, msg.req_type, write_size_, msg.req_id, msg.func_id};
     write_buffers[0] = asio::buffer(&header_, sizeof(rpc_header));
     write_buffers[1] = asio::buffer((char *)msg.content.data(), write_size_);
 
@@ -561,7 +566,7 @@ private:
   void send_subscribe(const std::string &key, const std::string &token) {
     msgpack_codec codec;
     auto ret = codec.pack_args(key, token);
-    write(0, request_type::sub_pub, std::move(ret));
+    write(0, request_type::sub_pub, std::move(ret), MD5::MD5Hash32(key.data()));
   }
 
   void resend_subscribe() {
@@ -834,6 +839,7 @@ private:
     std::uint64_t req_id;
     request_type req_type;
     string_view content;
+    uint32_t func_id;
   };
   std::deque<client_message_type> outbox_;
   uint32_t write_size_ = 0;

@@ -31,6 +31,7 @@ struct rpc_header {
   request_type req_type;
   uint32_t body_len;
   uint64_t req_id;
+  uint32_t func_id;
 };
 
 static const size_t MAX_BUF_LEN = 1048576 * 10;

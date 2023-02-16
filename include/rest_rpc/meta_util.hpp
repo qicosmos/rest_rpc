@@ -1,8 +1,8 @@
 #ifndef REST_RPC_META_UTIL_HPP
 #define REST_RPC_META_UTIL_HPP
 
-#include <functional>
 #include "cplusplus_14.h"
+#include <functional>
 
 namespace rest_rpc {
 
@@ -32,8 +32,7 @@ public:
   typedef Ret (*pointer)(Arg, Args...);
 
   typedef std::tuple<Arg, Args...> tuple_type;
-  typedef std::tuple<std::remove_const_t<std::remove_reference_t<Arg>>,
-                     std::remove_const_t<std::remove_reference_t<Args>>...>
+  typedef std::tuple<std::remove_const_t<std::remove_reference_t<Args>>...>
       bare_tuple_type;
   using args_tuple =
       std::tuple<std::string, Arg,

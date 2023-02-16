@@ -168,7 +168,7 @@ private:
           if (body_.size() < body_len) {
             body_.resize(body_len);
           }
-          read_body(body_len);
+          read_body(header->func_id, body_len);
           return;
         }
 
@@ -192,43 +192,44 @@ private:
     });
   }
 
-  void read_body(std::size_t size) {
+  void read_body(uint32_t func_id, std::size_t size) {
     auto self(this->shared_from_this());
-    async_read(size, [this, self](asio::error_code ec, std::size_t length) {
-      cancel_timer();
+    async_read(
+        size, [this, func_id, self](asio::error_code ec, std::size_t length) {
+          cancel_timer();
 
-      if (!socket_.is_open()) {
-        if (on_net_err_) {
-          (*on_net_err_)(self, "socket already closed");
-        }
-        return;
-      }
-
-      if (!ec) {
-        read_head();
-        if (req_type_ == request_type::req_res) {
-          router_.route<connection>(body_.data(), length,
-                                    this->shared_from_this());
-        } else if (req_type_ == request_type::sub_pub) {
-          try {
-            msgpack_codec codec;
-            auto p = codec.unpack<std::tuple<std::string, std::string>>(
-                body_.data(), length);
-            callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)),
-                      this->shared_from_this());
-          } catch (const std::exception &ex) {
-            print(ex);
+          if (!socket_.is_open()) {
             if (on_net_err_) {
-              (*on_net_err_)(self, ex.what());
+              (*on_net_err_)(self, "socket already closed");
+            }
+            return;
+          }
+
+          if (!ec) {
+            read_head();
+            if (req_type_ == request_type::req_res) {
+              router_.route<connection>(func_id, body_.data(), length,
+                                        this->shared_from_this());
+            } else if (req_type_ == request_type::sub_pub) {
+              try {
+                msgpack_codec codec;
+                auto p = codec.unpack<std::tuple<std::string, std::string>>(
+                    body_.data(), length);
+                callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)),
+                          this->shared_from_this());
+              } catch (const std::exception &ex) {
+                print(ex);
+                if (on_net_err_) {
+                  (*on_net_err_)(self, ex.what());
+                }
+              }
+            }
+          } else {
+            if (on_net_err_) {
+              (*on_net_err_)(self, ec.message());
             }
           }
-        }
-      } else {
-        if (on_net_err_) {
-          (*on_net_err_)(self, ec.message());
-        }
-      }
-    });
+        });
   }
 
   void write() {
