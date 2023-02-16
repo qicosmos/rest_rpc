@@ -259,7 +259,7 @@ public:
     }
 
     msgpack_codec codec;
-    auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
+    auto ret = codec.pack_args(std::forward<Args>(args)...);
     write(fu_id, request_type::req_res, std::move(ret),
           MD5::MD5Hash32(rpc_name.data()));
     return future_result<req_result>{fu_id, std::move(future)};
@@ -309,7 +309,7 @@ public:
     }
 
     msgpack_codec codec;
-    auto ret = codec.pack_args(rpc_name, std::forward<Args>(args)...);
+    auto ret = codec.pack_args(std::forward<Args>(args)...);
     write(cb_id, request_type::req_res, std::move(ret),
           MD5::MD5Hash32(rpc_name.data()));
   }
