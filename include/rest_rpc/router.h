@@ -5,7 +5,6 @@
 #include "md5.hpp"
 #include "meta_util.hpp"
 #include "use_asio.hpp"
-#include <_types/_uint32_t.h>
 #include <functional>
 #include <string>
 #include <unordered_map>
