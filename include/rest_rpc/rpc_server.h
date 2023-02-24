@@ -99,9 +99,6 @@ private:
         token_list_.emplace(std::move(token));
       }
     });
-    if (on_net_err_callback_) {
-      conn_->on_network_error(on_net_err_callback_);
-    }
 
     acceptor_.async_accept(conn_->socket(), [this](asio::error_code ec) {
       if (!acceptor_.is_open()) {
@@ -117,6 +114,9 @@ private:
           conn_->init_ssl_context(ssl_conf_);
         }
 #endif
+        if (on_net_err_callback_) {
+          conn_->on_network_error(on_net_err_callback_);
+        }
         conn_->start();
         std::unique_lock<std::mutex> lock(mtx_);
         conn_->set_conn_id(conn_id_);
