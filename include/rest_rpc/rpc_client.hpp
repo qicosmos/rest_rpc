@@ -41,7 +41,8 @@ public:
 
   void as() {
     if (has_error(data_)) {
-      throw std::logic_error(get_error_msg(data_));
+      std::string err_msg = data_.empty() ? data_ : get_error_msg(data_);
+      throw std::logic_error(err_msg);
     }
   }
 
