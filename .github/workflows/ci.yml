@@ -17,10 +17,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v2
 
-      - name: Configure cmake
+      - name: Configure CMake
         working-directory: ${{github.workspace}}/examples
         run:  cmake -B${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
 
-      - name: Build with ${{ matrix.compiler }}
+      - name: Build
         working-directory: ${{github.workspace}}/examples
         run:  cmake --build ${{github.workspace}}/build --config ${{ matrix.configuration }}
