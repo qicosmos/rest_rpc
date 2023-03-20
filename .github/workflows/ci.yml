@@ -1,0 +1,26 @@
+name: CI
+
+on: [ push, pull_request ]
+
+jobs:
+  build:
+
+    name: ${{ matrix.os }} (${{ matrix.configuration }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        configuration: [ Debug, Release ]
+        os: [ macos-latest, ubuntu-latest, windows-latest ]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+
+      - name: Configure CMake
+        working-directory: ${{github.workspace}}/examples
+        run:  cmake -B${{github.workspace}}/build -DCMAKE_BUILD_TYPE=${{ matrix.configuration }}
+
+      - name: Build
+        working-directory: ${{github.workspace}}/examples
+        run:  cmake --build ${{github.workspace}}/build --config ${{ matrix.configuration }}
