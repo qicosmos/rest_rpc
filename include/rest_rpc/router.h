@@ -192,6 +192,10 @@ private:
     }
   };
 
+  /****
+  注册  key名，函数名， 类名，参数类型，参数个数(变参模板)，connptr 连接指针
+  ****/
+  
   template <ExecMode model, typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = {std::bind(
