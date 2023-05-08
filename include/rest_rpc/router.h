@@ -129,7 +129,9 @@ private:
                              std::shared_ptr<connection>{nullptr}) {
     return (*self.*f)(ptr, std::move(std::get<Indexes>(tup))...);
   }
-
+  /****
+   无返回值，类成员函数调用
+  ****/
   template <typename F, typename Self, typename... Args>
   static typename std::enable_if<std::is_void<typename std::result_of<
       F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
@@ -140,7 +142,9 @@ private:
                        std::move(tp), ptr);
     result = msgpack_codec::pack_args_str(result_code::OK);
   }
-
+  /****
+   有返回值，类成员函数调用
+  ****/
   template <typename F, typename Self, typename... Args>
   static typename std::enable_if<!std::is_void<typename std::result_of<
       F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
@@ -152,6 +156,10 @@ private:
     result = msgpack_codec::pack_args_str(result_code::OK, r);
   }
 
+  /****
+  注册函数 参数  连接信息，参数信息，参数长度，返回结果，同步or异步
+  ****/
+  
   template <typename Function, ExecMode mode = ExecMode::sync> struct invoker {
     template <ExecMode model>
     static inline void apply(const Function &func,
@@ -171,7 +179,9 @@ private:
         result = codec.pack_args_str(result_code::FAIL, e.what());
       }
     }
-
+  /****
+  注册函数 参数  连接信息，参数信息，参数长度，返回结果，同步or异步
+  ****/
     template <ExecMode model, typename Self>
     static inline void apply_member(const Function &func, Self *self,
                                     std::weak_ptr<connection> conn,
@@ -193,13 +203,10 @@ private:
   };
 
   /****
-  注册1、  key名，函数名， 类名，
-  注册2、  key名，函数名
+  注册1、  key名，函数名， 类名，  apply_member
+  注册2、  key名，函数名          apply
   ****/
   
-  /****
-  此处函数 f， 占用了1个参数， 需要传入4个参数，函数名， 参数类型，参数个数(变参模板)，connptr 连接指针
-  ****/
   template <ExecMode model, typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = {std::bind(
@@ -207,9 +214,7 @@ private:
         std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
         std::placeholders::_4, std::placeholders::_5)};
   }
-  /****
-  此处函数 self， f， 占用了2个参数，需要传入4个参数，函数名， 参数类型，参数个数(变参模板)，connptr 连接指针
-  ****/
+
   template <ExecMode model, typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
     this->map_invokers_[key] = {std::bind(
