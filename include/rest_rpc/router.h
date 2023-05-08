@@ -193,9 +193,13 @@ private:
   };
 
   /****
-  注册  key名，函数名， 类名，参数类型，参数个数(变参模板)，connptr 连接指针
+  注册1、  key名，函数名， 类名，
+  注册2、  key名，函数名
   ****/
   
+  /****
+  此处函数 f， 占用了1个参数， 需要传入4个参数，函数名， 参数类型，参数个数(变参模板)，connptr 连接指针
+  ****/
   template <ExecMode model, typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = {std::bind(
@@ -203,7 +207,9 @@ private:
         std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
         std::placeholders::_4, std::placeholders::_5)};
   }
-
+  /****
+  此处函数 self， f， 占用了2个参数，需要传入4个参数，函数名， 参数类型，参数个数(变参模板)，connptr 连接指针
+  ****/
   template <ExecMode model, typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
     this->map_invokers_[key] = {std::bind(
