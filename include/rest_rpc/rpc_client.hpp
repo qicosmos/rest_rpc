@@ -12,8 +12,6 @@
 #include <thread>
 #include <utility>
 
-using namespace rest_rpc::rpc_service;
-
 namespace rest_rpc {
 
 /**
@@ -259,7 +257,7 @@ public:
       future_map_.emplace(fu_id, std::move(p));
     }
 
-    msgpack_codec codec;
+    rpc_service::msgpack_codec codec;
     auto ret = codec.pack_args(std::forward<Args>(args)...);
     write(fu_id, request_type::req_res, std::move(ret),
           MD5::MD5Hash32(rpc_name.data()));
@@ -309,7 +307,7 @@ public:
       callback_map_.emplace(cb_id, call);
     }
 
-    msgpack_codec codec;
+    rpc_service::msgpack_codec codec;
     auto ret = codec.pack_args(std::forward<Args>(args)...);
     write(cb_id, request_type::req_res, std::move(ret),
           MD5::MD5Hash32(rpc_name.data()));
@@ -353,7 +351,7 @@ public:
 
   template <typename T, size_t TIMEOUT = 3>
   void publish(std::string key, T &&t) {
-    msgpack_codec codec;
+    rpc_service::msgpack_codec codec;
     auto buf = codec.pack(std::move(t));
     call<TIMEOUT>("publish", std::move(key), "",
                   std::string(buf.data(), buf.size()));
@@ -361,7 +359,7 @@ public:
 
   template <typename T, size_t TIMEOUT = 3>
   void publish_by_token(std::string key, std::string token, T &&t) {
-    msgpack_codec codec;
+    rpc_service::msgpack_codec codec;
     auto buf = codec.pack(std::move(t));
     call<TIMEOUT>("publish_by_token", std::move(key), std::move(token),
                   std::string(buf.data(), buf.size()));
@@ -424,7 +422,7 @@ private:
     deadline_.async_wait([this, timeout](const asio::error_code &ec) {
       if (!ec) {
         if (has_connected_) {
-          write(0, request_type::req_res, buffer_type(0), 0);
+          write(0, request_type::req_res, rpc_service::buffer_type(0), 0);
         }
       }
 
@@ -432,7 +430,7 @@ private:
     });
   }
 
-  void write(std::uint64_t req_id, request_type type, buffer_type &&message,
+  void write(std::uint64_t req_id, request_type type, rpc_service::buffer_type &&message,
              uint32_t func_id) {
     size_t size = message.size();
     assert(size < MAX_BUF_LEN);
@@ -565,7 +563,7 @@ private:
   }
 
   void send_subscribe(const std::string &key, const std::string &token) {
-    msgpack_codec codec;
+    rpc_service::msgpack_codec codec;
     auto ret = codec.pack_args(key, token);
     write(0, request_type::sub_pub, std::move(ret), MD5::MD5Hash32(key.data()));
   }
