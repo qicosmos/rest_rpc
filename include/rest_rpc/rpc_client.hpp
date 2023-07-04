@@ -430,8 +430,8 @@ private:
     });
   }
 
-  void write(std::uint64_t req_id, request_type type, rpc_service::buffer_type &&message,
-             uint32_t func_id) {
+  void write(std::uint64_t req_id, request_type type,
+             rpc_service::buffer_type &&message, uint32_t func_id) {
     size_t size = message.size();
     assert(size < MAX_BUF_LEN);
     client_message_type msg{req_id, type, {message.release(), size}, func_id};
