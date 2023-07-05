@@ -5,10 +5,6 @@
 #include <memory>
 #include <vector>
 
-/******
-1、 1个 io_service 处理多个socket 的case， 这里需要处理 收到的数据 属于哪个 socket，存在竞争
-2、 此处为多个 io_service， 每个socket 都在 1个 io_service 内，不需要考虑竞争
-*******/
 namespace rest_rpc {
 namespace rpc_service {
 class io_service_pool : private asio::noncopyable {
