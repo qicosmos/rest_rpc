@@ -405,6 +405,7 @@ private:
         has_connected_ = true;
         do_read();
         resend_subscribe();
+	std::unique_lock<std::mutex> lock(conn_mtx_);
         if (has_wait_)
           conn_cond_.notify_one();
       }
