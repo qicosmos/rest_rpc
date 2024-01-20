@@ -94,7 +94,12 @@ public:
   }
 
   ~rpc_client() {
-    close();
+    std::promise<void> promise;
+    ios_.post([this, &promise] {
+      close();
+      promise.set_value();
+    });
+    promise.get_future().wait();
     stop();
   }
 
