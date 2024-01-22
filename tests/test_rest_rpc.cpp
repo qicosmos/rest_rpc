@@ -10,12 +10,6 @@ using namespace rpc_service;
 
 struct dummy {
   int add(rpc_conn conn, int a, int b) {
-    // auto shared_conn = conn.lock();
-    // if (shared_conn) {
-    //   shared_conn->set_user_data(std::string("aa"));
-    //   auto s = conn.lock()->get_user_data<std::string>();
-    //   std::cout << s << '\n'; // aa
-    // }
     return a + b;
   }
 };
