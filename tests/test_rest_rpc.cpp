@@ -15,17 +15,17 @@ struct dummy {
 };
 
 TEST_CASE("test_client_default_constructor") {
-    rpc_server server(9000, std::thread::hardware_concurrency());
-    dummy d;
-    server.register_handler("add", &dummy::add, &d);
-    server.async_run();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  dummy d;
+  server.register_handler("add", &dummy::add, &d);
+  server.async_run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    rpc_client client;
-    bool r = client.connect("127.0.0.1", 9000);
-    CHECK(r);
-    auto result = client.call<int>("add", 1, 2);
-    CHECK_EQ(result, 3);
+  rpc_client client;
+  bool r = client.connect("127.0.0.1", 9000);
+  CHECK(r);
+  auto result = client.call<int>("add", 1, 2);
+  CHECK_EQ(result, 3);
 }
 
 TEST_CASE("test_client_async_connect") {
