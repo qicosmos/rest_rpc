@@ -14,9 +14,7 @@ struct dummy {
   }
 };
 
-std::string echo(rpc_conn conn, const std::string &src) {
-  return src;
-}
+std::string echo(rpc_conn conn, const std::string &src) { return src; }
 
 struct person {
   int id;
@@ -78,17 +76,17 @@ TEST_CASE("test_client_async_connect") {
 }
 
 TEST_CASE("test_client_sync_call") {
-    rpc_server server(9000, std::thread::hardware_concurrency());
-    dummy d;
-    server.register_handler("add", &dummy::add, &d);
-    server.async_run();
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  dummy d;
+  server.register_handler("add", &dummy::add, &d);
+  server.async_run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    rpc_client client("127.0.0.1", 9000);
-    bool r = client.connect();
-    CHECK(r);
-    auto result = client.call<int>("add", 1, 2);
-    CHECK_EQ(result, 3);
+  rpc_client client("127.0.0.1", 9000);
+  bool r = client.connect();
+  CHECK(r);
+  auto result = client.call<int>("add", 1, 2);
+  CHECK_EQ(result, 3);
 }
 
 TEST_CASE("test_client_async_call") {
@@ -120,12 +118,11 @@ TEST_CASE("test_client_async_call") {
 }
 TEST_CASE("test_client_async_call_not_connect") {
   rpc_client client("127.0.0.1", 9001);
-  client.async_call<>(
-    "get_person", 
-    [](const asio::error_code &ec, string_view data) {
-    CHECK_EQ(ec, asio::error::not_connected);
-    CHECK_EQ(data, "not connected");
-  });
+  client.async_call<>("get_person",
+                      [](const asio::error_code &ec, string_view data) {
+                        CHECK_EQ(ec, asio::error::not_connected);
+                        CHECK_EQ(data, "not connected");
+                      });
 }
 // TEST_CASE("test_client_reconnect_and_heartbeat") {
 
@@ -175,4 +172,3 @@ TEST_CASE("test_client_async_call_with_timeout") {
       },
       test);
 }
-
