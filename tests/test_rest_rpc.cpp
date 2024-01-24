@@ -124,34 +124,6 @@ TEST_CASE("test_client_async_call_not_connect") {
                         CHECK_EQ(data, "not connected");
                       });
 }
-// TEST_CASE("test_client_reconnect_and_heartbeat") {
-
-//   rpc_client client;
-//   client.enable_auto_reconnect(); // automatic reconnect
-//   client.enable_auto_heartbeat(); // automatic heartbeat
-//   bool r = client.connect("127.0.0.1", 9000);
-//   bool flag = false;
-//   int cnt = 0;
-//   rpc_server server(9000, std::thread::hardware_concurrency());
-//   server.register_handler("get_person", get_person);
-//   server.async_run();
-//   while (true) {
-//     if (client.has_connected()) {
-//       flag = true;
-//       break;
-//     } else {
-//       // std::cout << "connected fail\n";
-//       cnt++;
-//     }
-//     if (cnt == 200) {
-//       flag = false;
-//       break;
-//     }
-
-//     std::this_thread::sleep_for(std::chrono::seconds(1));
-//   }
-//   CHECK(flag);
-// }
 
 TEST_CASE("test_client_async_call_with_timeout") {
   rpc_server server(9000, std::thread::hardware_concurrency());
