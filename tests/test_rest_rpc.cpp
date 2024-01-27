@@ -204,11 +204,12 @@ TEST_CASE("test_client_async_call_with_timeout") {
 
 TEST_CASE("test_client_subscribe") {
   rpc_server server(9000, std::thread::hardware_concurrency());
-  server.register_handler("publish",
-                          [&server](rpc_conn conn, std::string key,
-                                    std::string token, std::string val) {
-                            server.publish(std::move(key), std::move(val));
-                          });
+  server.register_handler<true>(
+      "publish", [&server](rpc_conn conn, std::string key, std::string token,
+                           std::string val) {
+        CHECK(val == "hello subscriber");
+        server.publish(std::move(key), std::move(val));
+      });
   bool stop = false;
   std::thread thd([&server, &stop] {
     while (!stop) {
@@ -221,6 +222,8 @@ TEST_CASE("test_client_subscribe") {
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
   CHECK(r);
+  client.publish("key", "hello subscriber");
+
   client.subscribe("key", [&stop](string_view data) {
     std::cout << data << "\n";
     CHECK_EQ(data, "hello subscriber");

@@ -21,21 +21,45 @@ struct route_result_t {
   std::string result;
 };
 
-class router : asio::noncopyable {
+template <typename Tuple, bool is_pub> class helper_t {
 public:
-  template <typename Function>
-  void register_handler(std::string const &name, Function f) {
-    uint32_t key = MD5::MD5Hash32(name.data());
-    key2func_name_.emplace(key, name);
-    return register_nonmember_func(key, std::move(f));
+  helper_t(Tuple &tp) : tp_(tp) {}
+
+  void operator()() {}
+
+private:
+  Tuple &tp_;
+};
+
+template <typename Tuple> class helper_t<Tuple, true> {
+public:
+  helper_t(Tuple &tp) : tp_(tp) {}
+
+  void operator()() {
+    auto &arg = std::get<std::tuple_size<Tuple>::value - 1>(tp_);
+    msgpack_codec codec;
+    arg = codec.unpack<std::string>(arg.data(), arg.size());
   }
 
-  template <typename Function, typename Self>
+private:
+  Tuple &tp_;
+};
+
+class router : asio::noncopyable {
+public:
+  template <bool is_pub = false, typename Function>
+  void register_handler(std::string const &name, Function f, bool pub = false) {
+    uint32_t key = MD5::MD5Hash32(name.data());
+    key2func_name_.emplace(key, name);
+    return register_nonmember_func<is_pub>(key, std::move(f));
+  }
+
+  template <bool is_pub = false, typename Function, typename Self>
   void register_handler(std::string const &name, const Function &f,
                         Self *self) {
     uint32_t key = MD5::MD5Hash32(name.data());
     key2func_name_.emplace(key, name);
-    return register_member_func(key, f, self);
+    return register_member_func<is_pub>(key, f, self);
   }
 
   void remove_handler(std::string const &name) {
@@ -154,7 +178,7 @@ private:
     result = msgpack_codec::pack_args_str(result_code::OK, r);
   }
 
-  template <typename Function>
+  template <bool is_pub, typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = [f](std::weak_ptr<connection> conn,
                                    nonstd::string_view str,
@@ -163,6 +187,7 @@ private:
       msgpack_codec codec;
       try {
         auto tp = codec.unpack<args_tuple>(str.data(), str.size());
+        helper_t<args_tuple, is_pub>{tp}();
         call(f, conn, result, std::move(tp));
       } catch (std::invalid_argument &e) {
         result = codec.pack_args_str(result_code::FAIL, e.what());
@@ -172,7 +197,7 @@ private:
     };
   }
 
-  template <typename Function, typename Self>
+  template <bool is_pub, typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
     this->map_invokers_[key] = [f, self](std::weak_ptr<connection> conn,
                                          nonstd::string_view str,
@@ -181,6 +206,7 @@ private:
       msgpack_codec codec;
       try {
         auto tp = codec.unpack<args_tuple>(str.data(), str.size());
+        helper_t<args_tuple, is_pub>{tp}();
         call_member(f, self, conn, result, std::move(tp));
       } catch (std::invalid_argument &e) {
         result = codec.pack_args_str(result_code::FAIL, e.what());

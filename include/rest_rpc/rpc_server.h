@@ -52,15 +52,15 @@ public:
 
   void run() { io_service_pool_.run(); }
 
-  template <typename Function>
+  template <bool is_pub = false, typename Function>
   void register_handler(std::string const &name, const Function &f) {
-    router_.register_handler(name, f);
+    router_.register_handler<is_pub>(name, f);
   }
 
-  template <typename Function, typename Self>
+  template <bool is_pub = false, typename Function, typename Self>
   void register_handler(std::string const &name, const Function &f,
                         Self *self) {
-    router_.register_handler(name, f, self);
+    router_.register_handler<is_pub>(name, f, self);
   }
 
   void set_conn_timeout_callback(std::function<void(int64_t)> callback) {
