@@ -100,7 +100,7 @@ public:
     std::promise<void> promise;
     ios_.post([this, &promise] {
       close();
-      stop_timer_ = true;
+      stop_client_ = true;
       std::error_code ec;
       deadline_.cancel(ec);
       promise.set_value();
@@ -388,7 +388,7 @@ private:
     assert(port_ != 0);
     auto addr = asio::ip::address::from_string(host_);
     socket_.async_connect({addr, port_}, [this](const asio::error_code &ec) {
-      if (has_connected_) {
+      if (has_connected_ || stop_client_) {
         return;
       }
 
@@ -429,7 +429,7 @@ private:
   }
 
   void reset_deadline_timer(size_t timeout) {
-    if (stop_timer_) {
+    if (stop_client_) {
       return;
     }
 
@@ -848,7 +848,7 @@ private:
   bool has_wait_ = false;
 
   asio::steady_timer deadline_;
-  bool stop_timer_ = false;
+  bool stop_client_ = false;
 
   struct client_message_type {
     std::uint64_t req_id;
