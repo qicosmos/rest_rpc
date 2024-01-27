@@ -209,7 +209,7 @@ public:
     err_cb_ = std::move(f);
   }
 
-  uint64_t reqest_id() { return temp_req_id_; }
+  uint64_t request_id() { return temp_req_id_; }
 
   bool has_connected() const { return has_connected_; }
 

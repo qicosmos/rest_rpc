@@ -37,6 +37,41 @@ void hello(rpc_conn conn, const std::string &str) {
   std::cout << "hello " << str << std::endl;
 }
 
+TEST_CASE("test_client_constructor") {
+  constexpr unsigned short port = 9000;
+  rpc_server server(port, std::thread::hardware_concurrency());
+  dummy d;
+  server.register_handler("add", &dummy::add, &d);
+  server.async_run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  SUBCASE("default_constructor") {
+    rpc_client client;
+    client.update_addr("127.0.0.1", port);
+    bool r = client.connect("127.0.0.1", port);
+    CHECK(r);
+    auto result = client.call<int>("add", 1, 2);
+    CHECK_EQ(result, 3);
+  }
+
+  SUBCASE("with_language_constructor") {
+    rpc_client client(client_language_t::CPP, nullptr);
+    bool r = client.connect("127.0.0.1", port);
+    CHECK(r);
+    auto result = client.call<int>("add", 1, 2);
+    CHECK_EQ(result, 3);
+  }
+
+  SUBCASE("with_host_constructor") {
+    const std::string host{"127.0.0.1"};
+    rpc_client client(host, port);
+
+    auto r = client.connect();
+    CHECK(r);
+
+    auto result = client.call<int>("add", 1, 2);
+  }
+}
+
 TEST_CASE("test_client_reconnect") {
   rpc_client client;
   client.enable_auto_reconnect(); // automatic reconnect
@@ -66,35 +101,6 @@ TEST_CASE("test_client_reconnect") {
     }
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
-}
-
-TEST_CASE("test_client_default_constructor") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
-  dummy d;
-  server.register_handler("add", &dummy::add, &d);
-  server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-  rpc_client client;
-  client.update_addr("127.0.0.1", 9000);
-  bool r = client.connect("127.0.0.1", 9000);
-  CHECK(r);
-  auto result = client.call<int>("add", 1, 2);
-  CHECK_EQ(result, 3);
-}
-
-TEST_CASE("test_constructor_with_language") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
-  dummy d;
-  server.register_handler("add", &dummy::add, &d);
-  server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-  rpc_client client(client_language_t::CPP, nullptr);
-  bool r = client.connect("127.0.0.1", 9000);
-  CHECK(r);
-  auto result = client.call<int>("add", 1, 2);
-  CHECK_EQ(result, 3);
 }
 
 TEST_CASE("test_client_async_connect") {
