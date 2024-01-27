@@ -1,17 +1,15 @@
+#include "doctest/doctest.h"
 #include <chrono>
 #include <fstream>
 #include <iostream>
-#include <thread>
 #include <rest_rpc.hpp>
-#include "doctest/doctest.h"
+#include <thread>
 
 using namespace rest_rpc;
 using namespace rpc_service;
 
 struct dummy {
-  int add(rpc_conn conn, int a, int b) {
-    return a + b;
-  }
+  int add(rpc_conn conn, int a, int b) { return a + b; }
 };
 
 std::string echo(rpc_conn conn, const std::string &src) { return src; }
@@ -27,6 +25,39 @@ person get_person(rpc_conn conn) { return {1, "tom", 20}; }
 
 void hello(rpc_conn conn, const std::string &str) {
   std::cout << "hello " << str << std::endl;
+}
+
+TEST_CASE("test_client_reconnect") {
+  rpc_client client;
+  client.enable_auto_reconnect(); // automatic reconnect
+  client.enable_auto_heartbeat(); // automatic heartbeat
+  client.set_error_callback([](asio::error_code ec) {
+    std::cout << "line: " << __LINE__ << ", 11msg: " << ec.message()
+              << std::endl;
+  });
+  client.connect("127.0.0.1", 9000);
+
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  dummy d;
+  server.register_handler("add", &dummy::add, &d);
+  server.async_run();
+
+  int count = 0;
+  while (true) {
+    if (client.has_connected()) {
+      try {
+        auto result = client.call<int>("add", 1, 2);
+        CHECK_EQ(result, 3);
+        break;
+      } catch (const std::exception &ex) {
+        std::cout << ex.what() << std::endl;
+      }
+    } else {
+      // count++;
+      std::cout << "connected failed: " << count++ << "\n";
+    }
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+  }
 }
 
 TEST_CASE("test_client_default_constructor") {
