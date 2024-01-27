@@ -154,52 +154,40 @@ private:
     result = msgpack_codec::pack_args_str(result_code::OK, r);
   }
 
-  template <typename Function> struct invoker {
-    static inline void apply(const Function &func,
-                             std::weak_ptr<connection> conn,
-                             nonstd::string_view str, std::string &result) {
-      using args_tuple = typename function_traits<Function>::bare_tuple_type;
-      msgpack_codec codec;
-      try {
-        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
-        call(func, conn, result, std::move(tp));
-      } catch (std::invalid_argument &e) {
-        result = codec.pack_args_str(result_code::FAIL, e.what());
-      } catch (const std::exception &e) {
-        result = codec.pack_args_str(result_code::FAIL, e.what());
-      }
-    }
-
-    template <typename Self>
-    static inline void apply_member(const Function &func, Self *self,
-                                    std::weak_ptr<connection> conn,
-                                    nonstd::string_view str,
-                                    std::string &result) {
-      using args_tuple = typename function_traits<Function>::bare_tuple_type;
-      msgpack_codec codec;
-      try {
-        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
-        call_member(func, self, conn, result, std::move(tp));
-      } catch (std::invalid_argument &e) {
-        result = codec.pack_args_str(result_code::FAIL, e.what());
-      } catch (const std::exception &e) {
-        result = codec.pack_args_str(result_code::FAIL, e.what());
-      }
-    }
-  };
-
   template <typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
-    this->map_invokers_[key] = {std::bind(
-        &invoker<Function>::apply, std::move(f), std::placeholders::_1,
-        std::placeholders::_2, std::placeholders::_3)};
+    this->map_invokers_[key] = [f](std::weak_ptr<connection> conn,
+                                   nonstd::string_view str,
+                                   std::string &result) {
+      using args_tuple = typename function_traits<Function>::bare_tuple_type;
+      msgpack_codec codec;
+      try {
+        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
+        call(f, conn, result, std::move(tp));
+      } catch (std::invalid_argument &e) {
+        result = codec.pack_args_str(result_code::FAIL, e.what());
+      } catch (const std::exception &e) {
+        result = codec.pack_args_str(result_code::FAIL, e.what());
+      }
+    };
   }
 
   template <typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
-    this->map_invokers_[key] = {std::bind(
-        &invoker<Function>::template apply_member<Self>, f, self,
-        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)};
+    this->map_invokers_[key] = [f, self](std::weak_ptr<connection> conn,
+                                         nonstd::string_view str,
+                                         std::string &result) {
+      using args_tuple = typename function_traits<Function>::bare_tuple_type;
+      msgpack_codec codec;
+      try {
+        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
+        call_member(f, self, conn, result, std::move(tp));
+      } catch (std::invalid_argument &e) {
+        result = codec.pack_args_str(result_code::FAIL, e.what());
+      } catch (const std::exception &e) {
+        result = codec.pack_args_str(result_code::FAIL, e.what());
+      }
+    };
   }
 
   std::unordered_map<uint32_t,
