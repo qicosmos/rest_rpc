@@ -101,6 +101,8 @@ public:
     callback_ = std::move(callback);
   }
 
+  void set_delay(bool delay) { delay_ = delay; }
+
   void on_network_error(std::function<void(std::shared_ptr<connection>,
                                            std::string)> &on_net_err) {
     on_net_err_ = &on_net_err;
@@ -208,8 +210,14 @@ private:
           if (!ec) {
             read_head();
             if (req_type_ == request_type::req_res) {
-              router_.route<connection>(func_id, body_.data(), length,
-                                        this->shared_from_this());
+              route_result_t ret = router_.route<connection>(
+                  func_id, nonstd::string_view{body_.data(), length},
+                  this->shared_from_this());
+              if (delay_) {
+                delay_ = false;
+              } else {
+                response(req_id_, std::move(ret.result));
+              }
             } else if (req_type_ == request_type::sub_pub) {
               try {
                 msgpack_codec codec;
@@ -420,6 +428,7 @@ private:
       nullptr;
   router &router_;
   nonstd::any user_data_;
+  bool delay_ = false;
 };
 } // namespace rpc_service
 } // namespace rest_rpc

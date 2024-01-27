@@ -217,7 +217,7 @@ void test_echo() {
   }
 
   {
-    auto result = client.call<std::string>("async_echo", "test");
+    auto result = client.call<std::string>("delay_echo", "test");
     std::cout << result << std::endl;
   }
 }
@@ -349,11 +349,11 @@ void test_callback() {
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
 
-  for (size_t i = 0; i < 100; i++) {
+  for (size_t i = 0; i < 10; i++) {
     std::string test = "test" + std::to_string(i + 1);
     // set timeout 100ms
-    client.async_call<100>(
-        "async_echo",
+    client.async_call<10000>(
+        "delay_echo",
         [](const asio::error_code &ec, string_view data) {
           if (ec) {
             std::cout << ec.value() << " timeout" << std::endl;
@@ -361,7 +361,7 @@ void test_callback() {
           }
 
           auto str = as<std::string>(data);
-          std::cout << "echo " << str << '\n';
+          std::cout << "delay echo " << str << '\n';
         },
         test);
 

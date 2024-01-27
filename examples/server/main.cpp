@@ -75,11 +75,11 @@ std::string get_name(rpc_conn conn, const person &p) {
 
 // if you want to response later, you can use async model, you can control when
 // to response
-void async_echo(rpc_conn conn, const std::string &src) {
-  auto req_id =
-      conn.lock()->request_id(); // note: you need keep the request id at that
-                                 // time, and pass it into the async thread
-
+void delay_echo(rpc_conn conn, const std::string &src) {
+  auto sp = conn.lock();
+  sp->set_delay(true);
+  auto req_id = sp->request_id(); // note: you need keep the request id at that
+  // time, and pass it into the async thread
   std::thread thd([conn, req_id, src] {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     auto conn_sp = conn.lock();
@@ -121,7 +121,7 @@ dummy1 get_dummy(rpc_conn conn, dummy1 d) { return d; }
 
 int main() {
   //  benchmark_test();
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 3600);
 
   dummy d;
   server.register_handler("add", &dummy::add, &d);
@@ -135,7 +135,7 @@ int main() {
   server.register_handler("upload", upload);
   server.register_handler("download", download);
   server.register_handler("get_name", get_name);
-  server.register_handler<Async>("async_echo", async_echo);
+  server.register_handler("delay_echo", delay_echo);
   server.register_handler("echo", echo);
   server.register_handler("get_int", get_int);
 
