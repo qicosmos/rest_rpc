@@ -73,7 +73,7 @@ TEST_CASE("test_client_default_constructor") {
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client;
   client.update_addr("127.0.0.1", 9000);
@@ -88,7 +88,7 @@ TEST_CASE("test_constructor_with_language") {
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client(client_language_t::CPP, nullptr);
   bool r = client.connect("127.0.0.1", 9000);
@@ -102,7 +102,7 @@ TEST_CASE("test_client_async_connect") {
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client;
   client.async_connect("127.0.0.1", 9000);
@@ -120,7 +120,7 @@ TEST_CASE("test_client_sync_call") {
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
@@ -133,7 +133,7 @@ TEST_CASE("test_client_sync_call_return_void") {
   rpc_server server(9000, std::thread::hardware_concurrency());
   server.register_handler("echo", echo);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
@@ -146,7 +146,7 @@ TEST_CASE("test_client_async_call") {
   server.register_handler("get_person", get_person);
   server.register_handler("hello", hello);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
@@ -181,7 +181,7 @@ TEST_CASE("test_client_async_call_with_timeout") {
   rpc_server server(9000, std::thread::hardware_concurrency());
   server.register_handler("echo", echo);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
@@ -217,7 +217,7 @@ TEST_CASE("test_client_subscribe") {
     }
   });
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
   CHECK(r);
@@ -245,7 +245,7 @@ TEST_CASE("test_server_publish_encode_msg") {
     }
   });
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
   CHECK(r);
@@ -277,7 +277,7 @@ TEST_CASE("test_client_subscribe_by_token") {
     }
   });
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
   CHECK(r);
@@ -304,7 +304,7 @@ TEST_CASE("test_server_callback") {
     std::cout << "connect id : " << conn_id << " timeout \n";
   });
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
@@ -316,7 +316,7 @@ TEST_CASE("test_server_user_data") {
   rpc_server server(9000, std::thread::hardware_concurrency());
   server.register_handler("server_user_data", server_user_data);
   server.async_run();
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
