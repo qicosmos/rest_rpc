@@ -4,33 +4,38 @@
 #include "codec.h"
 #include "md5.hpp"
 #include "meta_util.hpp"
+#include "string_view.hpp"
 #include "use_asio.hpp"
 #include <functional>
 #include <string>
 #include <unordered_map>
 
 namespace rest_rpc {
-enum class ExecMode { sync, async };
-const constexpr ExecMode Async = ExecMode::async;
-
 namespace rpc_service {
 class connection;
 
+enum class router_error { ok, no_such_function, has_exception, unkonw };
+
+struct route_result_t {
+  router_error ec = router_error::unkonw;
+  std::string result;
+};
+
 class router : asio::noncopyable {
 public:
-  template <ExecMode model, typename Function>
+  template <typename Function>
   void register_handler(std::string const &name, Function f) {
     uint32_t key = MD5::MD5Hash32(name.data());
     key2func_name_.emplace(key, name);
-    return register_nonmember_func<model>(key, std::move(f));
+    return register_nonmember_func(key, std::move(f));
   }
 
-  template <ExecMode model, typename Function, typename Self>
+  template <typename Function, typename Self>
   void register_handler(std::string const &name, const Function &f,
                         Self *self) {
     uint32_t key = MD5::MD5Hash32(name.data());
     key2func_name_.emplace(key, name);
-    return register_member_func<model>(key, f, self);
+    return register_member_func(key, f, self);
   }
 
   void remove_handler(std::string const &name) {
@@ -48,14 +53,9 @@ public:
   }
 
   template <typename T>
-  void route(uint32_t key, const char *data, std::size_t size,
-             std::weak_ptr<T> conn) {
-    auto conn_sp = conn.lock();
-    if (!conn_sp) {
-      return;
-    }
-
-    auto req_id = conn_sp->request_id();
+  route_result_t route(uint32_t key, nonstd::string_view data,
+                       std::weak_ptr<T> conn) {
+    route_result_t route_result{};
     std::string result;
     try {
       msgpack_codec codec;
@@ -63,26 +63,28 @@ public:
       if (it == map_invokers_.end()) {
         result = codec.pack_args_str(
             result_code::FAIL, "unknown function: " + get_name_by_key(key));
-        conn_sp->response(req_id, std::move(result));
-        return;
-      }
-
-      ExecMode model;
-      it->second(conn, data, size, result, model);
-      if (model == ExecMode::sync) {
-        if (result.size() >= MAX_BUF_LEN) {
-          result = codec.pack_args_str(
-              result_code::FAIL,
-              "the response result is out of range: more than 10M " +
-                  get_name_by_key(key));
-        }
-        conn_sp->response(req_id, std::move(result));
+        route_result.ec = router_error::no_such_function;
+      } else {
+        it->second(conn, data, result);
+        route_result.ec = router_error::ok;
       }
     } catch (const std::exception &ex) {
       msgpack_codec codec;
-      result = codec.pack_args_str(result_code::FAIL, ex.what());
-      conn_sp->response(req_id, std::move(result));
+      result = codec.pack_args_str(
+          result_code::FAIL,
+          std::string("exception occur when call").append(ex.what()));
+      route_result.ec = router_error::has_exception;
+    } catch (...) {
+      msgpack_codec codec;
+      result = codec.pack_args_str(
+          result_code::FAIL, std::string("unknown exception occur when call ")
+                                 .append(get_name_by_key(key)));
+      route_result.ec = router_error::no_such_function;
     }
+
+    route_result.result = std::move(result);
+
+    return route_result;
   }
 
   router() = default;
@@ -152,19 +154,15 @@ private:
     result = msgpack_codec::pack_args_str(result_code::OK, r);
   }
 
-  template <typename Function, ExecMode mode = ExecMode::sync> struct invoker {
-    template <ExecMode model>
+  template <typename Function> struct invoker {
     static inline void apply(const Function &func,
-                             std::weak_ptr<connection> conn, const char *data,
-                             size_t size, std::string &result,
-                             ExecMode &exe_model) {
+                             std::weak_ptr<connection> conn,
+                             nonstd::string_view str, std::string &result) {
       using args_tuple = typename function_traits<Function>::bare_tuple_type;
-      exe_model = ExecMode::sync;
       msgpack_codec codec;
       try {
-        auto tp = codec.unpack<args_tuple>(data, size);
+        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
         call(func, conn, result, std::move(tp));
-        exe_model = model;
       } catch (std::invalid_argument &e) {
         result = codec.pack_args_str(result_code::FAIL, e.what());
       } catch (const std::exception &e) {
@@ -172,18 +170,16 @@ private:
       }
     }
 
-    template <ExecMode model, typename Self>
+    template <typename Self>
     static inline void apply_member(const Function &func, Self *self,
                                     std::weak_ptr<connection> conn,
-                                    const char *data, size_t size,
-                                    std::string &result, ExecMode &exe_model) {
+                                    nonstd::string_view str,
+                                    std::string &result) {
       using args_tuple = typename function_traits<Function>::bare_tuple_type;
-      exe_model = ExecMode::sync;
       msgpack_codec codec;
       try {
-        auto tp = codec.unpack<args_tuple>(data, size);
+        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
         call_member(func, self, conn, result, std::move(tp));
-        exe_model = model;
       } catch (std::invalid_argument &e) {
         result = codec.pack_args_str(result_code::FAIL, e.what());
       } catch (const std::exception &e) {
@@ -192,25 +188,23 @@ private:
     }
   };
 
-  template <ExecMode model, typename Function>
+  template <typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = {std::bind(
-        &invoker<Function>::template apply<model>, std::move(f),
-        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-        std::placeholders::_4, std::placeholders::_5)};
+        &invoker<Function>::apply, std::move(f), std::placeholders::_1,
+        std::placeholders::_2, std::placeholders::_3)};
   }
 
-  template <ExecMode model, typename Function, typename Self>
+  template <typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
     this->map_invokers_[key] = {std::bind(
-        &invoker<Function>::template apply_member<model, Self>, f, self,
-        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-        std::placeholders::_4, std::placeholders::_5)};
+        &invoker<Function>::template apply_member<Self>, f, self,
+        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3)};
   }
 
-  std::unordered_map<
-      uint32_t, std::function<void(std::weak_ptr<connection>, const char *,
-                                   size_t, std::string &, ExecMode &model)>>
+  std::unordered_map<uint32_t,
+                     std::function<void(std::weak_ptr<connection>,
+                                        nonstd::string_view, std::string &)>>
       map_invokers_;
   std::unordered_map<uint32_t, std::string> key2func_name_;
 };
