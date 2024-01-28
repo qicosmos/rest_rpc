@@ -119,7 +119,7 @@ private:
 
   template <typename F, size_t... I, typename... Args>
   static typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type
-  call_helper(const F &f, const std::index_sequence<I...> &,
+  call_helper(const F &f, const nonstd::index_sequence<I...> &,
               std::tuple<Args...> tup, std::weak_ptr<connection> ptr) {
     return f(ptr, std::move(std::get<I>(tup))...);
   }
@@ -129,8 +129,8 @@ private:
       F(std::weak_ptr<connection>, Args...)>::type>::value>::type
   call(const F &f, std::weak_ptr<connection> ptr, std::string &result,
        std::tuple<Args...> tp) {
-    call_helper(f, std::make_index_sequence<sizeof...(Args)>{}, std::move(tp),
-                ptr);
+    call_helper(f, nonstd::make_index_sequence<sizeof...(Args)>{},
+                std::move(tp), ptr);
     result = msgpack_codec::pack_args_str(result_code::OK);
   }
 
@@ -139,7 +139,7 @@ private:
       F(std::weak_ptr<connection>, Args...)>::type>::value>::type
   call(const F &f, std::weak_ptr<connection> ptr, std::string &result,
        std::tuple<Args...> tp) {
-    auto r = call_helper(f, std::make_index_sequence<sizeof...(Args)>{},
+    auto r = call_helper(f, nonstd::make_index_sequence<sizeof...(Args)>{},
                          std::move(tp), ptr);
     msgpack_codec codec;
     result = msgpack_codec::pack_args_str(result_code::OK, r);
@@ -149,7 +149,7 @@ private:
   static
       typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type
       call_member_helper(const F &f, Self *self,
-                         const std::index_sequence<Indexes...> &,
+                         const nonstd::index_sequence<Indexes...> &,
                          std::tuple<Args...> tup,
                          std::weak_ptr<connection> ptr =
                              std::shared_ptr<connection>{nullptr}) {
@@ -162,7 +162,7 @@ private:
   call_member(const F &f, Self *self, std::weak_ptr<connection> ptr,
               std::string &result, std::tuple<Args...> tp) {
     call_member_helper(f, self,
-                       typename std::make_index_sequence<sizeof...(Args)>{},
+                       typename nonstd::make_index_sequence<sizeof...(Args)>{},
                        std::move(tp), ptr);
     result = msgpack_codec::pack_args_str(result_code::OK);
   }
@@ -173,7 +173,7 @@ private:
   call_member(const F &f, Self *self, std::weak_ptr<connection> ptr,
               std::string &result, std::tuple<Args...> tp) {
     auto r = call_member_helper(
-        f, self, typename std::make_index_sequence<sizeof...(Args)>{},
+        f, self, typename nonstd::make_index_sequence<sizeof...(Args)>{},
         std::move(tp), ptr);
     result = msgpack_codec::pack_args_str(result_code::OK, r);
   }
