@@ -22,7 +22,7 @@ template <class T, size_t N> struct unique_if<T[N]> {
 
 template <class T, class... Args>
 typename unique_if<T>::single_object make_unique(Args &&...args) {
-  return std::unique_ptr<T>(new T(forward<Args>(args)...));
+  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 
 template <class T> typename unique_if<T>::unknown_bound make_unique(size_t n) {
