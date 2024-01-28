@@ -5,8 +5,6 @@
 #include <tuple>
 #include <type_traits>
 
-#if __cplusplus == 201103L
-
 namespace nonstd {
 template <class T> struct unique_if {
   typedef std::unique_ptr<T> single_object;
@@ -96,7 +94,5 @@ auto invoke(F &&f, Args &&...args)
 }
 
 } // namespace nonstd
-
-#endif
 
 #endif // REST_RPC_CPLUSPLUS_14_H_
