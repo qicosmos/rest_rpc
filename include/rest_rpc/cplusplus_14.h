@@ -5,13 +5,13 @@
 #include <tuple>
 #include <type_traits>
 
-#if __cplusplus == 201103L
-
-namespace std {
-template <class T> struct unique_if { typedef unique_ptr<T> single_object; };
+namespace nonstd {
+template <class T> struct unique_if {
+  typedef std::unique_ptr<T> single_object;
+};
 
 template <class T> struct unique_if<T[]> {
-  typedef unique_ptr<T[]> unknown_bound;
+  typedef std::unique_ptr<T[]> unknown_bound;
 };
 
 template <class T, size_t N> struct unique_if<T[N]> {
@@ -20,12 +20,12 @@ template <class T, size_t N> struct unique_if<T[N]> {
 
 template <class T, class... Args>
 typename unique_if<T>::single_object make_unique(Args &&...args) {
-  return unique_ptr<T>(new T(forward<Args>(args)...));
+  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 }
 
 template <class T> typename unique_if<T>::unknown_bound make_unique(size_t n) {
-  typedef typename remove_extent<T>::type U;
-  return unique_ptr<T>(new U[n]());
+  typedef typename std::remove_extent<T>::type U;
+  return std::unique_ptr<T>(new U[n]());
 }
 
 template <class T, class... Args>
@@ -59,20 +59,21 @@ template <typename... T>
 using index_sequence_for = make_index_sequence<sizeof...(T)>;
 
 template <bool B, class T = void>
-using enable_if_t = typename enable_if<B, T>::type;
-
-template <typename T> using remove_const_t = typename remove_const<T>::type;
+using enable_if_t = typename std::enable_if<B, T>::type;
 
 template <typename T>
-using remove_reference_t = typename remove_reference<T>::type;
+using remove_const_t = typename std::remove_const<T>::type;
+
+template <typename T>
+using remove_reference_t = typename std::remove_reference<T>::type;
 
 template <int I, typename T>
-using tuple_element_t = typename tuple_element<I, T>::type;
+using tuple_element_t = typename std::tuple_element<I, T>::type;
 
-template <typename T> using decay_t = typename decay<T>::type;
+template <typename T> using decay_t = typename std::decay<T>::type;
 
 template <typename F, typename Tuple, size_t... Idx>
-auto apply_helper(F &&f, Tuple &&tp, std::index_sequence<Idx...>)
+auto apply_helper(F &&f, Tuple &&tp, nonstd::index_sequence<Idx...>)
     -> decltype(std::forward<F>(f)(std::get<Idx>(std::forward<Tuple>(tp))...)) {
   return std::forward<F>(f)(std::get<Idx>(std::forward<Tuple>(tp))...);
 }
@@ -80,10 +81,10 @@ auto apply_helper(F &&f, Tuple &&tp, std::index_sequence<Idx...>)
 template <typename F, typename Tuple>
 auto apply(F &&f, Tuple &&tp) -> decltype(apply_helper(
     std::forward<F>(f), std::forward<Tuple>(tp),
-    std::make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{})) {
+    make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{})) {
   return apply_helper(
       std::forward<F>(f), std::forward<Tuple>(tp),
-      std::make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{});
+      make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{});
 }
 
 template <typename F, typename... Args>
@@ -92,8 +93,6 @@ auto invoke(F &&f, Args &&...args)
   return std::forward<F>(f)(std::forward<Args>(args)...);
 }
 
-} // namespace std
-
-#endif
+} // namespace nonstd
 
 #endif // REST_RPC_CPLUSPLUS_14_H_
