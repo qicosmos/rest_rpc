@@ -742,9 +742,9 @@ private:
     }
   }
 
-  // void set_default_error_cb() {
-  //   err_cb_ = [this](asio::error_code) { async_connect(); };
-  // }
+  void set_default_error_cb() {
+    err_cb_ = [this](asio::error_code) { async_connect(); };
+  }
 
   bool is_ssl() const {
 #ifdef CINATRA_ENABLE_SSL
