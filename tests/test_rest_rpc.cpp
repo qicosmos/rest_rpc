@@ -246,9 +246,23 @@ TEST_CASE("test_client_async_call_with_timeout") {
       test);
   client.async_call<>(
       "echo",
-      [](const asio::error_code &ec, string_view data) {
+      [&client](const asio::error_code &ec, string_view data) {
+        std::cout << "req id : " << client.reqest_id() << '\n';
         if (ec)
           std::cout << "error code: " << ec << ", err msg: " << data << '\n';
+      },
+      test);
+  client.async_call<>(
+      "get_person",
+      [&client](const asio::error_code &ec, string_view data) {
+        if (ec) {
+          std::cout << "error code: " << ec << ", err msg: " << data << '\n';
+          return;
+        }
+        auto p = as<person>(data);
+        CHECK_EQ(p.id, 1);
+        CHECK_EQ(p.age, 20);
+        CHECK_EQ(p.name, "tom");
       },
       test);
   auto f = client.async_call<FUTURE>("get_person");
@@ -391,6 +405,40 @@ TEST_CASE("test_client_subscribe_by_token") {
         CHECK_EQ(data, "hello token subscriber");
         stop = true;
       });
+  thd.join();
+}
+
+TEST_CASE("test_client_publish_and_subscribe_by_token") {
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  server.register_handler("publish_by_token", [&server](rpc_conn conn,
+                                                        std::string key,
+                                                        std::string token,
+                                                        std::string val) {
+    server.publish_by_token(std::move(key), std::move(token), std::move(val));
+  });
+  bool stop = false;
+  std::thread thd([&server, &stop] {
+    while (!stop) {
+      auto list = server.get_token_list();
+      for (auto &token : list) {
+        server.publish_by_token("key", token, "hello token subscriber");
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+  });
+  server.async_run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  std::string client_token =
+      "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1";
+  rpc_client client;
+  bool r = client.connect("127.0.0.1", 9000);
+  CHECK(r);
+  client.publish_by_token("key", client_token, "hello token subscriber");
+  client.subscribe("key", client_token, [&stop](string_view data) {
+    std::cout << data << "\n";
+    CHECK_EQ(data, "hello token subscriber");
+    stop = true;
+  });
   thd.join();
 }
 
