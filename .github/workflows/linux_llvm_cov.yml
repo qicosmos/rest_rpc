@@ -34,7 +34,7 @@ jobs:
           cd tests
           ./test_rest_rpc
           llvm-profdata merge -sparse test_rest_rpc-*.profraw -o test_rest_rpc.profdata
-          llvm-cov show ./test_rest_rpc -instr-profile=test_rest_rpc.profdata -format=html -output-dir=../.coverage_llvm_cov -ignore-filename-regex="examples|thirdparty|tests" -show-instantiations=false
+          llvm-cov show ./test_rest_rpc -instr-profile=test_rest_rpc.profdata -format=html -output-dir=../.coverage_llvm_cov -ignore-filename-regex="string_view.hpp|nonstd_any.hpp|examples|thirdparty|tests" -show-instantiations=false
           echo "Done!"
 
       - name: Upload Coverage Results
@@ -49,7 +49,7 @@ jobs:
           echo "Code Coverage Report" > tmp.log
           echo "for detail, [goto summary](https://github.com/${{ github.repository_owner }}/${{ github.event.repository.name }}/actions/runs/${{github.run_id}}) download Artifacts `llvm-cov`" >> tmp.log
           echo "\`\`\`" >> tmp.log
-          llvm-cov report ./test_rest_rpc -instr-profile=test_rest_rpc.profdata -ignore-filename-regex="examples|thirdparty|tests" -show-region-summary=false >> tmp.log
+          llvm-cov report ./test_rest_rpc -instr-profile=test_rest_rpc.profdata -ignore-filename-regex="string_view.hpp|nonstd_any.hpp|examples|thirdparty|tests" -show-region-summary=false >> tmp.log
           echo "\`\`\`" >> tmp.log
 
       - name: Create Comment

@@ -63,6 +63,11 @@ public:
     router_.register_handler<is_pub>(name, f, self);
   }
 
+  void
+  set_error_callback(std::function<void(asio::error_code, string_view)> f) {
+    err_cb_ = std::move(f);
+  }
+
   void set_conn_timeout_callback(std::function<void(int64_t)> callback) {
     conn_timeout_callback_ = std::move(callback);
   }
@@ -169,7 +174,11 @@ private:
       }
     }
   }
-
+  void error_callback(const asio::error_code &ec, string_view msg) {
+    if (err_cb_) {
+      err_cb_(ec, msg);
+    }
+  }
   template <typename T>
   void publish(std::string key, std::string token, T data) {
     {
@@ -182,13 +191,19 @@ private:
         get_shared_data<T>(std::move(data));
     std::unique_lock<std::mutex> lock(sub_mtx_);
     auto range = sub_map_.equal_range(key + token);
-    for (auto it = range.first; it != range.second; ++it) {
-      auto conn = it->second.lock();
-      if (conn == nullptr || conn->has_closed()) {
-        continue;
-      }
+    if (range.first != range.second) {
+      for (auto it = range.first; it != range.second; ++it) {
+        auto conn = it->second.lock();
+        if (conn == nullptr || conn->has_closed()) {
+          continue;
+        }
 
-      conn->publish(key + token, *shared_data);
+        conn->publish(key + token, *shared_data);
+      }
+    } else {
+      error_callback(
+          asio::error::make_error_code(asio::error::invalid_argument),
+          "The subscriber of the key: " + key + " does not exist.");
     }
   }
 
@@ -255,6 +270,7 @@ private:
 
   asio::signal_set signals_;
 
+  std::function<void(asio::error_code, string_view)> err_cb_;
   std::function<void(int64_t)> conn_timeout_callback_;
   std::function<void(std::shared_ptr<connection>, std::string)>
       on_net_err_callback_ = nullptr;
