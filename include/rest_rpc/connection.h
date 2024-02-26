@@ -49,7 +49,7 @@ public:
     assert(data.size() < MAX_BUF_LEN);
     auto sp_data = std::make_shared<std::string>(std::move(data));
     std::weak_ptr<connection> weak = shared_from_this();
-    asio::post([this, weak, sp_data, req_id, req_type] {
+    asio::post(socket_.get_executor(), [this, weak, sp_data, req_id, req_type] {
       auto conn = weak.lock();
       if (conn) {
         response_interal(req_id, std::move(sp_data), req_type);
