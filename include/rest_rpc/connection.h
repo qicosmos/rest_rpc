@@ -7,6 +7,7 @@
 #include "router.h"
 #include "use_asio.hpp"
 #include <array>
+#include <asio/yield.hpp>
 #include <deque>
 #include <iostream>
 #include <memory>
@@ -21,7 +22,8 @@ struct ssl_configure {
 };
 
 class connection : public std::enable_shared_from_this<connection>,
-                   private asio::noncopyable {
+                   private asio::noncopyable,
+                   asio::coroutine {
 public:
   connection(asio::io_service &io_service, std::size_t timeout_seconds,
              router &router)
@@ -31,12 +33,83 @@ public:
 
   ~connection() { close(); }
 
-  void start() {
-    if (is_ssl() && !has_shake_) {
-      async_handshake();
-    } else {
-      read_head();
+  void start() { (*this)(asio::error_code()); }
+
+  void operator()(asio::error_code ec, std::size_t n = 0) {
+    rpc_header *header;
+    reenter(*this) {
+      for (;;) {
+        yield asio::async_read(socket_, asio::buffer(head_, HEAD_LEN),
+                               ref(this));
+        if (ec) {
+          on_error(ec);
+          return;
+        }
+
+        header = (rpc_header *)(head_);
+        if (header->magic != MAGIC_NUM) {
+          print("protocol error");
+          close();
+          return;
+        }
+
+        req_id_ = header->req_id;
+        body_len_ = header->body_len;
+        req_type_ = header->req_type;
+        func_id_ = header->func_id;
+        if (body_len_ > 0 && body_len_ < MAX_BUF_LEN) {
+          if (body_.size() < body_len_) {
+            body_.resize(body_len_);
+          }
+        }
+
+        if (body_len_ == 0) { // nobody, just head, maybe as heartbeat.
+          continue;
+        }
+
+        yield asio::async_read(socket_, asio::buffer(body_.data(), body_len_),
+                               ref(this));
+        if (ec) {
+          on_error(ec);
+          return;
+        }
+
+        if (req_type_ == request_type::req_res) {
+          route_result_t ret = router_.route<connection>(
+              func_id_, nonstd::string_view{body_.data(), body_len_},
+              this->shared_from_this());
+          if (delay_) {
+            delay_ = false;
+          } else {
+            response_interal(
+                req_id_, std::make_shared<std::string>(std::move(ret.result)));
+          }
+        } else if (req_type_ == request_type::sub_pub) {
+          try {
+            msgpack_codec codec;
+            auto p = codec.unpack<std::tuple<std::string, std::string>>(
+                body_.data(), body_len_);
+            callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)),
+                      this->shared_from_this());
+          } catch (const std::exception &ex) {
+            print(ex);
+            if (on_net_err_) {
+              (*on_net_err_)(shared_from_this(), ex.what());
+            }
+            close();
+            return;
+          }
+        }
+      }
     }
+  }
+
+  void on_error(const asio::error_code &ec) {
+    print(ec);
+    if (on_net_err_) {
+      (*on_net_err_)(shared_from_this(), ec.message());
+    }
+    close();
   }
 
   tcp::socket &socket() { return socket_; }
@@ -140,104 +213,15 @@ public:
   }
 
 private:
-  void read_head() {
-    reset_timer();
-    auto self(this->shared_from_this());
-    async_read_head([this, self](asio::error_code ec, std::size_t length) {
-      if (!socket_.is_open()) {
-        if (on_net_err_) {
-          (*on_net_err_)(self, "socket already closed");
-        }
-        return;
-      }
+  struct ref {
+    explicit ref(connection *p) : p_(p), self_(p->shared_from_this()) {}
 
-      if (!ec) {
-        // const uint32_t body_len = *((int*)(head_));
-        // req_id_ = *((std::uint64_t*)(head_ + sizeof(int32_t)));
-        rpc_header *header = (rpc_header *)(head_);
-        if (header->magic != MAGIC_NUM) {
-          print("protocol error");
-          close();
-          return;
-        }
+    void operator()(asio::error_code ec, std::size_t n = 0) { (*p_)(ec, n); }
 
-        req_id_ = header->req_id;
-        const uint32_t body_len = header->body_len;
-        req_type_ = header->req_type;
-        if (body_len > 0 && body_len < MAX_BUF_LEN) {
-          if (body_.size() < body_len) {
-            body_.resize(body_len);
-          }
-          read_body(header->func_id, body_len);
-          return;
-        }
-
-        if (body_len == 0) { // nobody, just head, maybe as heartbeat.
-          cancel_timer();
-          read_head();
-        } else {
-          print("invalid body len");
-          if (on_net_err_) {
-            (*on_net_err_)(self, "invalid body len");
-          }
-          close();
-        }
-      } else {
-        print(ec);
-        if (on_net_err_) {
-          (*on_net_err_)(self, ec.message());
-        }
-        close();
-      }
-    });
-  }
-
-  void read_body(uint32_t func_id, std::size_t size) {
-    auto self(this->shared_from_this());
-    async_read(size, [this, func_id, self](asio::error_code ec,
-                                           std::size_t length) {
-      cancel_timer();
-
-      if (!socket_.is_open()) {
-        if (on_net_err_) {
-          (*on_net_err_)(self, "socket already closed");
-        }
-        return;
-      }
-
-      if (!ec) {
-        read_head();
-        if (req_type_ == request_type::req_res) {
-          route_result_t ret = router_.route<connection>(
-              func_id, nonstd::string_view{body_.data(), length},
-              this->shared_from_this());
-          if (delay_) {
-            delay_ = false;
-          } else {
-            response_interal(
-                req_id_, std::make_shared<std::string>(std::move(ret.result)));
-          }
-        } else if (req_type_ == request_type::sub_pub) {
-          try {
-            msgpack_codec codec;
-            auto p = codec.unpack<std::tuple<std::string, std::string>>(
-                body_.data(), length);
-            callback_(std::move(std::get<0>(p)), std::move(std::get<1>(p)),
-                      this->shared_from_this());
-          } catch (const std::exception &ex) {
-            print(ex);
-            if (on_net_err_) {
-              (*on_net_err_)(self, ex.what());
-            }
-          }
-        }
-      } else {
-        if (on_net_err_) {
-          (*on_net_err_)(self, ec.message());
-        }
-      }
-    });
-  }
+  private:
+    std::shared_ptr<connection> self_;
+    connection *p_;
+  };
 
   void response_interal(uint64_t req_id, std::shared_ptr<std::string> data,
                         request_type req_type = request_type::req_res) {
@@ -438,8 +422,12 @@ private:
   router &router_;
   nonstd::any user_data_;
   bool delay_ = false;
+  uint32_t func_id_ = 0;
+  uint32_t body_len_ = 0;
 };
 } // namespace rpc_service
 } // namespace rest_rpc
+
+#include <asio/unyield.hpp>
 
 #endif // REST_RPC_CONNECTION_H_
