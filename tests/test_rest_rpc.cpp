@@ -153,6 +153,10 @@ TEST_CASE("test_client_sync_call") {
   CHECK(r);
   auto result = client.call<int>("add", 1, 2);
   CHECK_EQ(result, 3);
+  CHECK_THROWS_WITH_AS(client.call<int>("add", 1, "2"),
+                       "unpack failed: Args not match!", std::logic_error);
+  CHECK_THROWS_WITH_AS(client.call<int>("Add", 1, 2),
+                       "unknown function: 3961593724", std::logic_error);
 }
 
 TEST_CASE("test_client_sync_call_return_void") {
@@ -214,7 +218,10 @@ TEST_CASE("test_client_async_call") {
     CHECK_EQ(p.name, "tom");
   }
   auto fu = client.async_call<FUTURE>("hello", "purecpp");
-  fu.get().as(); // no return
+  CHECK_NOTHROW(fu.get().as()); // no return
+  auto fu_err = client.async_call<FUTURE>("Hello", "purecpp");
+  CHECK_THROWS_WITH_AS(fu_err.get().as(), "unknown function: 2333776211",
+                       std::logic_error);
 }
 TEST_CASE("test_client_async_call_not_connect") {
   rpc_client client("127.0.0.1", 9001);
