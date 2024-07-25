@@ -493,3 +493,23 @@ TEST_CASE("test_server_delay_response") {
   auto result = client.call<std::string>("delay_echo", "test_delay_echo");
   CHECK_EQ(result, "test_delay_echo");
 }
+TEST_CASE("test_server_duplicate_registration_key") {
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  server.register_handler("delay_echo", delay_echo);
+  try {
+    server.register_handler("delay_echo", delay_echo);
+  } catch (const std::exception &e) {
+    string_view ew{e.what()};
+    std::cerr << ew << '\n';
+    CHECK_EQ(ew, "duplicate registration key !");
+  }
+
+  server.async_run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  rpc_client client("127.0.0.1", 9000);
+  bool r = client.connect();
+  CHECK(r);
+  auto result = client.call<std::string>("delay_echo", "test_delay_echo");
+  CHECK_EQ(result, "test_delay_echo");
+}
