@@ -50,16 +50,24 @@ public:
   template <bool is_pub = false, typename Function>
   void register_handler(std::string const &name, Function f, bool pub = false) {
     uint32_t key = MD5::MD5Hash32(name.data());
-    key2func_name_.emplace(key, name);
-    return register_nonmember_func<is_pub>(key, std::move(f));
+    if (key2func_name_.find(key) != key2func_name_.end()) {
+      throw std::invalid_argument("duplicate registration key !");
+    } else {
+      key2func_name_.emplace(key, name);
+      return register_nonmember_func<is_pub>(key, std::move(f));
+    }
   }
 
   template <bool is_pub = false, typename Function, typename Self>
   void register_handler(std::string const &name, const Function &f,
                         Self *self) {
     uint32_t key = MD5::MD5Hash32(name.data());
-    key2func_name_.emplace(key, name);
-    return register_member_func<is_pub>(key, f, self);
+    if (key2func_name_.find(key) != key2func_name_.end()) {
+      throw std::invalid_argument("duplicate registration key !");
+    } else {
+      key2func_name_.emplace(key, name);
+      return register_member_func<is_pub>(key, f, self);
+    }
   }
 
   void remove_handler(std::string const &name) {
