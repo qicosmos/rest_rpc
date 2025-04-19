@@ -126,15 +126,15 @@ private:
   router(router &&) = delete;
 
   template <typename F, size_t... I, typename... Args>
-  static typename std::result_of<F(std::weak_ptr<connection>, Args...)>::type
+  static std::invoke_result_t<F, std::weak_ptr<connection>, Args...>
   call_helper(const F &f, const nonstd::index_sequence<I...> &,
               std::tuple<Args...> tup, std::weak_ptr<connection> ptr) {
     return f(ptr, std::move(std::get<I>(tup))...);
   }
 
   template <typename F, typename... Args>
-  static typename std::enable_if<std::is_void<typename std::result_of<
-      F(std::weak_ptr<connection>, Args...)>::type>::value>::type
+  static typename std::enable_if<std::is_void<
+      std::invoke_result_t<F, std::weak_ptr<connection>, Args...>>::value>::type
   call(const F &f, std::weak_ptr<connection> ptr, std::string &result,
        std::tuple<Args...> tp) {
     call_helper(f, nonstd::make_index_sequence<sizeof...(Args)>{},
@@ -143,8 +143,8 @@ private:
   }
 
   template <typename F, typename... Args>
-  static typename std::enable_if<!std::is_void<typename std::result_of<
-      F(std::weak_ptr<connection>, Args...)>::type>::value>::type
+  static typename std::enable_if<!std::is_void<
+      std::invoke_result_t<F, std::weak_ptr<connection>, Args...>>::value>::type
   call(const F &f, std::weak_ptr<connection> ptr, std::string &result,
        std::tuple<Args...> tp) {
     auto r = call_helper(f, nonstd::make_index_sequence<sizeof...(Args)>{},
@@ -154,19 +154,17 @@ private:
   }
 
   template <typename F, typename Self, size_t... Indexes, typename... Args>
-  static
-      typename std::result_of<F(Self, std::weak_ptr<connection>, Args...)>::type
-      call_member_helper(const F &f, Self *self,
-                         const nonstd::index_sequence<Indexes...> &,
-                         std::tuple<Args...> tup,
-                         std::weak_ptr<connection> ptr =
-                             std::shared_ptr<connection>{nullptr}) {
+  static std::invoke_result_t<F, Self, std::weak_ptr<connection>, Args...>
+  call_member_helper(
+      const F &f, Self *self, const nonstd::index_sequence<Indexes...> &,
+      std::tuple<Args...> tup,
+      std::weak_ptr<connection> ptr = std::shared_ptr<connection>{nullptr}) {
     return (*self.*f)(ptr, std::move(std::get<Indexes>(tup))...);
   }
 
   template <typename F, typename Self, typename... Args>
-  static typename std::enable_if<std::is_void<typename std::result_of<
-      F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
+  static typename std::enable_if<std::is_void<std::invoke_result_t<
+      F, Self, std::weak_ptr<connection>, Args...>>::value>::type
   call_member(const F &f, Self *self, std::weak_ptr<connection> ptr,
               std::string &result, std::tuple<Args...> tp) {
     call_member_helper(f, self,
@@ -176,8 +174,8 @@ private:
   }
 
   template <typename F, typename Self, typename... Args>
-  static typename std::enable_if<!std::is_void<typename std::result_of<
-      F(Self, std::weak_ptr<connection>, Args...)>::type>::value>::type
+  static typename std::enable_if<!std::is_void<std::invoke_result_t<
+      F, Self, std::weak_ptr<connection>, Args...>>::value>::type
   call_member(const F &f, Self *self, std::weak_ptr<connection> ptr,
               std::string &result, std::tuple<Args...> tp) {
     auto r = call_member_helper(

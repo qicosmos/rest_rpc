@@ -1,5 +1,5 @@
 # Compile Standard
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -std=c++20")
 
 # Build Type
 if(NOT CMAKE_BUILD_TYPE)
