@@ -608,6 +608,9 @@ private:
         std::shared_ptr<call_t> cl = nullptr;
         {
           std::unique_lock<std::mutex> lock(cb_mtx_);
+          if (callback_map_.empty()) {
+            return;
+          }
           cl = std::move(callback_map_[req_id]);
         }
 
@@ -624,6 +627,9 @@ private:
         callback_map_.erase(req_id);
       } else {
         std::unique_lock<std::mutex> lock(cb_mtx_);
+        if (future_map_.empty()) {
+          return;
+        }
         auto &f = future_map_[req_id];
         if (ec) {
           // LOG<<ec.message();
