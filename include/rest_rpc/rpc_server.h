@@ -2,7 +2,7 @@
 #define REST_RPC_RPC_SERVER_H_
 
 #include "connection.h"
-#include "io_service_pool.h"
+#include "io_context_pool.hpp"
 #include "router.h"
 #include <condition_variable>
 #include <mutex>
@@ -17,20 +17,13 @@ class rpc_server : private asio::noncopyable {
 public:
   rpc_server(unsigned short port, size_t size, size_t timeout_seconds = 15,
              size_t check_seconds = 10)
-      : io_service_pool_(size), acceptor_(io_service_pool_.get_io_service(),
+      : io_context_pool_(size), acceptor_(io_context_pool_.get_io_context(),
                                           tcp::endpoint(tcp::v4(), port)),
-        timeout_seconds_(timeout_seconds), check_seconds_(check_seconds),
-        signals_(io_service_pool_.get_io_service()) {
+        timeout_seconds_(timeout_seconds), check_seconds_(check_seconds) {
     do_accept();
     check_thread_ = std::make_shared<std::thread>([this] { clean(); });
     pub_sub_thread_ =
         std::make_shared<std::thread>([this] { clean_sub_pub(); });
-    signals_.add(SIGINT);
-    signals_.add(SIGTERM);
-#if defined(SIGQUIT)
-    signals_.add(SIGQUIT);
-#endif // defined(SIGQUIT)
-    do_await_stop();
   }
 
   rpc_server(unsigned short port, size_t size, ssl_configure ssl_conf,
@@ -47,10 +40,10 @@ public:
   ~rpc_server() { stop(); }
 
   void async_run() {
-    thd_ = std::make_shared<std::thread>([this] { io_service_pool_.run(); });
+    thd_ = std::make_shared<std::thread>([this] { io_context_pool_.run(); });
   }
 
-  void run() { io_service_pool_.run(); }
+  void run() { io_context_pool_.run(); }
 
   template <bool is_pub = false, typename Function>
   void register_handler(std::string const &name, const Function &f) {
@@ -94,7 +87,7 @@ public:
 
 private:
   void do_accept() {
-    conn_.reset(new connection(io_service_pool_.get_io_service(),
+    conn_.reset(new connection(io_context_pool_.get_io_context(),
                                timeout_seconds_, router_));
     conn_->set_callback([this](std::string key, std::string token,
                                std::weak_ptr<connection> conn) {
@@ -110,9 +103,11 @@ private:
         return;
       }
 
-      if (ec) {
+      if (ec == asio::error::operation_aborted ||
+          ec == asio::error::bad_descriptor) {
         // LOG(INFO) << "acceptor error: " <<
         // ec.message();
+        return;
       } else {
 #ifdef CINATRA_ENABLE_SSL
         if (!ssl_conf_.cert_file.empty()) {
@@ -153,7 +148,7 @@ private:
   void clean_sub_pub() {
     while (!stop_check_pub_sub_) {
       std::unique_lock<std::mutex> lock(sub_mtx_);
-      sub_cv_.wait_for(lock, std::chrono::seconds(10));
+      sub_cv_.wait_for(lock, std::chrono::seconds(check_seconds_));
 
       for (auto it = sub_map_.cbegin(); it != sub_map_.cend();) {
         auto conn = it->second.lock();
@@ -223,11 +218,6 @@ private:
     return std::make_shared<std::string>(buf.data(), buf.size());
   }
 
-  void do_await_stop() {
-    signals_.async_wait(
-        [this](std::error_code /*ec*/, int /*signo*/) { stop(); });
-  }
-
   void stop() {
     if (has_stoped_) {
       return;
@@ -247,14 +237,20 @@ private:
     }
     pub_sub_thread_->join();
 
-    io_service_pool_.stop();
+    asio::dispatch(acceptor_.get_executor(), [this]() {
+      asio::error_code ec;
+      (void)acceptor_.cancel(ec);
+      (void)acceptor_.close(ec);
+    });
+
+    io_context_pool_.stop();
     if (thd_) {
       thd_->join();
     }
     has_stoped_ = true;
   }
 
-  io_service_pool io_service_pool_;
+  io_context_pool io_context_pool_;
   tcp::acceptor acceptor_;
   std::shared_ptr<connection> conn_;
   std::shared_ptr<std::thread> thd_;
@@ -267,8 +263,6 @@ private:
   size_t check_seconds_;
   bool stop_check_ = false;
   std::condition_variable cv_;
-
-  asio::signal_set signals_;
 
   std::function<void(asio::error_code, string_view)> err_cb_;
   std::function<void(int64_t)> conn_timeout_callback_;

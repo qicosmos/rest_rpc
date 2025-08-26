@@ -38,10 +38,12 @@ public:
 
   size_t size() const { return io_contexts_.size(); }
 
-  std::shared_ptr<asio::io_context> &get_io_context() {
+  std::shared_ptr<asio::io_context> &get_io_context_ptr() {
     size_t i = next_.fetch_add(1, std::memory_order::relaxed);
     return io_contexts_[i % io_contexts_.size()];
   }
+
+  asio::io_context &get_io_context() { return *get_io_context_ptr(); }
 
 private:
   std::vector<std::shared_ptr<asio::io_context>> io_contexts_;

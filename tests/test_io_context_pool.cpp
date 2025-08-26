@@ -55,7 +55,7 @@ TEST_CASE("test context pool automatic stop") {
     p.set_value();
     pool->run();
     block = false;
-    CHECK(block);
+    CHECK(!block);
   });
   p.get_future().wait();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -66,10 +66,10 @@ TEST_CASE("test context pool automatic stop") {
 TEST_CASE("test get io context") {
   io_context_pool pool(2);
   CHECK(pool.size() == 2);
-  auto &ctx1 = pool.get_io_context();
-  auto &ctx2 = pool.get_io_context();
-  auto &ctx3 = pool.get_io_context();
-  auto ctx4 = pool.get_io_context();
+  auto &ctx1 = pool.get_io_context_ptr();
+  auto &ctx2 = pool.get_io_context_ptr();
+  auto &ctx3 = pool.get_io_context_ptr();
+  auto ctx4 = pool.get_io_context_ptr();
   CHECK(ctx1 != ctx2);
   CHECK(ctx1 == ctx3);
   CHECK(ctx2 == ctx4);

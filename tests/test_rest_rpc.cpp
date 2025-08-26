@@ -72,7 +72,7 @@ TEST_CASE("test_client_reconnect") {
   });
   client.connect("127.0.0.1", 9000);
 
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 2, 2);
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
@@ -95,7 +95,7 @@ TEST_CASE("test_client_reconnect") {
 }
 
 TEST_CASE("test_client_default_constructor") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
@@ -110,7 +110,7 @@ TEST_CASE("test_client_default_constructor") {
 }
 
 TEST_CASE("test_constructor_with_language") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
@@ -124,7 +124,7 @@ TEST_CASE("test_constructor_with_language") {
 }
 
 TEST_CASE("test_client_async_connect") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
@@ -142,7 +142,7 @@ TEST_CASE("test_client_async_connect") {
 }
 
 TEST_CASE("test_client_sync_call") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.async_run();
@@ -160,7 +160,7 @@ TEST_CASE("test_client_sync_call") {
 }
 
 TEST_CASE("test_client_sync_call_return_void") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("echo", echo);
   server.async_run();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -172,7 +172,7 @@ TEST_CASE("test_client_sync_call_return_void") {
 }
 
 TEST_CASE("test_client_async_call_empty_obj") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("get_empty_obj", get_empty_obj);
   server.async_run();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -194,7 +194,7 @@ TEST_CASE("test_client_async_call_empty_obj") {
 }
 
 TEST_CASE("test_client_async_call") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("get_person", get_person);
   server.register_handler("hello", hello);
   server.async_run();
@@ -233,7 +233,7 @@ TEST_CASE("test_client_async_call_not_connect") {
 }
 
 TEST_CASE("test_client_async_call_with_timeout") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("echo", echo);
   server.register_handler("get_person", get_person);
   server.async_run();
@@ -285,7 +285,7 @@ TEST_CASE("test_client_async_call_with_timeout") {
 }
 
 TEST_CASE("test_client_subscribe") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler<true>(
       "publish", [&server](rpc_conn conn, std::string key, std::string token,
                            std::string val) {
@@ -315,7 +315,7 @@ TEST_CASE("test_client_subscribe") {
 }
 
 TEST_CASE("test_client_subscribe_not_exist_key") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("publish",
                           [&server](rpc_conn conn, std::string key,
                                     std::string token, std::string val) {
@@ -354,7 +354,7 @@ TEST_CASE("test_client_subscribe_not_exist_key") {
 }
 
 TEST_CASE("test_server_publish_encode_msg") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("publish",
                           [&server](rpc_conn conn, std::string key,
                                     std::string token, std::string val) {
@@ -389,7 +389,7 @@ TEST_CASE("test_server_publish_encode_msg") {
 }
 
 TEST_CASE("test_client_subscribe_by_token") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   bool stop = false;
   std::thread thd([&server, &stop] {
     while (!stop) {
@@ -416,7 +416,7 @@ TEST_CASE("test_client_subscribe_by_token") {
 }
 
 TEST_CASE("test_client_publish_and_subscribe_by_token") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("publish_by_token", [&server](rpc_conn conn,
                                                         std::string key,
                                                         std::string token,
@@ -450,7 +450,7 @@ TEST_CASE("test_client_publish_and_subscribe_by_token") {
 }
 
 TEST_CASE("test_server_callback") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   dummy d;
   server.register_handler("add", &dummy::add, &d);
   server.set_network_err_callback(
@@ -471,7 +471,7 @@ TEST_CASE("test_server_callback") {
   CHECK_EQ(result, 3);
 }
 TEST_CASE("test_server_user_data") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 1, 1);
   server.register_handler("server_user_data", server_user_data);
   server.async_run();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -482,7 +482,7 @@ TEST_CASE("test_server_user_data") {
   client.call<>("server_user_data");
 }
 TEST_CASE("test_server_delay_response") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 2, 2);
   server.register_handler("delay_echo", delay_echo);
   server.async_run();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -494,7 +494,7 @@ TEST_CASE("test_server_delay_response") {
   CHECK_EQ(result, "test_delay_echo");
 }
 TEST_CASE("test_server_duplicate_registration_key") {
-  rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server(9000, std::thread::hardware_concurrency(), 2, 2);
   server.register_handler("delay_echo", delay_echo);
   try {
     server.register_handler("delay_echo", delay_echo);
