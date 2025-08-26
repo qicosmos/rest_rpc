@@ -7,6 +7,7 @@ include_directories(
         )
 
 add_executable(${project_name}
+        test_io_context_pool.cpp
 		test_rest_rpc.cpp
         main.cpp
         )
