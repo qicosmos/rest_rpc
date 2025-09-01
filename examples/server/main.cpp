@@ -124,9 +124,12 @@ int main() {
   rpc_server server(9000, std::thread::hardware_concurrency(), 3600);
 
   dummy d;
-  server.register_handler("add", &dummy::add, &d);
+  // safe register, same with `server.register_handler("dummy::add",
+  // &dummy::add, &d)`
+  server.register_handler<&dummy::add>(&d);
 
-  server.register_handler("get_dummy", get_dummy);
+  // safe register, same with `server.register_handler("get_dummy", get_dummy)`
+  server.register_handler<get_dummy>();
 
   server.register_handler("translate", translate);
   server.register_handler("hello", hello);

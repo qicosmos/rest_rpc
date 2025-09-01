@@ -2,6 +2,7 @@
 #define REST_RPC_ROUTER_H_
 
 #include "codec.h"
+#include "function_name.h"
 #include "md5.hpp"
 #include "meta_util.hpp"
 #include "string_view.hpp"
@@ -47,33 +48,28 @@ private:
 
 class router : asio::noncopyable {
 public:
-  template <bool is_pub = false, typename Function>
-  void register_handler(std::string const &name, Function f, bool pub = false) {
-    uint32_t key = MD5::MD5Hash32(name.data());
-    if (key2func_name_.find(key) != key2func_name_.end()) {
-      throw std::invalid_argument("duplicate registration key !");
-    } else {
-      key2func_name_.emplace(key, name);
-      return register_nonmember_func<is_pub>(key, std::move(f));
-    }
+  template <bool is_pub = false, typename Function, typename Self = void>
+  void register_handler(std::string_view name, const Function &f,
+                        Self *self = nullptr) {
+    uint32_t key = MD5::MD5Hash32(name.data(), name.length());
+    register_handler_impl<is_pub>(key, name, f, self);
   }
 
-  template <bool is_pub = false, typename Function, typename Self>
-  void register_handler(std::string const &name, const Function &f,
-                        Self *self) {
-    uint32_t key = MD5::MD5Hash32(name.data());
-    if (key2func_name_.find(key) != key2func_name_.end()) {
-      throw std::invalid_argument("duplicate registration key !");
-    } else {
-      key2func_name_.emplace(key, name);
-      return register_member_func<is_pub>(key, f, self);
-    }
+  template <auto func, bool is_pub = false, typename Self = void>
+  void register_handler(Self *self = nullptr) {
+    constexpr auto name = get_func_name<func>();
+    return register_handler<is_pub>(name, func, self);
   }
 
-  void remove_handler(std::string const &name) {
-    uint32_t key = MD5::MD5Hash32(name.data());
+  void remove_handler(std::string_view name) {
+    uint32_t key = MD5::MD5Hash32(name.data(), name.length());
     this->map_invokers_.erase(key);
     key2func_name_.erase(key);
+  }
+
+  template <auto func> void register_handler() {
+    constexpr std::string_view name = get_func_name<func>();
+    remove_handler(name);
   }
 
   std::string get_name_by_key(uint32_t key) {
@@ -124,6 +120,21 @@ public:
 private:
   router(const router &) = delete;
   router(router &&) = delete;
+
+  template <bool is_pub = false, typename Function, typename Self = void>
+  auto register_handler_impl(uint32_t key, std::string_view name,
+                             const Function &f, Self *self = nullptr) {
+    if (key2func_name_.find(key) != key2func_name_.end()) {
+      throw std::invalid_argument("duplicate registration key !");
+    } else {
+      key2func_name_.emplace(key, name);
+      if constexpr (std::is_void_v<Self>) {
+        return register_nonmember_func<is_pub>(key, f);
+      } else {
+        return register_member_func<is_pub>(key, f, self);
+      }
+    }
+  }
 
   template <typename F, size_t... I, typename... Args>
   static std::invoke_result_t<F, std::weak_ptr<connection>, Args...>

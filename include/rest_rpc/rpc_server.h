@@ -50,6 +50,11 @@ public:
     router_.register_handler<is_pub>(name, f);
   }
 
+  template <auto func, bool is_pub = false, typename Self = void>
+  void register_handler(Self *self = nullptr) {
+    router_.register_handler<func, is_pub>(self);
+  }
+
   template <bool is_pub = false, typename Function, typename Self>
   void register_handler(std::string const &name, const Function &f,
                         Self *self) {
