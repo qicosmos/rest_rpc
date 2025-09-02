@@ -12,7 +12,7 @@ public:
 
     for (size_t i = 0; i < pool_size; i++) {
       auto io_ctx = std::make_shared<asio::io_context>();
-      works_.push_back(asio::io_context::work(*io_ctx));
+      works_.push_back(asio::make_work_guard(*io_ctx));
       io_contexts_.emplace_back(io_ctx);
     }
   }
@@ -47,7 +47,8 @@ public:
 
 private:
   std::vector<std::shared_ptr<asio::io_context>> io_contexts_;
-  std::vector<asio::io_context::work> works_;
+  std::vector<asio::executor_work_guard<asio::io_context::executor_type>>
+      works_;
   std::once_flag run_flag_;
   std::once_flag stop_flag_;
   std::atomic<size_t> next_ = 0;

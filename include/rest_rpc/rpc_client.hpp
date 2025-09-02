@@ -254,7 +254,7 @@ public:
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 
-  template <auto func, typename... Args> auto call(Args &&...args) {
+  template <auto func, typename... Args> auto call_s(Args &&...args) {
     using args_tuple = typename function_traits<decltype(func)>::tuple_type;
     static_assert(std::is_constructible_v<remove_first_t<args_tuple>, Args...>,
                   "called rpc function and arguments are not match");

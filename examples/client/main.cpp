@@ -218,13 +218,13 @@ void test_echo() {
 
   {
     // safe call, same with `client.call<std::string>("echo", "test")`
-    auto result = client.call<echo>("test");
+    auto result = client.call_s<echo>("test");
     std::cout << result << std::endl;
   }
 
   {
     // safe call member function
-    auto result = client.call<&dummy::add>(1, 2);
+    auto result = client.call_s<&dummy::add>(1, 2);
     std::cout << result << std::endl;
   }
 
