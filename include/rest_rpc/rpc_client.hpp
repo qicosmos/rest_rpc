@@ -68,17 +68,16 @@ const constexpr size_t DEFAULT_TIMEOUT = 5000; // milliseconds
 class rpc_client : private asio::noncopyable {
 public:
   rpc_client()
-      : socket_(ios_), work_(std::make_shared<asio::io_context::work>(ios_)),
-        deadline_(ios_), body_(INIT_BUF_SIZE) {
+      : socket_(ios_), work_(asio::make_work_guard(ios_)), deadline_(ios_),
+        body_(INIT_BUF_SIZE) {
     thd_ = std::make_shared<std::thread>([this] { ios_.run(); });
   }
 
   rpc_client(client_language_t client_language,
              std::function<void(long, const std::string &)>
                  on_result_received_callback)
-      : socket_(ios_), work_(std::make_shared<asio::io_context::work>(ios_)),
-        deadline_(ios_), body_(INIT_BUF_SIZE),
-        client_language_(client_language),
+      : socket_(ios_), work_(asio::make_work_guard(ios_)), deadline_(ios_),
+        body_(INIT_BUF_SIZE), client_language_(client_language),
         on_result_received_callback_(std::move(on_result_received_callback)) {
     thd_ = std::make_shared<std::thread>([this] { ios_.run(); });
   }
@@ -90,20 +89,20 @@ public:
              std::function<void(long, const std::string &)>
                  on_result_received_callback,
              std::string host, unsigned short port)
-      : socket_(ios_), work_(std::make_shared<asio::io_context::work>(ios_)),
-        deadline_(ios_), host_(std::move(host)), port_(port),
-        body_(INIT_BUF_SIZE), client_language_(client_language),
+      : socket_(ios_), work_(asio::make_work_guard(ios_)), deadline_(ios_),
+        host_(std::move(host)), port_(port), body_(INIT_BUF_SIZE),
+        client_language_(client_language),
         on_result_received_callback_(std::move(on_result_received_callback)) {
     thd_ = std::make_shared<std::thread>([this] { ios_.run(); });
   }
 
   ~rpc_client() {
     std::promise<void> promise;
-    ios_.post([this, &promise] {
+    asio::post(ios_, [this, &promise] {
       close();
       stop_client_ = true;
-      std::error_code ec;
-      deadline_.cancel(ec);
+      //      std::error_code ec;
+      deadline_.cancel();
       promise.set_value();
     });
     promise.get_future().wait();
@@ -339,7 +338,7 @@ public:
 
   void stop() {
     if (thd_ != nullptr) {
-      work_ = nullptr;
+      work_.reset();
       if (thd_->joinable()) {
         thd_->join();
       }
@@ -399,7 +398,7 @@ public:
 private:
   void async_connect() {
     assert(port_ != 0);
-    auto addr = asio::ip::address::from_string(host_);
+    auto addr = asio::ip::make_address(host_);
     socket_.async_connect({addr, port_}, [this](const asio::error_code &ec) {
       if (has_connected_ || stop_client_) {
         return;
@@ -446,7 +445,7 @@ private:
       return;
     }
 
-    deadline_.expires_from_now(std::chrono::seconds(timeout));
+    deadline_.expires_after(std::chrono::seconds(timeout));
     deadline_.async_wait([this, timeout](const asio::error_code &ec) {
       if (!ec) {
         if (has_connected_) {
@@ -711,7 +710,7 @@ private:
   class call_t : asio::noncopyable,
                  public std::enable_shared_from_this<call_t> {
   public:
-    call_t(asio::io_service &ios,
+    call_t(asio::io_context &ios,
            std::function<void(asio::error_code, string_view)> cb,
            size_t timeout)
         : timer_(ios), cb_(std::move(cb)), timeout_(timeout) {}
@@ -721,7 +720,7 @@ private:
         return;
       }
 
-      timer_.expires_from_now(std::chrono::milliseconds(timeout_));
+      timer_.expires_after(std::chrono::milliseconds(timeout_));
       auto self = this->shared_from_this();
       timer_.async_wait([this, self](asio::error_code ec) {
         if (ec) {
@@ -741,8 +740,8 @@ private:
         return;
       }
 
-      asio::error_code ec;
-      timer_.cancel(ec);
+      //      asio::error_code ec;
+      timer_.cancel();
     }
 
   private:
@@ -855,7 +854,7 @@ private:
   std::unique_ptr<asio::ssl::stream<asio::ip::tcp::socket &>> ssl_stream_;
   std::function<void(asio::ssl::context &)> ssl_context_callback_;
 #endif
-  std::shared_ptr<asio::io_context::work> work_;
+  asio::executor_work_guard<asio::io_context::executor_type> work_;
   std::shared_ptr<std::thread> thd_ = nullptr;
 
   std::string host_;
