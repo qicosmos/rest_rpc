@@ -5,6 +5,8 @@
 #include <asio/ssl.hpp>
 #endif
 #include <asio/detail/noncopyable.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/post.hpp>
 #include <asio/steady_timer.hpp>
 
 using tcp_socket = asio::ip::tcp::socket;
