@@ -2,7 +2,7 @@
 // awaitable.hpp
 // ~~~~~~~~~~~~~
 //
-// Copyright (c) 2003-2021 Christopher M. Kohlhoff (chris at kohlhoff dot com)
+// Copyright (c) 2003-2025 Christopher M. Kohlhoff (chris at kohlhoff dot com)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -25,6 +25,7 @@
 # include <experimental/coroutine>
 #endif // defined(ASIO_HAS_STD_COROUTINE)
 
+#include <utility>
 #include "asio/any_io_executor.hpp"
 
 #include "asio/detail/push_options.hpp"
@@ -76,7 +77,7 @@ public:
   }
 
   /// Move assignment.
-  awaitable operator=(awaitable&& other) noexcept
+  awaitable& operator=(awaitable&& other) noexcept
   {
     if (this != &other)
       frame_ = std::exchange(other.frame_, nullptr);
@@ -135,6 +136,9 @@ private:
 #include "asio/detail/pop_options.hpp"
 
 #include "asio/impl/awaitable.hpp"
+#if defined(ASIO_HEADER_ONLY)
+# include "asio/impl/awaitable.ipp"
+#endif // defined(ASIO_HEADER_ONLY)
 
 #endif // defined(ASIO_HAS_CO_AWAIT) || defined(GENERATING_DOCUMENTATION)
 

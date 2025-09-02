@@ -2,8 +2,8 @@
 // experimental/co_spawn.hpp
 // ~~~~~~~~~~~~~~~~~~~~~~~~~
 //
-// Copyright (c) 2021 Klemens D. Morgenstern
-//                    (klemens dot morgenstern at gmx dot net)
+// Copyright (c) 2021-2023 Klemens D. Morgenstern
+//                         (klemens dot morgenstern at gmx dot net)
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
@@ -18,10 +18,10 @@
 #include "asio/detail/config.hpp"
 #include <utility>
 #include "asio/compose.hpp"
+#include "asio/deferred.hpp"
 #include "asio/detail/type_traits.hpp"
 #include "asio/experimental/coro.hpp"
-#include "asio/experimental/deferred.hpp"
-#include "asio/experimental/prepend.hpp"
+#include "asio/prepend.hpp"
 #include "asio/redirect_error.hpp"
 
 #include "asio/detail/push_options.hpp"
