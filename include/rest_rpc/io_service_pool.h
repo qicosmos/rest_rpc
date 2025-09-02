@@ -14,10 +14,10 @@ public:
       throw std::runtime_error("io_service_pool size is 0");
 
     for (std::size_t i = 0; i < pool_size; ++i) {
-      io_service_ptr io_service(new asio::io_context);
-      work_ptr work(new asio::io_context::work(*io_service));
-      io_services_.push_back(io_service);
-      work_.push_back(work);
+      io_service_ptr io_ctx(new asio::io_context);
+      auto work = asio::make_work_guard(*io_ctx);
+      io_services_.push_back(io_ctx);
+      works_.push_back(std::move(work));
     }
   }
 
@@ -48,13 +48,13 @@ public:
 
 private:
   typedef std::shared_ptr<asio::io_context> io_service_ptr;
-  typedef std::shared_ptr<asio::io_context::work> work_ptr;
 
   /// The pool of io_services.
   std::vector<io_service_ptr> io_services_;
 
   /// The work that keeps the io_services running.
-  std::vector<work_ptr> work_;
+  std::vector<asio::executor_work_guard<asio::io_context::executor_type>>
+      works_;
 
   /// The next io_service to use for a connection.
   std::size_t next_io_service_;

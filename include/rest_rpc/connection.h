@@ -23,7 +23,7 @@ struct ssl_configure {
 class connection : public std::enable_shared_from_this<connection>,
                    private asio::noncopyable {
 public:
-  connection(asio::io_service &io_service, std::size_t timeout_seconds,
+  connection(asio::io_context &io_service, std::size_t timeout_seconds,
              router &router)
       : socket_(io_service), body_(INIT_BUF_SIZE), timer_(io_service),
         timeout_seconds_(timeout_seconds), has_closed_(false), router_(router) {
@@ -357,7 +357,7 @@ private:
     }
 
     auto self(this->shared_from_this());
-    timer_.expires_from_now(std::chrono::seconds(timeout_seconds_));
+    timer_.expires_after(std::chrono::seconds(timeout_seconds_));
     timer_.async_wait([this, self](const asio::error_code &ec) {
       if (has_closed()) {
         return;
