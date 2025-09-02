@@ -15,15 +15,13 @@ Modern C++开发的RPC库就是这么简单好用！
 
 # rest_rpc简介
 
-rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(commit id:f70f65ae54351c209c3a24704624144bfe8e70a3) 
+rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(tag:asio-1-36-0) 
 
 可以快速上手，使用者只需要关注自己的业务逻辑即可。
 
 # 谁在用rest_rpc
 
 1. 博世汽车
-2. 浙江智网科技
-3. purecpp.org
 
 [在这里增加用户](https://github.com/qicosmos/rest_rpc/wiki/%E4%BD%BF%E7%94%A8rest_rpc%E7%9A%84%E7%94%A8%E6%88%B7%E5%88%97%E8%A1%A8)
 
