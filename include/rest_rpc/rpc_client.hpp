@@ -1,6 +1,7 @@
 #pragma once
 #include "client_util.hpp"
 #include "const_vars.h"
+#include "function_name.h"
 #include "md5.hpp"
 #include "meta_util.hpp"
 #include "use_asio.hpp"
@@ -216,7 +217,7 @@ public:
   // sync call
   template <size_t TIMEOUT, typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
-  call(const std::string &rpc_name, Args &&...args) {
+  call(std::string_view rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
     auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
@@ -230,13 +231,13 @@ public:
 
   template <typename T = void, typename... Args>
   typename std::enable_if<std::is_void<T>::value>::type
-  call(const std::string &rpc_name, Args &&...args) {
+  call(std::string_view rpc_name, Args &&...args) {
     call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 
   template <size_t TIMEOUT, typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
-  call(const std::string &rpc_name, Args &&...args) {
+  call(std::string_view rpc_name, Args &&...args) {
     auto future_result =
         async_call<FUTURE>(rpc_name, std::forward<Args>(args)...);
     auto status = future_result.wait_for(std::chrono::milliseconds(TIMEOUT));
@@ -250,12 +251,23 @@ public:
 
   template <typename T, typename... Args>
   typename std::enable_if<!std::is_void<T>::value, T>::type
-  call(const std::string &rpc_name, Args &&...args) {
+  call(std::string_view rpc_name, Args &&...args) {
     return call<DEFAULT_TIMEOUT, T>(rpc_name, std::forward<Args>(args)...);
   }
 
+  template <auto func, typename... Args> auto call(Args &&...args) {
+    using args_tuple = typename function_traits<decltype(func)>::tuple_type;
+    static_assert(std::is_constructible_v<remove_first_t<args_tuple>, Args...>,
+                  "called rpc function and arguments are not match");
+
+    constexpr auto rpc_name = get_func_name<func>();
+    using R = typename function_traits<decltype(func)>::return_type;
+
+    return call<R>(rpc_name, std::forward<Args>(args)...);
+  }
+
   template <CallModel model, typename... Args>
-  future_result<req_result> async_call(const std::string &rpc_name,
+  future_result<req_result> async_call(std::string_view rpc_name,
                                        Args &&...args) {
     auto p = std::make_shared<std::promise<req_result>>();
     std::future<req_result> future = p->get_future();
@@ -271,7 +283,7 @@ public:
     rpc_service::msgpack_codec codec;
     auto ret = codec.pack_args(std::forward<Args>(args)...);
     write(fu_id, request_type::req_res, std::move(ret),
-          MD5::MD5Hash32(rpc_name.data()));
+          MD5::MD5Hash32(rpc_name.data(), rpc_name.length()));
     return future_result<req_result>{fu_id, std::move(future)};
   }
 
@@ -292,12 +304,13 @@ public:
     sbuffer.write(encoded_func_name_and_args.data(),
                   encoded_func_name_and_args.size());
     write(fu_id, request_type::req_res, std::move(sbuffer),
-          MD5::MD5Hash32(encoded_func_name_and_args.data()));
+          MD5::MD5Hash32(encoded_func_name_and_args.data(),
+                         encoded_func_name_and_args.length()));
     return fu_id;
   }
 
   template <size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
-  void async_call(const std::string &rpc_name,
+  void async_call(std::string_view rpc_name,
                   std::function<void(asio::error_code, string_view)> cb,
                   Args &&...args) {
     if (!has_connected_) {
@@ -321,7 +334,7 @@ public:
     rpc_service::msgpack_codec codec;
     auto ret = codec.pack_args(std::forward<Args>(args)...);
     write(cb_id, request_type::req_res, std::move(ret),
-          MD5::MD5Hash32(rpc_name.data()));
+          MD5::MD5Hash32(rpc_name.data(), rpc_name.length()));
   }
 
   void stop() {
@@ -580,7 +593,8 @@ private:
   void send_subscribe(const std::string &key, const std::string &token) {
     rpc_service::msgpack_codec codec;
     auto ret = codec.pack_args(key, token);
-    write(0, request_type::sub_pub, std::move(ret), MD5::MD5Hash32(key.data()));
+    write(0, request_type::sub_pub, std::move(ret),
+          MD5::MD5Hash32(key.data(), key.length()));
   }
 
   void resend_subscribe() {

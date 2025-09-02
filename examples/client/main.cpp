@@ -197,6 +197,11 @@ struct dummy1 {
   MSGPACK_DEFINE(id, str);
 };
 
+std::string echo(rpc_conn conn, const std::string &src);
+struct dummy {
+  int add(rpc_conn conn, int a, int b);
+};
+
 void test_echo() {
   rpc_client client("127.0.0.1", 9000);
   bool r = client.connect();
@@ -212,8 +217,25 @@ void test_echo() {
   }
 
   {
-    auto result = client.call<std::string>("echo", "test");
+    // safe call, same with `client.call<std::string>("echo", "test")`
+    auto result = client.call<echo>("test");
     std::cout << result << std::endl;
+  }
+
+  {
+    // safe call member function
+    auto result = client.call<&dummy::add>(1, 2);
+    std::cout << result << std::endl;
+  }
+
+  {
+    client.async_call(
+        "echo",
+        [](const asio::error_code &ec, string_view data) {
+          auto str = as<std::string>(data);
+          std::cout << "echo " << str << '\n';
+        },
+        "test");
   }
 
   {
@@ -637,8 +659,8 @@ void benchmark_test() {
 
 int main() {
   // benchmark_test();
-  test_connect();
-  test_callback();
+  //  test_connect();
+  //  test_callback();
   test_echo();
   test_sync_client();
   test_async_client();

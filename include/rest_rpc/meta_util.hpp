@@ -66,11 +66,15 @@ struct function_traits<std::function<Ret(Args...)>>
 
 template <typename ReturnType, typename ClassType, typename... Args>
 struct function_traits<ReturnType (ClassType::*)(Args...)>
-    : function_traits<ReturnType(Args...)> {};
+    : function_traits<ReturnType(Args...)> {
+  using class_type = ClassType;
+};
 
 template <typename ReturnType, typename ClassType, typename... Args>
 struct function_traits<ReturnType (ClassType::*)(Args...) const>
-    : function_traits<ReturnType(Args...)> {};
+    : function_traits<ReturnType(Args...)> {
+  using class_type = ClassType;
+};
 
 template <typename Callable>
 struct function_traits : function_traits<decltype(&Callable::operator())> {};
@@ -114,6 +118,15 @@ using nth_type_of = nonstd::tuple_element_t<N, std::tuple<Args...>>;
 
 template <typename... Args>
 using last_type_of = nth_type_of<sizeof...(Args) - 1, Args...>;
+
+template <typename T> struct remove_first { using type = T; };
+
+template <class First, class... Second>
+struct remove_first<std::tuple<First, Second...>> {
+  using type = std::tuple<Second...>;
+};
+
+template <typename T> using remove_first_t = typename remove_first<T>::type;
 } // namespace rest_rpc
 
 #endif // REST_RPC_META_UTIL_HPP
