@@ -352,26 +352,24 @@ void test_callback() {
   for (size_t i = 0; i < 10; i++) {
     std::string test = "test" + std::to_string(i + 1);
     // set timeout 100ms
-    client.async_call<10000>(
+    client.async_call<std::string, 10000>(
         "delay_echo",
-        [](const asio::error_code &ec, string_view data) {
+        [](const asio::error_code &ec, std::string data) {
           if (ec) {
             std::cout << ec.value() << " timeout" << std::endl;
             return;
           }
 
-          auto str = as<std::string>(data);
-          std::cout << "delay echo " << str << '\n';
+          std::cout << "delay echo " << data << '\n';
         },
         test);
 
     std::string test1 = "test" + std::to_string(i + 2);
     // zero means no timeout check, no param means using default timeout(5s)
-    client.async_call<0>(
+    client.async_call<std::string, 0>(
         "echo",
-        [](const asio::error_code &ec, string_view data) {
-          auto str = as<std::string>(data);
-          std::cout << "echo " << str << '\n';
+        [](const asio::error_code &ec, std::string data) {
+          std::cout << "echo " << data << '\n';
         },
         test1);
   }
@@ -380,13 +378,12 @@ void test_callback() {
 }
 
 void wait_for_notification(rpc_client &client) {
-  client.async_call<0>("sub",
-                       [&client](const asio::error_code &ec, string_view data) {
-                         auto str = as<std::string>(data);
-                         std::cout << str << '\n';
+  client.async_call<std::string, 0>(
+      "sub", [&client](const asio::error_code &ec, std::string data) {
+        std::cout << data << '\n';
 
-                         wait_for_notification(client);
-                       });
+        wait_for_notification(client);
+      });
 }
 
 void test_sub1() {
@@ -472,9 +469,9 @@ void test_multiple_thread() {
       v.emplace_back(std::make_shared<std::thread>([client] {
         person p{1, "tom", 20};
         for (size_t i = 0; i < 1000000; i++) {
-          client->async_call<0>(
+          client->async_call<std::string, 0>(
               "get_name",
-              [](const asio::error_code &ec, string_view data) {
+              [](const asio::error_code &ec, std::string data) {
                 if (ec) {
                   std::cout << ec.message() << '\n';
                 }
@@ -526,14 +523,14 @@ void test_threads() {
 
   std::thread thd2([&client] {
     for (size_t i = 1000000; i < 2 * 1000000; i++) {
-      client.async_call(
+      client.async_call<int>(
           "get_int",
-          [i](asio::error_code ec, string_view data) {
+          [i](asio::error_code ec, int r) {
             if (ec) {
               std::cout << ec.message() << '\n';
               return;
             }
-            int r = as<int>(data);
+
             if (r != i) {
               std::cout << "error not match" << '\n';
             }
@@ -596,15 +593,14 @@ void test_ssl() {
       std::cout << result1.as<std::string>() << " future\n";
     }
 
-    client.async_call(
+    client.async_call<std::string>(
         "echo",
-        [](asio::error_code ec, string_view data) {
+        [](asio::error_code ec, std::string result) {
           if (ec) {
-            std::cout << ec.message() << " " << data << "\n";
+            std::cout << ec.message() << "\n";
             return;
           }
 
-          auto result = as<std::string>(data);
           std::cout << result << " async\n";
         },
         "purecpp");
@@ -621,9 +617,9 @@ void benchmark_test() {
   }
 
   for (size_t i = 0; i < 1000000; i++) {
-    client.async_call(
+    client.async_call<std::string>(
         "echo",
-        [i](asio::error_code ec, string_view data) {
+        [i](asio::error_code ec, std::string data) {
           if (ec) {
             return;
           }

@@ -295,14 +295,12 @@ public:
     return fu_id;
   }
 
-  template <size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
+  template <typename R, size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
   void async_call(const std::string &rpc_name,
-                  std::function<void(asio::error_code, string_view)> cb,
-                  Args &&...args) {
+                  std::function<void(asio::error_code, R)> cb, Args &&...args) {
     if (!has_connected_) {
       if (cb)
-        cb(asio::error::make_error_code(asio::error::not_connected),
-           "not connected");
+        cb(asio::error::make_error_code(asio::error::not_connected), R{});
       return;
     }
 
@@ -312,7 +310,16 @@ public:
       callback_id_++;
       callback_id_ |= (uint64_t(1) << 63);
       cb_id = callback_id_;
-      auto call = std::make_shared<call_t>(ios_, std::move(cb), TIMEOUT);
+      auto call = std::make_shared<call_t>(
+          ios_,
+          [cb](asio::error_code ec, string_view data) {
+            if (has_error(data)) {
+              cb(ec, R{});
+            } else {
+              cb(ec, as<R>(data));
+            }
+          },
+          TIMEOUT);
       call->start_timer();
       callback_map_.emplace(cb_id, call);
     }

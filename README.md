@@ -133,9 +133,8 @@ auto result = client.call<std::string>("echo", "hello");
 客户端异步回调接口
 
 ```
-client.async_call("echo", [](asio::error_code ec, string_view data){
-	auto str = as<std::string>(data);
-	std::cout << "echo " << str << '\n';
+client.async_call<R>("echo", [](asio::error_code ec, R data){
+	std::cout << "echo " << data << '\n';
 });
 ```
 
@@ -149,22 +148,21 @@ std::future<std::string> future = client.async_call<CallModel::future>("echo", "
 
 带超时的异步回调接口：
 ```
-async_call<timeout_ms>("some_rpc_service_name", callback, service_args...);
+async_call<R, timeout_ms>("some_rpc_service_name", callback, service_args...);
 ```
 
 如果不显式设置超时时间的话，则会用默认的5s超时.
 ```
-async_call("some_rpc_service_name", callback, args...);
+async_call<R>("some_rpc_service_name", callback, args...);
 ```
 
 ```
-client.async_call("echo", [](asio::error_code ec, string_view data) {
+client.async_call<std::string>("echo", [](asio::error_code ec, std::string result) {
     if (ec) {                
         std::cout << ec.message() <<" "<< data << "\n";
         return;
     }
 
-    auto result = as<std::string>(data);
     std::cout << result << " async\n";
 }, "purecpp");
 ```
