@@ -225,11 +225,10 @@ TEST_CASE("test_client_async_call") {
 }
 TEST_CASE("test_client_async_call_not_connect") {
   rpc_client client("127.0.0.1", 9001);
-  client.async_call<>("get_person",
-                      [](const asio::error_code &ec, string_view data) {
-                        CHECK_EQ(ec, asio::error::not_connected);
-                        CHECK_EQ(data, "not connected");
-                      });
+  client.async_call<person>("get_person",
+                            [](const asio::error_code &ec, person data) {
+                              CHECK_EQ(ec, asio::error::not_connected);
+                            });
 }
 
 TEST_CASE("test_client_async_call_with_timeout") {
@@ -244,29 +243,29 @@ TEST_CASE("test_client_async_call_with_timeout") {
   CHECK(r);
   std::string test = "test async call with timeout";
   // zero means no timeout check, no param means using default timeout(5s)
-  client.async_call<0>(
+  client.async_call<std::string, 0>(
       "echo",
-      [](const asio::error_code &ec, string_view data) {
+      [](const asio::error_code &ec, std::string data) {
         if (ec)
           std::cout << "error code: " << ec << ", err msg: " << data << '\n';
       },
       test);
-  client.async_call<>(
+  client.async_call<std::string>(
       "echo",
-      [&client](const asio::error_code &ec, string_view data) {
+      [&client](const asio::error_code &ec, std::string data) {
         std::cout << "req id : " << client.reqest_id() << '\n';
         if (ec)
           std::cout << "error code: " << ec << ", err msg: " << data << '\n';
       },
       test);
-  client.async_call<>(
+  client.async_call<person>(
       "get_person",
-      [&client](const asio::error_code &ec, string_view data) {
+      [&client](const asio::error_code &ec, person p) {
         if (ec) {
-          std::cout << "error code: " << ec << ", err msg: " << data << '\n';
+          std::cout << "error code: " << ec << ", err msg: " << ec.message()
+                    << '\n';
           return;
         }
-        auto p = as<person>(data);
         CHECK_EQ(p.id, 1);
         CHECK_EQ(p.age, 20);
         CHECK_EQ(p.name, "tom");
