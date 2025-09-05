@@ -105,6 +105,8 @@ private:
       }
     });
 
+    set_close_on_exec(acceptor_);
+
     acceptor_.async_accept(conn_->socket(), [this](asio::error_code ec) {
       if (!acceptor_.is_open()) {
         return;
@@ -130,6 +132,18 @@ private:
 
       do_accept();
     });
+  }
+
+  void set_close_on_exec(asio::ip::tcp::acceptor& acceptor) {
+#if defined(_WIN32)
+    //TODO
+#else
+    int native_handle = acceptor.native_handle();
+    int flags = fcntl(native_handle, F_GETFD);
+    if (flags != -1) {
+        fcntl(native_handle, F_SETFD, flags | FD_CLOEXEC);
+    }
+#endif
   }
 
   void clean() {
