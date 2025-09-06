@@ -1,6 +1,7 @@
 #ifndef REST_RPC_CONNECTION_H_
 #define REST_RPC_CONNECTION_H_
 
+#include <boost/system/error_code.hpp>
 #include "const_vars.h"
 #include "cplusplus_14.h"
 #include "nonstd_any.hpp"
@@ -120,7 +121,8 @@ public:
             return "123456";
           });
 
-      asio::error_code ec;
+      boost::system::error_code ec;  
+      
       if (rpcfs::exists(ssl_conf.cert_file, ec)) {
         ssl_context.use_certificate_chain_file(ssl_conf.cert_file);
       }

@@ -7,7 +7,7 @@ if(BUILD_UNIT_TESTS)
     enable_testing()
 endif()
 
-SET(ENABLE_SSL OFF)
+SET(ENABLE_SSL ON)
 SET(ENABLE_JAVA OFF)
 
 add_definitions(-DMSGPACK_NO_BOOST)
@@ -15,7 +15,7 @@ add_definitions(-DMSGPACK_NO_BOOST)
 if (ENABLE_SSL)
     add_definitions(-DCINATRA_ENABLE_SSL)
     message(STATUS "Use SSL")
-    find_package(Boost COMPONENTS system filesystem REQUIRED)
+    find_package(Boost CONFIG REQUIRED COMPONENTS system filesystem )
 endif()
 
 if (ENABLE_JAVA)

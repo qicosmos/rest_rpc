@@ -7,7 +7,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-
 using asio::ip::tcp;
 
 namespace rest_rpc {
@@ -104,7 +103,7 @@ private:
         token_list_.emplace(std::move(token));
       }
     });
-
+    acceptor_.set_option(tcp::acceptor::reuse_address(true));
     acceptor_.async_accept(conn_->socket(), [this](asio::error_code ec) {
       if (!acceptor_.is_open()) {
         return;
@@ -222,12 +221,12 @@ private:
     auto buf = codec.pack(std::move(data));
     return std::make_shared<std::string>(buf.data(), buf.size());
   }
-
   void do_await_stop() {
     signals_.async_wait(
-        [this](std::error_code /*ec*/, int /*signo*/) { stop(); });
+        [this](std::error_code /*ec*/, int /*signo*/) { 
+              std::cerr << "server terminate!\n";
+          stop(); });
   }
-
   void stop() {
     if (has_stoped_) {
       return;
