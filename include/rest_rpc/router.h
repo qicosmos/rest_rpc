@@ -67,7 +67,7 @@ public:
     key2func_name_.erase(key);
   }
 
-  template <auto func> void register_handler() {
+  template <auto func> void remove_handler() {
     constexpr std::string_view name = get_func_name<func>();
     remove_handler(name);
   }

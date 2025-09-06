@@ -229,11 +229,9 @@ void test_echo() {
   }
 
   {
-    client.async_call(
-        "echo",
-        [](const asio::error_code &ec, string_view data) {
-          auto str = as<std::string>(data);
-          std::cout << "echo " << str << '\n';
+    client.async_call_s<&dummy::add>(
+        [](const asio::error_code &ec, auto ret) {
+          std::cout << "echo " << ret << '\n';
         },
         "test");
   }

@@ -336,6 +336,23 @@ public:
           MD5::MD5Hash32(rpc_name.data(), rpc_name.length()));
   }
 
+  template <auto func, typename... Args>
+  void async_call_s(
+      std::function<void(asio::error_code,
+                         typename function_traits<decltype(func)>::return_type)>
+          cb,
+      Args &&...args) {
+    constexpr auto rpc_name = get_func_name<func>();
+    async_call(
+        rpc_name,
+        [cb = std::move(cb)](asio::error_code ec, std::string_view data) {
+          using R = typename function_traits<decltype(func)>::return_type;
+          auto r = as<R>(data);
+          cb(ec, r);
+        },
+        std::forward<Args>(args)...);
+  }
+
   void stop() {
     if (thd_ != nullptr) {
       work_.reset();
