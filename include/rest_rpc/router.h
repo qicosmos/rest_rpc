@@ -5,10 +5,10 @@
 #include "function_name.h"
 #include "md5.hpp"
 #include "meta_util.hpp"
-#include "string_view.hpp"
 #include "use_asio.hpp"
 #include <functional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace rest_rpc {
@@ -81,7 +81,7 @@ public:
   }
 
   template <typename T>
-  route_result_t route(uint32_t key, nonstd::string_view data,
+  route_result_t route(uint32_t key, std::string_view data,
                        std::weak_ptr<T> conn) {
     route_result_t route_result{};
     std::string result;
@@ -198,8 +198,7 @@ private:
   template <bool is_pub, typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = [f](std::weak_ptr<connection> conn,
-                                   nonstd::string_view str,
-                                   std::string &result) {
+                                   std::string_view str, std::string &result) {
       using args_tuple = typename function_traits<Function>::bare_tuple_type;
       msgpack_codec codec;
       try {
@@ -217,7 +216,7 @@ private:
   template <bool is_pub, typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
     this->map_invokers_[key] = [f, self](std::weak_ptr<connection> conn,
-                                         nonstd::string_view str,
+                                         std::string_view str,
                                          std::string &result) {
       using args_tuple = typename function_traits<Function>::bare_tuple_type;
       msgpack_codec codec;
@@ -235,7 +234,7 @@ private:
 
   std::unordered_map<uint32_t,
                      std::function<void(std::weak_ptr<connection>,
-                                        nonstd::string_view, std::string &)>>
+                                        std::string_view, std::string &)>>
       map_invokers_;
   std::unordered_map<uint32_t, std::string> key2func_name_;
 };

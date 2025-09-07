@@ -26,7 +26,7 @@ enum class client_language_t {
 class req_result {
 public:
   req_result() = default;
-  req_result(string_view data) : data_(data.data(), data.length()) {}
+  req_result(std::string_view data) : data_(data.data(), data.length()) {}
   bool success() const { return !has_error(data_); }
 
   template <typename T> T as() {
@@ -310,7 +310,7 @@ public:
 
   template <size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
   void async_call(std::string_view rpc_name,
-                  std::function<void(asio::error_code, string_view)> cb,
+                  std::function<void(asio::error_code, std::string_view)> cb,
                   Args &&...args) {
     if (!has_connected_) {
       if (cb)
@@ -623,7 +623,7 @@ private:
   }
 
   void call_back(uint64_t req_id, const asio::error_code &ec,
-                 string_view data) {
+                 std::string_view data) {
     if (client_language_ == client_language_t::JAVA) {
       // For Java client.
       // TODO(qwang): Call java callback.
@@ -678,7 +678,7 @@ private:
     }
   }
 
-  void callback_sub(const asio::error_code &ec, string_view result) {
+  void callback_sub(const asio::error_code &ec, std::string_view result) {
     rpc_service::msgpack_codec codec;
     try {
       auto tp = codec.unpack<std::tuple<int, std::string, std::string>>(
@@ -728,7 +728,7 @@ private:
                  public std::enable_shared_from_this<call_t> {
   public:
     call_t(asio::io_context &ios,
-           std::function<void(asio::error_code, string_view)> cb,
+           std::function<void(asio::error_code, std::string_view)> cb,
            size_t timeout)
         : timer_(ios), cb_(std::move(cb)), timeout_(timeout) {}
 
@@ -748,7 +748,7 @@ private:
       });
     }
 
-    void callback(asio::error_code ec, string_view data) { cb_(ec, data); }
+    void callback(asio::error_code ec, std::string_view data) { cb_(ec, data); }
 
     bool has_timeout() const { return has_timeout_; }
 
@@ -763,7 +763,7 @@ private:
 
   private:
     asio::steady_timer timer_;
-    std::function<void(asio::error_code, string_view)> cb_;
+    std::function<void(asio::error_code, std::string_view)> cb_;
     size_t timeout_;
     bool has_timeout_ = false;
   };
@@ -889,7 +889,7 @@ private:
   struct client_message_type {
     std::uint64_t req_id;
     request_type req_type;
-    string_view content;
+    std::string_view content;
     uint32_t func_id;
   };
   std::deque<client_message_type> outbox_;
@@ -912,7 +912,8 @@ private:
 
   rpc_header header_;
 
-  std::unordered_map<std::string, std::function<void(string_view)>> sub_map_;
+  std::unordered_map<std::string, std::function<void(std::string_view)>>
+      sub_map_;
   std::set<std::pair<std::string, std::string>> key_token_set_;
 
   client_language_t client_language_ = client_language_t::CPP;

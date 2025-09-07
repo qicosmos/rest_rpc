@@ -14,13 +14,7 @@ using tcp_socket = asio::ip::tcp::socket;
 using ssl_socket = asio::ssl::stream<asio::ip::tcp::socket>;
 #endif
 
-#if __cplusplus > 201402L
 #include <string_view>
-using string_view = std::string_view;
-#else
-#include "string_view.hpp"
-using namespace nonstd;
-#endif
 
 #ifdef CINATRA_ENABLE_SSL
 #if __cplusplus > 201402L

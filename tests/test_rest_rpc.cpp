@@ -226,7 +226,7 @@ TEST_CASE("test_client_async_call") {
 TEST_CASE("test_client_async_call_not_connect") {
   rpc_client client("127.0.0.1", 9001);
   client.async_call<>("get_person",
-                      [](const asio::error_code &ec, string_view data) {
+                      [](const asio::error_code &ec, std::string_view data) {
                         CHECK_EQ(ec, asio::error::not_connected);
                         CHECK_EQ(data, "not connected");
                       });
@@ -246,14 +246,14 @@ TEST_CASE("test_client_async_call_with_timeout") {
   // zero means no timeout check, no param means using default timeout(5s)
   client.async_call<0>(
       "echo",
-      [](const asio::error_code &ec, string_view data) {
+      [](const asio::error_code &ec, std::string_view data) {
         if (ec)
           std::cout << "error code: " << ec << ", err msg: " << data << '\n';
       },
       test);
   client.async_call<>(
       "echo",
-      [&client](const asio::error_code &ec, string_view data) {
+      [&client](const asio::error_code &ec, std::string_view data) {
         std::cout << "req id : " << client.reqest_id() << '\n';
         if (ec)
           std::cout << "error code: " << ec << ", err msg: " << data << '\n';
@@ -261,7 +261,7 @@ TEST_CASE("test_client_async_call_with_timeout") {
       test);
   client.async_call<>(
       "get_person",
-      [&client](const asio::error_code &ec, string_view data) {
+      [&client](const asio::error_code &ec, std::string_view data) {
         if (ec) {
           std::cout << "error code: " << ec << ", err msg: " << data << '\n';
           return;
@@ -306,7 +306,7 @@ TEST_CASE("test_client_subscribe") {
   CHECK(r);
   client.publish("key", "hello subscriber");
 
-  client.subscribe("key", [&stop](string_view data) {
+  client.subscribe("key", [&stop](std::string_view data) {
     std::cout << data << "\n";
     CHECK_EQ(data, "hello subscriber");
     stop = true;
@@ -322,7 +322,7 @@ TEST_CASE("test_client_subscribe_not_exist_key") {
                             server.publish(std::move(key), std::move(val));
                           });
   bool stop = false;
-  server.set_error_callback([&stop](asio::error_code ec, string_view msg) {
+  server.set_error_callback([&stop](asio::error_code ec, std::string_view msg) {
     std::cout << "line: " << __LINE__ << ", msg: " << ec.message() << " -- "
               << msg << std::endl;
     CHECK_EQ(ec, asio::error::invalid_argument);
@@ -346,7 +346,7 @@ TEST_CASE("test_client_subscribe_not_exist_key") {
     std::cout << "line: " << __LINE__ << ", msg: " << ec.value() << " -- "
               << ec.message() << std::endl;
   });
-  client.subscribe("key1", [&stop](string_view data) {
+  client.subscribe("key1", [&stop](std::string_view data) {
     CHECK(data != "hello subscriber");
     stop = true;
   });
@@ -373,7 +373,7 @@ TEST_CASE("test_server_publish_encode_msg") {
   rpc_client client;
   bool r = client.connect("127.0.0.1", 9000);
   CHECK(r);
-  client.subscribe("person", [&stop](string_view data) {
+  client.subscribe("person", [&stop](std::string_view data) {
     try {
       msgpack_codec codec;
       person p = codec.unpack<person>(data.data(), data.size());
@@ -407,7 +407,7 @@ TEST_CASE("test_client_subscribe_by_token") {
   CHECK(r);
   client.subscribe(
       "key", "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1",
-      [&stop](string_view data) {
+      [&stop](std::string_view data) {
         std::cout << data << "\n";
         CHECK_EQ(data, "hello token subscriber");
         stop = true;
@@ -441,7 +441,7 @@ TEST_CASE("test_client_publish_and_subscribe_by_token") {
   bool r = client.connect("127.0.0.1", 9000);
   CHECK(r);
   client.publish_by_token("key", client_token, "hello token subscriber");
-  client.subscribe("key", client_token, [&stop](string_view data) {
+  client.subscribe("key", client_token, [&stop](std::string_view data) {
     std::cout << data << "\n";
     CHECK_EQ(data, "hello token subscriber");
     stop = true;
@@ -499,7 +499,7 @@ TEST_CASE("test_server_duplicate_registration_key") {
   try {
     server.register_handler("delay_echo", delay_echo);
   } catch (const std::exception &e) {
-    string_view ew{e.what()};
+    std::string_view ew{e.what()};
     std::cerr << ew << '\n';
     CHECK_EQ(ew, "duplicate registration key !");
   }

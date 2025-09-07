@@ -209,7 +209,7 @@ private:
         read_head();
         if (req_type_ == request_type::req_res) {
           route_result_t ret = router_.route<connection>(
-              func_id, nonstd::string_view{body_.data(), length},
+              func_id, std::string_view{body_.data(), length},
               this->shared_from_this());
           if (delay_) {
             delay_ = false;

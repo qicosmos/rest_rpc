@@ -61,8 +61,8 @@ public:
     router_.register_handler<is_pub>(name, f, self);
   }
 
-  void
-  set_error_callback(std::function<void(asio::error_code, string_view)> f) {
+  void set_error_callback(
+      std::function<void(asio::error_code, std::string_view)> f) {
     err_cb_ = std::move(f);
   }
 
@@ -174,7 +174,7 @@ private:
       }
     }
   }
-  void error_callback(const asio::error_code &ec, string_view msg) {
+  void error_callback(const asio::error_code &ec, std::string_view msg) {
     if (err_cb_) {
       err_cb_(ec, msg);
     }
@@ -269,7 +269,7 @@ private:
   bool stop_check_ = false;
   std::condition_variable cv_;
 
-  std::function<void(asio::error_code, string_view)> err_cb_;
+  std::function<void(asio::error_code, std::string_view)> err_cb_;
   std::function<void(int64_t)> conn_timeout_callback_;
   std::function<void(std::shared_ptr<connection>, std::string)>
       on_net_err_callback_ = nullptr;

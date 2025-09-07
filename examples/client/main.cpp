@@ -374,7 +374,7 @@ void test_callback() {
     // set timeout 100ms
     client.async_call<10000>(
         "delay_echo",
-        [](const asio::error_code &ec, string_view data) {
+        [](const asio::error_code &ec, std::string_view data) {
           if (ec) {
             std::cout << ec.value() << " timeout" << std::endl;
             return;
@@ -389,7 +389,7 @@ void test_callback() {
     // zero means no timeout check, no param means using default timeout(5s)
     client.async_call<0>(
         "echo",
-        [](const asio::error_code &ec, string_view data) {
+        [](const asio::error_code &ec, std::string_view data) {
           auto str = as<std::string>(data);
           std::cout << "echo " << str << '\n';
         },
@@ -400,13 +400,13 @@ void test_callback() {
 }
 
 void wait_for_notification(rpc_client &client) {
-  client.async_call<0>("sub",
-                       [&client](const asio::error_code &ec, string_view data) {
-                         auto str = as<std::string>(data);
-                         std::cout << str << '\n';
+  client.async_call<0>(
+      "sub", [&client](const asio::error_code &ec, std::string_view data) {
+        auto str = as<std::string>(data);
+        std::cout << str << '\n';
 
-                         wait_for_notification(client);
-                       });
+        wait_for_notification(client);
+      });
 }
 
 void test_sub1() {
@@ -418,11 +418,12 @@ void test_sub1() {
     return;
   }
 
-  client.subscribe("key", [](string_view data) { std::cout << data << "\n"; });
+  client.subscribe("key",
+                   [](std::string_view data) { std::cout << data << "\n"; });
 
   client.subscribe(
       "key", "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1",
-      [](string_view data) {
+      [](std::string_view data) {
         msgpack_codec codec;
         person p = codec.unpack<person>(data.data(), data.size());
         std::cout << p.name << "\n";
@@ -431,7 +432,7 @@ void test_sub1() {
   client.subscribe(
       "key1",
       "048a796c8a3c6a6b7bd1223bf2c8cee05232e927b521984ba417cb2fca6df9d1",
-      [](string_view data) { std::cout << data << "\n"; });
+      [](std::string_view data) { std::cout << data << "\n"; });
 
   bool stop = false;
   std::thread thd1([&client, &stop] {
@@ -494,7 +495,7 @@ void test_multiple_thread() {
         for (size_t i = 0; i < 1000000; i++) {
           client->async_call<0>(
               "get_name",
-              [](const asio::error_code &ec, string_view data) {
+              [](const asio::error_code &ec, std::string_view data) {
                 if (ec) {
                   std::cout << ec.message() << '\n';
                 }
@@ -548,7 +549,7 @@ void test_threads() {
     for (size_t i = 1000000; i < 2 * 1000000; i++) {
       client.async_call(
           "get_int",
-          [i](asio::error_code ec, string_view data) {
+          [i](asio::error_code ec, std::string_view data) {
             if (ec) {
               std::cout << ec.message() << '\n';
               return;
@@ -618,7 +619,7 @@ void test_ssl() {
 
     client.async_call(
         "echo",
-        [](asio::error_code ec, string_view data) {
+        [](asio::error_code ec, std::string_view data) {
           if (ec) {
             std::cout << ec.message() << " " << data << "\n";
             return;
@@ -643,7 +644,7 @@ void benchmark_test() {
   for (size_t i = 0; i < 1000000; i++) {
     client.async_call(
         "echo",
-        [i](asio::error_code ec, string_view data) {
+        [i](asio::error_code ec, std::string_view data) {
           if (ec) {
             return;
           }
