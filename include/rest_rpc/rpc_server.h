@@ -17,11 +17,10 @@ class rpc_server : private asio::noncopyable {
 public:
   rpc_server(unsigned short port, size_t size, size_t timeout_seconds = 15,
              size_t check_seconds = 10)
-      : io_service_pool_(size), acceptor_(io_service_pool_.get_io_service(),
-                                          tcp::endpoint(tcp::v4(), port)),
+      : io_service_pool_(size), acceptor_(io_service_pool_.get_io_service()),
         timeout_seconds_(timeout_seconds), check_seconds_(check_seconds),
-        signals_(io_service_pool_.get_io_service()) {
-    do_accept();
+        signals_(io_service_pool_.get_io_service()),
+        port_(std::to_string(port)) {
     check_thread_ = std::make_shared<std::thread>([this] { clean(); });
     pub_sub_thread_ =
         std::make_shared<std::thread>([this] { clean_sub_pub(); });
@@ -31,6 +30,12 @@ public:
     signals_.add(SIGQUIT);
 #endif // defined(SIGQUIT)
     do_await_stop();
+  }
+
+  rpc_server(std::string address, unsigned short port, size_t size,
+             size_t timeout_seconds = 15, size_t check_seconds = 10)
+      : rpc_server(port, size, timeout_seconds, check_seconds) {
+    address_ = std::move(address);
   }
 
   rpc_server(unsigned short port, size_t size, ssl_configure ssl_conf,
@@ -46,11 +51,24 @@ public:
 
   ~rpc_server() { stop(); }
 
-  void async_run() {
-    thd_ = std::make_shared<std::thread>([this] { io_service_pool_.run(); });
+  std::error_code async_run() {
+    auto ec = listen();
+    if (!ec) {
+      do_accept();
+      thd_ = std::make_shared<std::thread>([this] { io_service_pool_.run(); });
+    }
+    return ec;
   }
 
-  void run() { io_service_pool_.run(); }
+  std::error_code run() {
+    auto ec = listen();
+    if (!ec) {
+      do_accept();
+      io_service_pool_.run();
+    }
+
+    return ec;
+  }
 
   template <bool is_pub = false, typename Function>
   void register_handler(std::string const &name, const Function &f) {
@@ -130,6 +148,50 @@ private:
 
       do_accept();
     });
+  }
+
+  std::error_code listen() {
+    using asio::ip::tcp;
+    asio::error_code ec;
+    asio::ip::tcp::resolver resolver(acceptor_.get_executor());
+    auto endpoints = resolver.resolve(address_, port_, ec);
+    if (ec) {
+      return ec;
+    }
+
+    auto it = endpoints.begin();
+
+    if (it == endpoints.end()) {
+      return std::make_error_code(std::errc::bad_address);
+    }
+
+    auto endpoint = it->endpoint();
+    acceptor_.open(endpoint.protocol(), ec);
+    if (ec) {
+      return ec;
+    }
+
+#ifdef __GNUC__
+    acceptor_.set_option(tcp::acceptor::reuse_address(true), ec);
+#endif
+    acceptor_.bind(endpoint, ec);
+    if (ec) {
+      std::error_code ignore;
+      acceptor_.cancel(ignore);
+      acceptor_.close(ignore);
+      return ec;
+    }
+#ifdef _MSC_VER
+    acceptor_.set_option(tcp::acceptor::reuse_address(true));
+#endif
+    acceptor_.listen(asio::socket_base::max_listen_connections, ec);
+    if (ec) {
+      std::error_code ignore;
+      acceptor_.cancel(ignore);
+      acceptor_.close(ignore);
+      return ec;
+    }
+    return ec;
   }
 
   void clean() {
@@ -259,6 +321,8 @@ private:
   std::shared_ptr<connection> conn_;
   std::shared_ptr<std::thread> thd_;
   std::size_t timeout_seconds_;
+  std::string address_ = "0.0.0.0";
+  std::string port_ = "";
 
   std::unordered_map<int64_t, std::shared_ptr<connection>> connections_;
   int64_t conn_id_ = 0;
