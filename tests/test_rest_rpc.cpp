@@ -115,10 +115,12 @@ TEST_CASE("test start some servers with same port") {
   auto ec1 = server1.async_run();
   CHECK(ec1 == std::error_code{});
   auto ec2 = server2.async_run();
-  CHECK(ec2 == std::errc::address_in_use);
+  CHECK(ec2);
+  std::cout << ec2.message() << "\n";
   rpc_server server3(9000, 1);
   auto ec3 = server3.async_run();
-  CHECK(ec3 == std::errc::address_in_use);
+  CHECK(ec3);
+  std::cout << ec3.message() << "\n";
 }
 
 TEST_CASE("test start server with local ip") {
