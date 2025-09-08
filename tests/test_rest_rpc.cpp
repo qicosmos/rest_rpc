@@ -109,6 +109,29 @@ TEST_CASE("test_client_default_constructor") {
   CHECK_EQ(result, 3);
 }
 
+TEST_CASE("test start some servers with same port") {
+  rpc_server server1(9000, 1);
+  rpc_server server2(9000, 1);
+  auto ec1 = server1.async_run();
+  CHECK(ec1 == std::error_code{});
+  auto ec2 = server2.async_run();
+  CHECK(ec2 == std::errc::address_in_use);
+  rpc_server server3(9000, 1);
+  auto ec3 = server3.async_run();
+  CHECK(ec3 == std::errc::address_in_use);
+}
+
+TEST_CASE("test start server with local ip") {
+  rpc_server server1("0.0.0.0", 9000, 1);
+  auto ec1 = server1.async_run();
+  CHECK(ec1 == std::error_code{});
+
+  rpc_server server2("11.11.11.11", 9000, 1);
+  auto ec2 = server2.async_run();
+  CHECK(ec2);
+  std::cout << ec2.message() << "\n"; // address not available
+}
+
 TEST_CASE("test_constructor_with_language") {
   rpc_server server(9000, std::thread::hardware_concurrency());
   dummy d;
