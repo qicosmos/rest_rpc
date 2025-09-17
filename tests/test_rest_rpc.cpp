@@ -349,7 +349,7 @@ TEST_CASE("test_client_subscribe_not_exist_key") {
   server.set_error_callback([&stop](asio::error_code ec, string_view msg) {
     std::cout << "line: " << __LINE__ << ", msg: " << ec.message() << " -- "
               << msg << std::endl;
-    CHECK_EQ(ec, asio::error::invalid_argument);
+    CHECK_EQ(ec, rpc_errc::no_such_key);
     stop = true;
   });
   server.set_conn_timeout_callback([](int64_t conn_id) {

@@ -2,6 +2,7 @@
 #define REST_RPC_ROUTER_H_
 
 #include "codec.h"
+#include "error_code.h"
 #include "md5.hpp"
 #include "meta_util.hpp"
 #include "string_view.hpp"
@@ -14,10 +15,8 @@ namespace rest_rpc {
 namespace rpc_service {
 class connection;
 
-enum class router_error { ok, no_such_function, has_exception, unkonw };
-
 struct route_result_t {
-  router_error ec = router_error::unkonw;
+  rpc_errc ec = rpc_errc::unknown;
   std::string result;
 };
 
@@ -95,23 +94,23 @@ public:
       if (it == map_invokers_.end()) {
         result = codec.pack_args_str(
             result_code::FAIL, "unknown function: " + get_name_by_key(key));
-        route_result.ec = router_error::no_such_function;
+        route_result.ec = rpc_errc::no_such_function;
       } else {
         it->second(conn, data, result);
-        route_result.ec = router_error::ok;
+        route_result.ec = rpc_errc::ok;
       }
     } catch (const std::exception &ex) {
       msgpack_codec codec;
       result = codec.pack_args_str(
           result_code::FAIL,
           std::string("exception occur when call").append(ex.what()));
-      route_result.ec = router_error::has_exception;
+      route_result.ec = rpc_errc::function_exception;
     } catch (...) {
       msgpack_codec codec;
       result = codec.pack_args_str(
           result_code::FAIL, std::string("unknown exception occur when call ")
                                  .append(get_name_by_key(key)));
-      route_result.ec = router_error::no_such_function;
+      route_result.ec = rpc_errc::unknown_exception;
     }
 
     route_result.result = std::move(result);

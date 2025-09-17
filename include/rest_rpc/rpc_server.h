@@ -2,6 +2,7 @@
 #define REST_RPC_RPC_SERVER_H_
 
 #include "connection.h"
+#include "error_code.h"
 #include "io_service_pool.h"
 #include "router.h"
 #include <condition_variable>
@@ -162,7 +163,7 @@ private:
     auto it = endpoints.begin();
 
     if (it == endpoints.end()) {
-      return std::make_error_code(std::errc::bad_address);
+      return make_error_code(rpc_errc::resolve_error);
     }
 
     auto endpoint = it->endpoint();
@@ -263,9 +264,8 @@ private:
         conn->publish(key + token, *shared_data);
       }
     } else {
-      error_callback(
-          asio::error::make_error_code(asio::error::invalid_argument),
-          "The subscriber of the key: " + key + " does not exist.");
+      error_callback(make_error_code(rpc_errc::no_such_key),
+                     "The subscriber of the key: " + key + " does not exist.");
     }
   }
 
