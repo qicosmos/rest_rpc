@@ -1,6 +1,7 @@
 #pragma once
 #include "client_util.hpp"
 #include "const_vars.h"
+#include "error_code.h"
 #include "md5.hpp"
 #include "meta_util.hpp"
 #include "use_asio.hpp"
@@ -292,7 +293,7 @@ public:
                   encoded_func_name_and_args.size());
     write(fu_id, request_type::req_res, std::move(sbuffer),
           MD5::MD5Hash32(encoded_func_name_and_args.data()));
-    return fu_id;
+    return (long)fu_id;
   }
 
   template <typename R, size_t TIMEOUT = DEFAULT_TIMEOUT, typename... Args>
@@ -553,9 +554,7 @@ private:
 
       if (!socket_.is_open()) {
         // LOG(INFO) << "socket already closed";
-        call_back(req_id,
-                  asio::error::make_error_code(asio::error::connection_aborted),
-                  {});
+        call_back(req_id, make_error_code(rpc_errc::socket_closed), {});
         return;
       }
 
@@ -567,8 +566,7 @@ private:
           callback_sub(ec, {body_.data(), body_len});
         } else {
           close();
-          error_callback(
-              asio::error::make_error_code(asio::error::invalid_argument));
+          error_callback(make_error_code(rpc_errc::invalid_req_type));
           return;
         }
 
@@ -604,7 +602,7 @@ private:
       // For Java client.
       // TODO(qwang): Call java callback.
       // handle error.
-      on_result_received_callback_(req_id,
+      on_result_received_callback_((long)req_id,
                                    std::string(data.data(), data.size()));
     } else {
       // For CPP client.
@@ -625,8 +623,7 @@ private:
           cl->cancel();
           cl->callback(ec, data);
         } else {
-          cl->callback(asio::error::make_error_code(asio::error::timed_out),
-                       {});
+          cl->callback(make_error_code(rpc_errc::request_timeout), {});
         }
 
         std::unique_lock<std::mutex> lock(cb_mtx_);
@@ -670,8 +667,7 @@ private:
 
       it->second(data);
     } catch (const std::exception & /*ex*/) {
-      error_callback(
-          asio::error::make_error_code(asio::error::invalid_argument));
+      error_callback(make_error_code(rpc_errc::function_exception));
     }
   }
 
