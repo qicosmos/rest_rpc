@@ -16,6 +16,12 @@ struct msgpack_codec {
     return buffer;
   }
 
+  template <typename Arg> static std::string pack_to_string(Arg &arg) {
+    buffer_type buffer(init_size);
+    msgpack::pack(buffer, arg);
+    return std::string(buffer.data(), buffer.size());
+  }
+
   template <typename Arg, typename... Args,
             typename = typename std::enable_if<std::is_enum<Arg>::value>::type>
   static std::string pack_args_str(Arg arg, Args &&...args) {

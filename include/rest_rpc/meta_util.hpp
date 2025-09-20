@@ -3,6 +3,7 @@
 
 #include "cplusplus_14.h"
 #include <functional>
+#include <type_traits>
 
 namespace rest_rpc {
 
@@ -31,12 +32,15 @@ public:
   using stl_function_type = std::function<function_type>;
   typedef Ret (*pointer)(Arg, Args...);
 
-  typedef std::tuple<Arg, Args...> tuple_type;
+  typedef std::tuple<std::remove_const_t<std::remove_reference_t<Arg>>,
+                     std::remove_const_t<std::remove_reference_t<Args>>...>
+      tuple_type;
   typedef std::tuple<
       nonstd::remove_const_t<nonstd::remove_reference_t<Args>>...>
       bare_tuple_type;
   using args_tuple =
-      std::tuple<std::string, Arg,
+      std::tuple<std::string,
+                 nonstd::remove_const_t<nonstd::remove_reference_t<Arg>>,
                  nonstd::remove_const_t<nonstd::remove_reference_t<Args>>...>;
   using args_tuple_2nd =
       std::tuple<std::string,

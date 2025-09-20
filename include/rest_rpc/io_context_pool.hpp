@@ -45,6 +45,11 @@ public:
 
   asio::io_context &get_io_context() { return *get_io_context_ptr(); }
 
+  auto get_executor() {
+    auto &ctx = get_io_context();
+    return ctx.get_executor();
+  }
+
 private:
   std::vector<std::shared_ptr<asio::io_context>> io_contexts_;
   std::vector<asio::executor_work_guard<asio::io_context::executor_type>>
@@ -53,4 +58,15 @@ private:
   std::once_flag stop_flag_;
   std::atomic<size_t> next_ = 0;
 };
+
+inline auto
+get_global_executor(unsigned pool_size = std::thread::hardware_concurrency()) {
+  static auto g_io_context_pool = std::make_shared<io_context_pool>(pool_size);
+  [[maybe_unused]] static bool run_helper = [](auto pool) {
+    std::thread thrd{[pool] { pool->run(); }};
+    thrd.detach();
+    return true;
+  }(g_io_context_pool);
+  return g_io_context_pool->get_executor();
+}
 } // namespace rest_rpc

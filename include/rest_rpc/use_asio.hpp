@@ -4,6 +4,9 @@
 #ifdef CINATRA_ENABLE_SSL
 #include <asio/ssl.hpp>
 #endif
+#include <asio/as_tuple.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
 #include <asio/detail/noncopyable.hpp>
 #include <asio/executor_work_guard.hpp>
 #include <asio/post.hpp>
