@@ -28,7 +28,7 @@ struct function_traits<Ret(Arg, Args...)> {
 public:
   enum { arity = sizeof...(Args) + 1 };
   typedef Ret function_type(Arg, Args...);
-  typedef Ret return_type;
+  typedef std::remove_cvref_t<Ret> return_type;
   using stl_function_type = std::function<function_type>;
   typedef Ret (*pointer)(Arg, Args...);
 
@@ -51,7 +51,7 @@ template <typename Ret> struct function_traits<Ret()> {
 public:
   enum { arity = 0 };
   typedef Ret function_type();
-  typedef Ret return_type;
+  typedef std::remove_cvref_t<Ret> return_type;
   using stl_function_type = std::function<function_type>;
   typedef Ret (*pointer)();
 
@@ -123,7 +123,9 @@ using nth_type_of = nonstd::tuple_element_t<N, std::tuple<Args...>>;
 template <typename... Args>
 using last_type_of = nth_type_of<sizeof...(Args) - 1, Args...>;
 
-template <typename T> struct remove_first { using type = T; };
+template <typename T> struct remove_first {
+  using type = T;
+};
 
 template <class First, class... Second>
 struct remove_first<std::tuple<First, Second...>> {

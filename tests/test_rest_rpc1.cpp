@@ -12,21 +12,48 @@ struct dummy {
   int add(int a, int b) { return a + b; }
 
   void foo(std::string str) { std::cout << str << "\n"; }
+
+  std::string echo(std::string val) { return val; }
+
+  int round1(int i) { return i; }
 };
 
 int add(int a, int b) { return a + b; }
 
 void foo(std::string str) { std::cout << str << "\n"; }
 
+int round1(int i) { return i; }
+
+std::string_view echo_sv(std::string_view str) { return str; }
+
+std::string echo(std::string str) { return str; }
+
+void no_arg() { std::cout << "no args\n"; }
+
 TEST_CASE("test router") {
   rpc_router router;
   router.register_handler<add>();
   router.register_handler<foo>();
+  router.register_handler<round1>();
+  router.register_handler<echo>();
 
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   router.register_handler<&dummy::foo>(&d);
+  router.register_handler<&dummy::round1>(&d);
+  router.register_handler<&dummy::echo>(&d);
   rpc_service::msgpack_codec codec;
+  {
+    auto s = codec.pack_args(1);
+    auto s1 = codec.pack_args("test");
+    auto r = router.route(get_key<round1>(), s);
+    auto r1 = router.route(get_key<echo>(), s1);
+
+    auto r2 = router.route(get_key<&dummy::round1>(), s);
+    auto r3 = router.route(get_key<&dummy::echo>(), s1);
+    std::cout << "\n";
+  }
+
   auto args = codec.pack_args(1, 2);
   std::string_view str(args.data(), args.size());
 
@@ -54,9 +81,23 @@ TEST_CASE("test server start") {
   rest_rpc_server server("127.0.0.1:9005");
   server.register_handler<add>();
   server.register_handler<foo>();
+  server.register_handler<no_arg>();
+  server.register_handler<echo>();
+  server.register_handler<echo_sv>();
+  server.register_handler<round1>();
   auto ec = server.async_start();
   CHECK(!ec);
   client cl;
+
+  static_assert(util::CharArrayRef<char const(&)[5]>);
+  static_assert(util::CharArray<const char[5]>);
+  rpc_service::msgpack_codec::pack_args();
+  rpc_service::msgpack_codec::pack_args(1, 2);
+  auto s1 = rpc_service::msgpack_codec::pack_args("test");
+  auto s2 = rpc_service::msgpack_codec::pack_args(std::string_view("test2"));
+  auto s3 = rpc_service::msgpack_codec::pack_args(std::string("test2"));
+  auto s5 = rpc_service::msgpack_codec::pack_args(123);
+
   //  auto future = asio::co_spawn(cl.get_executor(),
   //  cl.connect("127.0.0.1:9005"), asio::use_future); auto conn_ec =
   //  future.get();
@@ -72,8 +113,23 @@ TEST_CASE("test server start") {
 
   //  auto future1 = asio::co_spawn(cl.get_executor(), cl.call<add>(1, 2),
   //  asio::use_future); auto result = future1.get();
+  {
+    // auto result = sync_wait(cl.get_executor(),
+    // cl.call_for<no_arg>(std::chrono::minutes(2)));
+    // CHECK(result.ec==rpc_errc::ok);
+    auto result =
+        sync_wait(cl.get_executor(),
+                  cl.call_for<echo_sv>(std::chrono::minutes(2), "test"));
+    CHECK(result.ec == rpc_errc::ok);
+    auto result1 = sync_wait(
+        cl.get_executor(), cl.call_for<echo>(std::chrono::minutes(2), "test"));
+    CHECK(result1.ec == rpc_errc::ok);
+    auto result2 = sync_wait(cl.get_executor(), cl.call<round1>(1));
+    CHECK(result2.ec == rpc_errc::ok);
+  }
 
   auto result = sync_wait(cl.get_executor(), cl.call<add>(1, 2));
+  CHECK(result.ec == rpc_errc::ok);
 
   ec = server.async_start();
   CHECK(!ec);

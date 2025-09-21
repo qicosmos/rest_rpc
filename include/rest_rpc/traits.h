@@ -145,7 +145,9 @@ struct is_invocable
 template <typename F, typename... Args>
 inline constexpr bool is_invocable_v = is_invocable<F, Args...>::value;
 
-template <typename T> struct remove_first { using type = T; };
+template <typename T> struct remove_first {
+  using type = T;
+};
 
 template <class First, class... Second>
 struct remove_first<std::tuple<First, Second...>> {
@@ -171,4 +173,44 @@ struct is_specialization<Ref<Args...>, Ref> : std::true_type {};
 
 template <typename Test, template <typename...> class Ref>
 inline constexpr bool is_specialization_v = is_specialization<Test, Ref>::value;
+
+template <typename Type>
+concept container = requires(Type container) {
+  typename std::remove_cvref_t<Type>::value_type;
+  container.size();
+  container.begin();
+  container.end();
+};
+
+template <typename Type>
+constexpr bool is_char_t =
+    std::is_same_v<Type, signed char> || std::is_same_v<Type, char> ||
+    std::is_same_v<Type, unsigned char> || std::is_same_v<Type, wchar_t> ||
+    std::is_same_v<Type, char16_t> || std::is_same_v<Type, char32_t>
+#ifdef __cpp_lib_char8_t
+    || std::is_same_v<Type, char8_t>
+#endif
+    ;
+
+template <typename Type>
+concept string = container<Type> && requires(Type container) {
+  requires is_char_t<typename std::remove_cvref_t<Type>::value_type>;
+  container.length();
+  container.data();
+};
+
+template <typename T>
+concept CharArrayRef = requires {
+  requires std::is_array_v<std::remove_reference_t<T>> &&
+               std::same_as<std::remove_extent_t<std::remove_cvref_t<T>>, char>;
+};
+
+template <typename T>
+concept CharArray =
+    std::is_array_v<std::remove_reference_t<T>> &&
+    std::same_as<std::remove_extent_t<std::remove_cvref_t<T>>, char>;
+
+template <typename T, typename...>
+inline constexpr bool is_basic_v =
+    std::is_fundamental_v<T> || string<T> || CharArray<T> || CharArrayRef<T>;
 } // namespace rest_rpc::util

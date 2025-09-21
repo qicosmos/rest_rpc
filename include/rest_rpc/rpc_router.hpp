@@ -1,9 +1,9 @@
 #pragma once
 #include "codec.h"
 #include "error_code.h"
-#include "function_name.h"
-#include "md5.hpp"
+
 #include "meta_util.hpp"
+#include "util.hpp"
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -13,13 +13,12 @@ namespace rest_rpc {
 struct rpc_result {
   rpc_errc ec = rpc_errc::ok;
   std::string result;
-};
+  std::string_view view;
+  bool empty() { return result.empty() && view.empty(); }
+  size_t size() { return result.empty() ? view.size() : result.size(); }
 
-template <auto func> constexpr uint32_t get_key() {
-  constexpr auto name = get_func_name<func>();
-  constexpr uint32_t key = MD5::MD5Hash32(name.data(), name.length());
-  return key;
-}
+  std::string_view data() { return result.empty() ? view : result; }
+};
 
 class rpc_router {
 public:
@@ -57,29 +56,27 @@ public:
 
   rpc_result route(uint32_t key, std::string_view data) {
     rpc_result route_result{};
-    std::string result;
     try {
       rpc_service::msgpack_codec codec;
       auto it = map_invokers_.find(key);
       if (it == map_invokers_.end()) {
-        result = "unknown function: " + get_name_by_key(key);
+        route_result.result = "unknown function: " + get_name_by_key(key);
         route_result.ec = rpc_errc::no_such_function;
       } else {
-        it->second(data, route_result.ec, result);
+        it->second(data, route_result);
         route_result.ec = rpc_errc::ok;
       }
     } catch (const std::exception &ex) {
       rpc_service::msgpack_codec codec;
-      result = std::string("exception occur when call").append(ex.what());
+      route_result.result =
+          std::string("exception occur when call").append(ex.what());
       route_result.ec = rpc_errc::function_exception;
     } catch (...) {
       rpc_service::msgpack_codec codec;
-      result = std::string("unknown exception occur when call ")
-                   .append(get_name_by_key(key));
+      route_result.result = std::string("unknown exception occur when call ")
+                                .append(get_name_by_key(key));
       route_result.ec = rpc_errc::function_unknown_exception;
     }
-
-    route_result.result = std::move(result);
 
     return route_result;
   }
@@ -103,65 +100,116 @@ private:
   template <typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
     this->map_invokers_[key] = [f = std::move(f)](std::string_view str,
-                                                  rpc_errc &ec,
-                                                  std::string &result) mutable {
+                                                  rpc_result &ret) mutable {
       using args_tuple = typename function_traits<Function>::tuple_type;
       using R = typename function_traits<Function>::return_type;
-      rpc_service::msgpack_codec codec;
+
       try {
-        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
-        if constexpr (std::is_void_v<R>) {
-          std::apply(f, tp);
+        if constexpr (std::tuple_size_v<args_tuple> == 0) {
+          if constexpr (std::is_void_v<R>) {
+            f();
+          } else {
+            auto r = f();
+            ret.result = rpc_service::msgpack_codec::pack_to_string(r);
+          }
         } else {
-          auto r = std::apply(f, tp);
-          result = rpc_service::msgpack_codec::pack_to_string(r);
+          rpc_service::msgpack_codec codec;
+          using first_t = std::tuple_element_t<0, args_tuple>;
+          if constexpr (std::tuple_size_v<args_tuple> == 1 &&
+                        util::is_basic_v<first_t>) {
+            if constexpr (std::is_void_v<R>) {
+              f(codec.unpack<first_t>(str));
+            } else {
+              if constexpr (std::is_same_v<std::string_view, R>) {
+                ret.view = rpc_service::msgpack_codec::pack_args(
+                    f(codec.unpack<first_t>(str)));
+              } else {
+                ret.result = rpc_service::msgpack_codec::pack_args(
+                    f(codec.unpack<first_t>(str)));
+              }
+            }
+          } else {
+            auto tp = codec.unpack<args_tuple>(str);
+            if constexpr (std::is_void_v<R>) {
+              std::apply(f, tp);
+            } else {
+              auto r = std::apply(f, tp);
+              ret.result = rpc_service::msgpack_codec::pack_to_string(r);
+            }
+          }
         }
       } catch (std::invalid_argument &e) {
-        ec = rpc_errc::invalid_argument;
-        result = e.what();
+        ret.ec = rpc_errc::invalid_argument;
+        ret.result = e.what();
       } catch (const std::exception &e) {
-        ec = rpc_errc::function_exception;
-        result = e.what();
+        ret.ec = rpc_errc::function_exception;
+        ret.result = e.what();
       }
     };
   }
 
   template <typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
-    this->map_invokers_[key] = [f, self](std::string_view str, rpc_errc &ec,
-                                         std::string &result) {
+    this->map_invokers_[key] = [f, self](std::string_view str,
+                                         rpc_result &ret) {
       using args_tuple = typename function_traits<Function>::tuple_type;
       using R = typename function_traits<Function>::return_type;
       rpc_service::msgpack_codec codec;
       try {
-        auto tp = codec.unpack<args_tuple>(str.data(), str.size());
-
-        if constexpr (std::is_void_v<R>) {
-          std::apply(
-              [self, &f](auto &&...args) {
-                return (*self.*f)(std::forward<decltype(args)>(args)...);
-              },
-              tp);
+        if constexpr (std::tuple_size_v<args_tuple> == 0) {
+          if constexpr (std::is_void_v<R>) {
+            (*self.*f)();
+          } else {
+            auto r = (*self.*f)();
+            ret.result = rpc_service::msgpack_codec::pack_to_string(r);
+          }
         } else {
-          auto r = std::apply(
-              [self, &f](auto &&...args) {
-                return (*self.*f)(std::forward<decltype(args)>(args)...);
-              },
-              tp);
-          result = rpc_service::msgpack_codec::pack_to_string(r);
+          using first_t = std::tuple_element_t<0, args_tuple>;
+          if constexpr (std::tuple_size_v<args_tuple> == 1 &&
+                        util::is_basic_v<first_t>) {
+            if constexpr (std::is_void_v<R>) {
+              (*self.*f)(codec.unpack<first_t>(str));
+            } else {
+              if constexpr (std::is_same_v<std::string_view, R>) {
+                ret.view = rpc_service::msgpack_codec::pack_args(
+                    (*self.*f)(codec.unpack<first_t>(str)));
+              } else {
+                ret.result = rpc_service::msgpack_codec::pack_args(
+                    (*self.*f)(codec.unpack<first_t>(str)));
+              }
+            }
+          } else {
+            auto tp = codec.unpack<args_tuple>(str);
+
+            if constexpr (std::is_void_v<R>) {
+              std::apply(
+                  [self, &f](auto &&...args) {
+                    return (*self.*f)(std::forward<decltype(args)>(args)...);
+                  },
+                  tp);
+            } else {
+              auto r = std::apply(
+                  [self, &f](auto &&...args) {
+                    return (*self.*f)(std::forward<decltype(args)>(args)...);
+                  },
+                  tp);
+              ret.result = rpc_service::msgpack_codec::pack_to_string(r);
+            }
+          }
         }
+
       } catch (std::invalid_argument &e) {
-        ec = rpc_errc::invalid_argument;
-        result = e.what();
+        ret.ec = rpc_errc::invalid_argument;
+        ret.result = e.what();
       } catch (const std::exception &e) {
-        ec = rpc_errc::function_exception;
-        result = e.what();
+        ret.ec = rpc_errc::function_exception;
+        ret.result = e.what();
       }
     };
   }
 
-  std::unordered_map<uint32_t, std::function<void(std::string_view, rpc_errc &,
-                                                  std::string &)>>
+  std::unordered_map<uint32_t,
+                     std::function<void(std::string_view, rpc_result &)>>
       map_invokers_;
   std::unordered_map<uint32_t, std::string> key2func_name_;
 };

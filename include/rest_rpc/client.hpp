@@ -6,8 +6,10 @@
 #include "logger.hpp"
 #include "meta_util.hpp"
 #include "rest_rpc_protocol.hpp"
+#include "string_resize.hpp"
 #include "traits.h"
 #include "use_asio.hpp"
+#include "util.hpp"
 #include <asio/experimental/awaitable_operators.hpp>
 #include <asio/steady_timer.hpp>
 using namespace asio::experimental::awaitable_operators;
@@ -16,6 +18,10 @@ namespace rest_rpc {
 template <typename R> struct call_result {
   rpc_errc ec;
   R value;
+};
+
+template <> struct call_result<void> {
+  rpc_errc ec;
 };
 
 class client {
@@ -121,7 +127,9 @@ private:
     std::vector<asio::const_buffer> buffers;
     buffers.reserve(2);
     buffers.push_back(asio::buffer(&header, sizeof(rest_rpc_header)));
-    buffers.push_back(asio::buffer(buf.data(), buf.size()));
+    if constexpr (sizeof...(Args) > 0) {
+      buffers.push_back(asio::buffer(buf.data(), buf.size()));
+    }
 
     using R = typename function_traits<decltype(func)>::return_type;
     call_result<R> result{};
@@ -150,14 +158,19 @@ private:
 
     detail::resize(body_, resp_header.body_len);
     std::tie(ec, size) = co_await asio::async_read(
-        socket_, asio::buffer(body_), asio::as_tuple(asio::use_awaitable));
+        socket_, asio::buffer(body_.data(), body_.size()),
+        asio::as_tuple(asio::use_awaitable));
     if (ec) {
       REST_LOG_WARNING << "read body error: " << ec.message();
       result.ec = rpc_errc::read_error;
       co_return result;
     }
     result.ec = (rpc_errc)body_[0];
-    result.value = codec.unpack<R>(body_.data() + 1, resp_header.body_len - 1);
+    if constexpr (!std::is_void_v<R>) {
+      result.value = codec.unpack<R>(
+          std::string_view(body_.data() + 1, resp_header.body_len - 1));
+    }
+
     co_return result;
   }
 

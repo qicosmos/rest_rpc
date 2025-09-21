@@ -79,9 +79,10 @@ auto apply_helper(F &&f, Tuple &&tp, nonstd::index_sequence<Idx...>)
 }
 
 template <typename F, typename Tuple>
-auto apply(F &&f, Tuple &&tp) -> decltype(apply_helper(
-    std::forward<F>(f), std::forward<Tuple>(tp),
-    make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{})) {
+auto apply(F &&f, Tuple &&tp)
+    -> decltype(apply_helper(
+        std::forward<F>(f), std::forward<Tuple>(tp),
+        make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{})) {
   return apply_helper(
       std::forward<F>(f), std::forward<Tuple>(tp),
       make_index_sequence<std::tuple_size<decay_t<Tuple>>::value>{});

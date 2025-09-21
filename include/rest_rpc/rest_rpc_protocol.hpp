@@ -6,6 +6,14 @@
 #include <arpa/inet.h>
 #endif
 
+inline uint64_t htonll(uint64_t value) {
+  return ((uint64_t)htonl(value & 0xFFFFFFFF) << 32) | htonl(value >> 32);
+}
+
+inline uint64_t ntohll(uint64_t value) {
+  return ((uint64_t)ntohl(value & 0xFFFFFFFF) << 32) | ntohl(value >> 32);
+}
+
 namespace rest_rpc {
 inline constexpr uint8_t REST_MAGIC_NUM = 39;
 struct rest_rpc_header {

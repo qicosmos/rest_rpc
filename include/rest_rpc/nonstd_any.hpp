@@ -38,7 +38,7 @@
 #define any_HAVE_TWEAK_HEADER 1
 #else
 #define any_HAVE_TWEAK_HEADER 0
-//# pragma message("any.hpp: Note: Tweak header not supported.")
+// # pragma message("any.hpp: Note: Tweak header not supported.")
 #endif
 
 // any selection and configuration:
@@ -251,7 +251,7 @@ using std::swap;
 #endif
 
 // half-open range [lo..hi):
-//#define any_BETWEEN( v, lo, hi ) ( (lo) <= (v) && (v) < (hi) )
+// #define any_BETWEEN( v, lo, hi ) ( (lo) <= (v) && (v) < (hi) )
 
 // Presence of language and library features:
 
@@ -387,7 +387,9 @@ using std::tr1::add_const;
 
 #else
 
-template <class T> struct add_const { typedef const T type; };
+template <class T> struct add_const {
+  typedef const T type;
+};
 
 #endif // any_HAVE_ADD_CONST
 
@@ -401,8 +403,12 @@ using std::tr1::remove_reference;
 
 #else
 
-template <class T> struct remove_reference { typedef T type; };
-template <class T> struct remove_reference<T &> { typedef T type; };
+template <class T> struct remove_reference {
+  typedef T type;
+};
+template <class T> struct remove_reference<T &> {
+  typedef T type;
+};
 
 #endif // any_HAVE_REMOVE_REFERENCE
 
