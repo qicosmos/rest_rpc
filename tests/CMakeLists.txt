@@ -16,3 +16,5 @@ add_executable(test_rpc test_rest_rpc1.cpp)
 
 add_test(NAME ${project_name} COMMAND test_rest_rpc)
 #add_test(NAME test_rpc COMMAND test_rpc)
+
+add_executable(bench bench.cpp)

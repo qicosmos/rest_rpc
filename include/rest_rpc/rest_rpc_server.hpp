@@ -68,6 +68,8 @@ public:
 
   template <auto func> void remove_handler() { router_.remove_handler<func>(); }
 
+  void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
+
 private:
   std::error_code listen() {
     using asio::ip::tcp;
@@ -125,6 +127,10 @@ private:
         co_return;
       }
 
+      if (tcp_no_delay_) {
+        socket.set_option(asio::ip::tcp::no_delay(true));
+      }
+
       REST_LOG_INFO << "new connction comming...";
       auto conn =
           std::make_shared<rpc_connection>(std::move(socket), conn_id, router_);
@@ -169,5 +175,6 @@ private:
   std::atomic<bool> has_stop_ = false;
   std::unordered_map<uint64_t, std::shared_ptr<rpc_connection>> conns_;
   rpc_router router_;
+  bool tcp_no_delay_ = true;
 };
 } // namespace rest_rpc

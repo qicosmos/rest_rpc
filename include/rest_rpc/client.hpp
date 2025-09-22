@@ -70,6 +70,10 @@ public:
       co_return conn_ec;
     }
 
+    if (tcp_no_delay_) {
+      socket_.set_option(asio::ip::tcp::no_delay(true));
+    }
+
     co_return std::error_code{};
   }
 
@@ -110,6 +114,8 @@ public:
     }
     co_return std::get<1>(r);
   }
+
+  void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
 
 private:
   template <auto func, typename... Args>
@@ -183,5 +189,6 @@ private:
 
   tcp_socket socket_;
   std::string body_;
+  bool tcp_no_delay_ = true;
 };
 } // namespace rest_rpc
