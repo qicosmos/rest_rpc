@@ -70,6 +70,8 @@ public:
 
   void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
 
+  void enable_cross_ending(bool r) { cross_ending_ = r; }
+
 private:
   std::error_code listen() {
     using asio::ip::tcp;
@@ -132,8 +134,8 @@ private:
       }
 
       REST_LOG_INFO << "new connction comming...";
-      auto conn =
-          std::make_shared<rpc_connection>(std::move(socket), conn_id, router_);
+      auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
+                                                   router_, cross_ending_);
       conns_.emplace(conn_id++, conn);
       co_spawn(socket.get_executor(), conn->start(), asio::detached);
     }
@@ -176,5 +178,6 @@ private:
   std::unordered_map<uint64_t, std::shared_ptr<rpc_connection>> conns_;
   rpc_router router_;
   bool tcp_no_delay_ = true;
+  bool cross_ending_ = false;
 };
 } // namespace rest_rpc

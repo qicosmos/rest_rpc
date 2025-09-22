@@ -20,9 +20,7 @@ template <typename R> struct call_result {
   R value;
 };
 
-template <> struct call_result<void> {
-  rpc_errc ec;
-};
+template <> struct call_result<void> { rpc_errc ec; };
 
 class client {
 public:
@@ -35,9 +33,9 @@ public:
       std::chrono::steady_clock::duration duration = std::chrono::seconds(5)) {
     asio::ip::tcp::resolver resolver(socket_.get_executor());
 
-    auto r = co_await (watchdog(duration) ||
-                       resolver.async_resolve(
-                           host, port, asio::as_tuple(asio::use_awaitable)));
+    auto r = co_await(watchdog(duration) ||
+                      resolver.async_resolve(
+                          host, port, asio::as_tuple(asio::use_awaitable)));
     if (r.index() == 0) {
       REST_LOG_ERROR << "resolve timeout";
       co_return make_error_code(rpc_errc::resolve_timeout);
@@ -56,7 +54,7 @@ public:
     }
 
     auto endpoint = it->endpoint();
-    auto conn_r = co_await (
+    auto conn_r = co_await(
         watchdog(duration) ||
         socket_.async_connect(endpoint, asio::as_tuple(asio::use_awaitable)));
     if (conn_r.index() == 0) {
@@ -107,8 +105,8 @@ public:
                   "called rpc function and arguments are not match");
 
     using R = typename function_traits<decltype(func)>::return_type;
-    auto r = co_await (watchdog(duration) ||
-                       call_impl<func>(std::forward<Args>(args)...));
+    auto r = co_await(watchdog(duration) ||
+                      call_impl<func>(std::forward<Args>(args)...));
     if (r.index() == 0) {
       co_return call_result<R>{rpc_errc::request_timeout};
     }
@@ -116,6 +114,8 @@ public:
   }
 
   void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
+
+  void enable_cross_ending(bool r) { cross_ending_ = r; }
 
 private:
   template <auto func, typename... Args>
@@ -128,7 +128,9 @@ private:
     rpc_service::msgpack_codec codec;
     auto buf = codec.pack_args(std::forward<Args>(args)...);
     header.body_len = buf.size();
-    prepare_for_send(header);
+    if (cross_ending_) {
+      prepare_for_send(header);
+    }
 
     std::vector<asio::const_buffer> buffers;
     buffers.reserve(2);
@@ -160,7 +162,10 @@ private:
       result.ec = rpc_errc::protocol_error;
       co_return result;
     }
-    parse_recieved(resp_header);
+
+    if (cross_ending_) {
+      parse_recieved(resp_header);
+    }
 
     detail::resize(body_, resp_header.body_len);
     std::tie(ec, size) = co_await asio::async_read(
@@ -190,5 +195,6 @@ private:
   tcp_socket socket_;
   std::string body_;
   bool tcp_no_delay_ = true;
+  bool cross_ending_ = false;
 };
 } // namespace rest_rpc

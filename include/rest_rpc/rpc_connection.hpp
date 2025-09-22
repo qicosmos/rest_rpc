@@ -8,8 +8,10 @@
 namespace rest_rpc {
 class rpc_connection {
 public:
-  rpc_connection(tcp_socket socket, uint64_t conn_id, rpc_router &router)
-      : socket_(std::move(socket)), conn_id_(conn_id), router_(router) {}
+  rpc_connection(tcp_socket socket, uint64_t conn_id, rpc_router &router,
+                 bool &cross_ending)
+      : socket_(std::move(socket)), conn_id_(conn_id), router_(router),
+        cross_ending_(cross_ending) {}
 
   asio::awaitable<void> start() {
     rest_rpc_header header;
@@ -25,7 +27,10 @@ public:
         break;
       }
 
-      parse_recieved(header);
+      if (cross_ending_) {
+        parse_recieved(header);
+      }
+
       if (header.magic != REST_MAGIC_NUM) {
         REST_LOG_ERROR << "protocol error";
         break;
@@ -47,7 +52,9 @@ public:
       rest_rpc_header resp_header{};
       resp_header.magic = 39;
       resp_header.body_len = result.size() + 1;
-      prepare_for_send(resp_header);
+      if (cross_ending_) {
+        prepare_for_send(resp_header);
+      }
       std::vector<asio::const_buffer> buffers;
       buffers.reserve(3);
       buffers.push_back(asio::buffer(&resp_header, sizeof(rest_rpc_header)));
@@ -73,5 +80,6 @@ private:
   uint64_t conn_id_;
   std::string body_;
   rpc_router &router_;
+  bool cross_ending_;
 };
 } // namespace rest_rpc

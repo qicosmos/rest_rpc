@@ -4,7 +4,7 @@
 
 using namespace rest_rpc;
 
-std::string address = "0.0.0.0:9004";
+std::string address = "127.0.0.1:9004";
 
 std::atomic<size_t> g_qps = 0;
 

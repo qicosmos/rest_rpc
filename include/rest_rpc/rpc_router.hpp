@@ -25,7 +25,7 @@ public:
   template <typename Function, typename Self = void>
   void register_handler(std::string_view name, const Function &f,
                         Self *self = nullptr) {
-    uint32_t key = MD5::MD5Hash32(name.data(), name.length());
+    uint32_t key = MD5::MD5Hash32(name.data(), (uint32_t)name.length());
     register_handler_impl(key, name, f, self);
   }
 
@@ -36,7 +36,7 @@ public:
   }
 
   void remove_handler(std::string_view name) {
-    uint32_t key = MD5::MD5Hash32(name.data(), name.length());
+    uint32_t key = MD5::MD5Hash32(name.data(), (uint32_t)name.length());
     this->map_invokers_.erase(key);
     key2func_name_.erase(key);
   }
