@@ -6,7 +6,32 @@
 #include "use_asio.hpp"
 
 namespace rest_rpc {
-class rpc_connection {
+class rpc_connection;
+
+class rpc_context {
+public:
+  static auto &context() {
+    thread_local rpc_context instance;
+    delay_ = true;
+    return instance;
+  }
+
+  void set_connection(std::shared_ptr<rpc_connection> conn) { weak_ = conn; }
+
+  auto get_connection() { return weak_; }
+
+  static bool delay() { return delay_; }
+
+  static bool set_delay(bool r) { delay_ = r; }
+
+  template <typename T> void response(T &&t) {}
+
+private:
+  std::weak_ptr<rpc_connection> weak_;
+  inline static bool delay_ = false;
+};
+
+class rpc_connection : public std::enable_shared_from_this<rpc_connection> {
 public:
   rpc_connection(tcp_socket socket, uint64_t conn_id, rpc_router &router,
                  bool &cross_ending)

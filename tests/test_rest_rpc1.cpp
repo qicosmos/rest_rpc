@@ -75,7 +75,12 @@ TEST_CASE("test router") {
   CHECK(result1.ec == rpc_errc::ok);
 }
 
-asio::awaitable<void> void_returning_coroutine() { co_return; }
+asio::awaitable<void> void_returning_coroutine() {
+  auto executor = co_await asio::this_coro::executor;
+  asio::io_context &ioc = static_cast<asio::io_context &>(executor.context());
+
+  co_return;
+}
 
 TEST_CASE("test server start") {
   rest_rpc_server server("127.0.0.1:9005");
