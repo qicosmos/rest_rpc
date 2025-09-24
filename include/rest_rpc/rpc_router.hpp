@@ -11,13 +11,24 @@
 
 namespace rest_rpc {
 struct rpc_result {
+  rpc_result(std::string str) : result(std::move(str)) {}
+  rpc_result(std::string_view str) : view(str) {}
+  rpc_result &operator=(std::string str) {
+    result = std::move(str);
+    return *this;
+  }
+  rpc_result &operator=(std::string_view str) {
+    result = str;
+    return *this;
+  }
+  rpc_result() = default;
   rpc_errc ec = rpc_errc::ok;
   std::string result;
   std::string_view view;
-  bool empty() { return result.empty() && view.empty(); }
-  size_t size() { return result.empty() ? view.size() : result.size(); }
+  bool empty() const { return result.empty() && view.empty(); }
+  size_t size() const { return result.empty() ? view.size() : result.size(); }
 
-  std::string_view data() { return result.empty() ? view : result; }
+  std::string_view data() const { return result.empty() ? view : result; }
 };
 
 class rpc_router {
@@ -99,43 +110,22 @@ private:
 
   template <typename Function>
   void register_nonmember_func(uint32_t key, Function f) {
-    this->map_invokers_[key] = [f = std::move(f)](std::string_view str,
+    this->map_invokers_[key] = [this,
+                                f = std::move(f)](std::string_view str,
                                                   rpc_result &ret) mutable {
       using args_tuple = typename function_traits<Function>::tuple_type;
       using R = typename function_traits<Function>::return_type;
 
       try {
         if constexpr (std::tuple_size_v<args_tuple> == 0) {
-          if constexpr (std::is_void_v<R>) {
-            f();
-          } else {
-            auto r = f();
-            ret.result = rpc_service::msgpack_codec::pack_to_string(r);
-          }
+          handle_zero_arg<R>(f, ret);
         } else {
-          rpc_service::msgpack_codec codec;
           using first_t = std::tuple_element_t<0, args_tuple>;
           if constexpr (std::tuple_size_v<args_tuple> == 1 &&
                         util::is_basic_v<first_t>) {
-            if constexpr (std::is_void_v<R>) {
-              f(codec.unpack<first_t>(str));
-            } else {
-              if constexpr (std::is_same_v<std::string_view, R>) {
-                ret.view = rpc_service::msgpack_codec::pack_args(
-                    f(codec.unpack<first_t>(str)));
-              } else {
-                ret.result = rpc_service::msgpack_codec::pack_args(
-                    f(codec.unpack<first_t>(str)));
-              }
-            }
+            handle_one_arg<R, first_t>(str, f, ret);
           } else {
-            auto tp = codec.unpack<args_tuple>(str);
-            if constexpr (std::is_void_v<R>) {
-              std::apply(f, tp);
-            } else {
-              auto r = std::apply(f, tp);
-              ret.result = rpc_service::msgpack_codec::pack_to_string(r);
-            }
+            handle_more_args<R, args_tuple>(str, f, ret);
           }
         }
       } catch (std::invalid_argument &e) {
@@ -150,54 +140,22 @@ private:
 
   template <typename Function, typename Self>
   void register_member_func(uint32_t key, const Function &f, Self *self) {
-    this->map_invokers_[key] = [f, self](std::string_view str,
-                                         rpc_result &ret) {
+    this->map_invokers_[key] = [this, f, self](std::string_view str,
+                                               rpc_result &ret) {
       using args_tuple = typename function_traits<Function>::tuple_type;
       using R = typename function_traits<Function>::return_type;
-      rpc_service::msgpack_codec codec;
       try {
         if constexpr (std::tuple_size_v<args_tuple> == 0) {
-          if constexpr (std::is_void_v<R>) {
-            (*self.*f)();
-          } else {
-            auto r = (*self.*f)();
-            ret.result = rpc_service::msgpack_codec::pack_to_string(r);
-          }
+          handle_zero_arg<R>(f, self, ret);
         } else {
           using first_t = std::tuple_element_t<0, args_tuple>;
           if constexpr (std::tuple_size_v<args_tuple> == 1 &&
                         util::is_basic_v<first_t>) {
-            if constexpr (std::is_void_v<R>) {
-              (*self.*f)(codec.unpack<first_t>(str));
-            } else {
-              if constexpr (std::is_same_v<std::string_view, R>) {
-                ret.view = rpc_service::msgpack_codec::pack_args(
-                    (*self.*f)(codec.unpack<first_t>(str)));
-              } else {
-                ret.result = rpc_service::msgpack_codec::pack_args(
-                    (*self.*f)(codec.unpack<first_t>(str)));
-              }
-            }
+            handle_one_arg<R, first_t>(str, f, self, ret);
           } else {
-            auto tp = codec.unpack<args_tuple>(str);
-
-            if constexpr (std::is_void_v<R>) {
-              std::apply(
-                  [self, &f](auto &&...args) {
-                    return (*self.*f)(std::forward<decltype(args)>(args)...);
-                  },
-                  tp);
-            } else {
-              auto r = std::apply(
-                  [self, &f](auto &&...args) {
-                    return (*self.*f)(std::forward<decltype(args)>(args)...);
-                  },
-                  tp);
-              ret.result = rpc_service::msgpack_codec::pack_to_string(r);
-            }
+            handle_more_args<R, args_tuple>(str, f, self, ret);
           }
         }
-
       } catch (std::invalid_argument &e) {
         ret.ec = rpc_errc::invalid_argument;
         ret.result = e.what();
@@ -206,6 +164,78 @@ private:
         ret.result = e.what();
       }
     };
+  }
+
+  template <typename R, typename F>
+  void handle_zero_arg(const F &f, rpc_result &ret) {
+    if constexpr (std::is_void_v<R>) {
+      f();
+    } else {
+      ret = rpc_service::msgpack_codec::pack_args(f());
+    }
+  }
+
+  template <typename R, typename F, typename Self>
+  void handle_zero_arg(const F &f, Self *self, rpc_result &ret) {
+    if constexpr (std::is_void_v<R>) {
+      (*self.*f)();
+    } else {
+      ret = rpc_service::msgpack_codec::pack_args((*self.*f)());
+    }
+  }
+
+  template <typename R, typename Arg, typename F>
+  void handle_one_arg(std::string_view str, const F &f, rpc_result &ret) {
+    rpc_service::msgpack_codec codec;
+    if constexpr (std::is_void_v<R>) {
+      f(codec.unpack<Arg>(str));
+    } else {
+      ret = rpc_service::msgpack_codec::pack_args(f(codec.unpack<Arg>(str)));
+    }
+  }
+
+  template <typename R, typename Arg, typename F, typename Self>
+  void handle_one_arg(std::string_view str, const F &f, Self *self,
+                      rpc_result &ret) {
+    rpc_service::msgpack_codec codec;
+    if constexpr (std::is_void_v<R>) {
+      (*self.*f)(codec.unpack<Arg>(str));
+    } else {
+      ret = rpc_service::msgpack_codec::pack_args(
+          (*self.*f)(codec.unpack<Arg>(str)));
+    }
+  }
+
+  template <typename R, typename args_tuple, typename F>
+  void handle_more_args(std::string_view str, const F &f, rpc_result &ret) {
+    rpc_service::msgpack_codec codec;
+    auto tp = codec.unpack<args_tuple>(str);
+    if constexpr (std::is_void_v<R>) {
+      std::apply(f, tp);
+    } else {
+      ret = rpc_service::msgpack_codec::pack_args(std::apply(f, tp));
+    }
+  }
+
+  template <typename R, typename args_tuple, typename F, typename Self>
+  void handle_more_args(std::string_view str, const F &f, Self *self,
+                        rpc_result &ret) {
+    rpc_service::msgpack_codec codec;
+    auto tp = codec.unpack<args_tuple>(str);
+
+    if constexpr (std::is_void_v<R>) {
+      std::apply(
+          [self, &f](auto &&...args) {
+            return (*self.*f)(std::forward<decltype(args)>(args)...);
+          },
+          tp);
+    } else {
+      ret = rpc_service::msgpack_codec::pack_args(std::apply(
+          [self, &f](auto &&...args) {
+            return (*self.*f)(std::forward<decltype(args)>(args)...);
+          },
+          tp));
+    }
   }
 
   std::unordered_map<uint32_t,

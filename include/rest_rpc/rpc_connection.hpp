@@ -12,23 +12,29 @@ class rpc_context {
 public:
   static auto &context() {
     thread_local rpc_context instance;
-    delay_ = true;
     return instance;
   }
 
-  void set_connection(std::shared_ptr<rpc_connection> conn) { weak_ = conn; }
+  rpc_context(rpc_context&& o) : conn_(std::move(o.conn_)), delay_(o.delay_) {}
+  rpc_context(const rpc_context& o) = delete;
 
-  auto get_connection() { return weak_; }
+  void set_connection(std::shared_ptr<rpc_connection> conn) { conn_ = conn; }
 
-  static bool delay() { return delay_; }
+  bool delay() { return delay_; }
 
-  static bool set_delay(bool r) { delay_ = r; }
+  void set_delay(bool r) { context().delay_ = r; }
+  
+  auto get_executor();
 
-  template <typename T> void response(T &&t) {}
+  template <auto func, typename... Args>
+  asio::awaitable<std::error_code> response(Args &&...args);
+
+  template <auto func, typename... Args> std::error_code sync_response(Args &&...args);
 
 private:
-  std::weak_ptr<rpc_connection> weak_;
-  inline static bool delay_ = false;
+  rpc_context() = default;
+  std::shared_ptr<rpc_connection> conn_;
+  bool delay_ = false;
 };
 
 class rpc_connection : public std::enable_shared_from_this<rpc_connection> {
@@ -40,7 +46,7 @@ public:
 
   asio::awaitable<void> start() {
     rest_rpc_header header;
-
+    auto self = this->shared_from_this();
     while (true) {
       std::error_code ec;
       size_t size;
@@ -73,32 +79,43 @@ public:
       }
 
       // route
+      rpc_context::context().set_connection(self);
       auto result = router_.route(header.function_id, body_);
-      rest_rpc_header resp_header{};
-      resp_header.magic = 39;
-      resp_header.body_len = result.size() + 1;
-      if (cross_ending_) {
-        prepare_for_send(resp_header);
+      bool delay = rpc_context::context().delay();
+      if (delay) {
+        rpc_context::context().set_delay(false);
+        continue;
       }
-      std::vector<asio::const_buffer> buffers;
-      buffers.reserve(3);
-      buffers.push_back(asio::buffer(&resp_header, sizeof(rest_rpc_header)));
-      buffers.push_back(asio::buffer(&result.ec, 1));
-      if (!result.empty())
-        buffers.push_back(asio::buffer(result.data()));
 
-      std::tie(ec, size) = co_await asio::async_write(
-          socket_, buffers, asio::as_tuple(asio::use_awaitable));
+      ec = co_await response(result);
       if (ec) {
         REST_LOG_WARNING << "write error: " << ec.message();
         break;
       }
     }
+  }
 
-    co_return;
+  asio::awaitable<std::error_code> response(const rpc_result &result) {
+    rest_rpc_header resp_header{};
+    resp_header.magic = 39;
+    resp_header.body_len = result.size() + 1;
+    if (cross_ending_) {
+      prepare_for_send(resp_header);
+    }
+    std::vector<asio::const_buffer> buffers;
+    buffers.reserve(3);
+    buffers.push_back(asio::buffer(&resp_header, sizeof(rest_rpc_header)));
+    buffers.push_back(asio::buffer(&result.ec, 1));
+    if (!result.empty())
+      buffers.push_back(asio::buffer(result.data()));
+
+    auto [ec, size] = co_await asio::async_write(
+        socket_, buffers, asio::as_tuple(asio::use_awaitable));
+    co_return ec;
   }
 
   uint64_t id() const { return conn_id_; }
+  auto get_executor() { return socket_.get_executor(); }
 
 private:
   tcp_socket socket_;
@@ -107,4 +124,24 @@ private:
   rpc_router &router_;
   bool cross_ending_;
 };
+
+// zero or one arguments
+template <auto func, typename... Args>
+asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
+  using args_tuple = typename function_traits<decltype(func)>::return_type;
+  static_assert(std::is_constructible_v<args_tuple, Args...>,
+                "rpc function return type and response arguments are not match");
+  rpc_service::msgpack_codec codec;
+  rpc_result result(codec.pack_args(std::forward<Args>(args)...));
+  co_return co_await conn_->response(result);
+}
+
+template <auto func, typename... Args>
+std::error_code rpc_context::sync_response(Args &&...args) {
+  return sync_wait(conn_->get_executor(), response<func>(std::forward<Args>(args)...));
+}
+
+auto rpc_context::get_executor() {
+  return conn_->get_executor();
+}
 } // namespace rest_rpc

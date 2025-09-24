@@ -33,9 +33,9 @@ public:
       std::chrono::steady_clock::duration duration = std::chrono::seconds(5)) {
     asio::ip::tcp::resolver resolver(socket_.get_executor());
 
-    auto r = co_await(watchdog(duration) ||
-                      resolver.async_resolve(
-                          host, port, asio::as_tuple(asio::use_awaitable)));
+    auto r = co_await (watchdog(duration) ||
+                       resolver.async_resolve(
+                           host, port, asio::as_tuple(asio::use_awaitable)));
     if (r.index() == 0) {
       REST_LOG_ERROR << "resolve timeout";
       co_return make_error_code(rpc_errc::resolve_timeout);
@@ -54,7 +54,7 @@ public:
     }
 
     auto endpoint = it->endpoint();
-    auto conn_r = co_await(
+    auto conn_r = co_await (
         watchdog(duration) ||
         socket_.async_connect(endpoint, asio::as_tuple(asio::use_awaitable)));
     if (conn_r.index() == 0) {
@@ -105,8 +105,8 @@ public:
                   "called rpc function and arguments are not match");
 
     using R = typename function_traits<decltype(func)>::return_type;
-    auto r = co_await(watchdog(duration) ||
-                      call_impl<func>(std::forward<Args>(args)...));
+    auto r = co_await (watchdog(duration) ||
+                       call_impl<func>(std::forward<Args>(args)...));
     if (r.index() == 0) {
       co_return call_result<R>{rpc_errc::request_timeout};
     }
@@ -177,6 +177,10 @@ private:
       co_return result;
     }
     result.ec = (rpc_errc)body_[0];
+    if (resp_header.body_len > 0) {
+      auto view = std::string_view(body_.data() + 1, resp_header.body_len - 1);
+      REST_LOG_INFO << view;
+    }
     if constexpr (!std::is_void_v<R>) {
       result.value = codec.unpack<R>(
           std::string_view(body_.data() + 1, resp_header.body_len - 1));

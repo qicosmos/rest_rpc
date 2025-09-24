@@ -4,6 +4,8 @@
 #include <winsock2.h>
 #else
 #include <arpa/inet.h>
+#ifdef __APPLE__
+#else
 inline uint64_t htonll(uint64_t value) {
   return ((uint64_t)htonl(value & 0xFFFFFFFF) << 32) | htonl(value >> 32);
 }
@@ -11,6 +13,7 @@ inline uint64_t htonll(uint64_t value) {
 inline uint64_t ntohll(uint64_t value) {
   return ((uint64_t)ntohl(value & 0xFFFFFFFF) << 32) | ntohl(value >> 32);
 }
+#endif
 #endif
 
 namespace rest_rpc {
