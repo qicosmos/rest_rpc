@@ -16,9 +16,23 @@ struct dummy {
   std::string echo(std::string val) { return val; }
 
   int round1(int i) { return i; }
+  asio::awaitable<void> no_arg_coro() {
+    std::cout << "no args\n";
+    co_return;
+  }
+
+  asio::awaitable<std::string> no_arg_coro1() {
+    std::cout << "no args\n";
+    co_return "test";
+  }
+
+  asio::awaitable<std::string> echo_coro(std::string str) { co_return str; }
+  asio::awaitable<int> add_coro(int a, int b) { co_return a + b; }
 };
 
 int add(int a, int b) { return a + b; }
+
+asio::awaitable<int> add_coro(int a, int b) { co_return a + b; }
 
 void foo(std::string str) { std::cout << str << "\n"; }
 
@@ -31,22 +45,25 @@ std::string_view delay_response(std::string_view str) {
   // set_delay before response in another thread
   ctx.set_delay(true);
 
-  std::thread thd([ctx=std::move(ctx)]() mutable {
+  std::thread thd([ctx = std::move(ctx)]() mutable {
     std::this_thread::sleep_for(std::chrono::seconds(2));
-//    auto ec = ctx.sync_response("it is from a detached thread");//TODO: add a safe version
-//    if (ec) {
-//      REST_LOG_ERROR << "response error: " << ec.message();
-//    }
+    //    auto ec = ctx.sync_response("it is from a detached thread");
+    //    if (ec) {
+    //      REST_LOG_ERROR << "response error: " << ec.message();
+    //    }
     auto executor = ctx.get_executor();
-    auto coro = [ctx = std::move(ctx)]() mutable ->asio::awaitable<void> {
-      auto ec = co_await ctx.response<delay_response>("test");//TODO: avoid duplicate response
+    auto coro = [ctx = std::move(ctx)]() mutable -> asio::awaitable<void> {
+      auto ec = co_await ctx.response<delay_response>("test");
       if (ec) {
         REST_LOG_ERROR << "response error: " << ec.message();
       }
+      ec = co_await ctx.response<delay_response>("test");
+      REST_LOG_ERROR << ec.message();
+      CHECK(ec);
     };
-    
+
     async_start(executor, std::move(coro));
-//    asio::co_spawn(executor, std::move(coro), asio::detached);
+    //    asio::co_spawn(executor, std::move(coro), asio::detached);
   });
   thd.detach();
 
@@ -61,52 +78,98 @@ asio::awaitable<std::string> echo_coro(std::string str) { co_return str; }
 
 void no_arg() { std::cout << "no args\n"; }
 
-TEST_CASE("test router") {
+asio::awaitable<void> no_arg_coro() {
+  std::cout << "no args\n";
+  co_return;
+}
+
+asio::awaitable<std::string> no_arg_coro1() {
+  std::cout << "no args\n";
+  co_return "test";
+}
+
+// TODO: handle connection lifetime, client pool, pub/sub
+asio::awaitable<void> test_router() {
   rpc_router router;
   router.register_handler<add>();
   router.register_handler<foo>();
   router.register_handler<round1>();
   router.register_handler<echo>();
-  
-//  router.register_handler<echo_coro>();
+
+  router.register_handler<echo_coro>();
+  router.register_handler<no_arg_coro>();
+  router.register_handler<no_arg_coro1>();
+  router.register_handler<add_coro>();
+
+  {
+    auto ret = co_await router.route(get_key<no_arg_coro>(), "");
+    CHECK(ret.ec == rpc_errc::ok);
+
+    auto ret1 = co_await router.route(get_key<no_arg_coro1>(), "");
+    CHECK(ret1.ec == rpc_errc::ok);
+
+    auto ret2 = co_await router.route(get_key<echo_coro>(), "test");
+    CHECK(ret2.ec == rpc_errc::ok);
+  }
 
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   router.register_handler<&dummy::foo>(&d);
   router.register_handler<&dummy::round1>(&d);
   router.register_handler<&dummy::echo>(&d);
+  router.register_handler<&dummy::no_arg_coro>(&d);
+  router.register_handler<&dummy::no_arg_coro1>(&d);
+  router.register_handler<&dummy::echo_coro>(&d);
+  router.register_handler<&dummy::add_coro>(&d);
+  {
+    auto ret = co_await router.route(get_key<&dummy::no_arg_coro>(), "");
+    CHECK(ret.ec == rpc_errc::ok);
+    auto ret1 = co_await router.route(get_key<&dummy::no_arg_coro1>(), "");
+    CHECK(ret1.ec == rpc_errc::ok);
+    auto ret2 = co_await router.route(get_key<&dummy::echo_coro>(), "test");
+    CHECK(ret2.ec == rpc_errc::ok);
+  }
   rpc_service::msgpack_codec codec;
+
   {
     auto s = codec.pack_args(1);
     auto s1 = codec.pack_args("test");
-    auto r = router.route(get_key<round1>(), s);
-    auto r1 = router.route(get_key<echo>(), s1);
+    auto r = co_await router.route(get_key<round1>(), s);
+    auto r1 = co_await router.route(get_key<echo>(), s1);
 
-    auto r2 = router.route(get_key<&dummy::round1>(), s);
-    auto r3 = router.route(get_key<&dummy::echo>(), s1);
+    auto r2 = co_await router.route(get_key<&dummy::round1>(), s);
+    auto r3 = co_await router.route(get_key<&dummy::echo>(), s1);
     std::cout << "\n";
   }
 
   auto args = codec.pack_args(1, 2);
   std::string_view str(args.data(), args.size());
 
+  {
+    auto r1 = co_await router.route(get_key<add_coro>(), str);
+    auto r2 = co_await router.route(get_key<&dummy::add_coro>(), str);
+    std::cout << "\n";
+  }
+
   auto args1 = codec.pack_args("it is a test");
   std::string_view str1(args1.data(), args1.size());
 
   {
-    auto result = router.route(get_key<&dummy::add>(), str);
+    auto result = co_await router.route(get_key<&dummy::add>(), str);
     auto r = codec.unpack<int>(result.result);
-    auto result1 = router.route(get_key<&dummy::foo>(), str1);
+    auto result1 = co_await router.route(get_key<&dummy::foo>(), str1);
     CHECK(r == 3);
     CHECK(result1.ec == rpc_errc::ok);
   }
 
-  auto result = router.route(get_key<add>(), str);
+  auto result = co_await router.route(get_key<add>(), str);
   CHECK(result.ec == rpc_errc::ok);
 
-  auto result1 = router.route(get_key<foo>(), str1);
+  auto result1 = co_await router.route(get_key<foo>(), str1);
   CHECK(result1.ec == rpc_errc::ok);
 }
+
+TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
 asio::awaitable<void> void_returning_coroutine() {
   auto executor = co_await asio::this_coro::executor;
@@ -153,7 +216,8 @@ TEST_CASE("test server start") {
   //  auto future1 = asio::co_spawn(cl.get_executor(), cl.call<add>(1, 2),
   //  asio::use_future); auto result = future1.get();
   {
-    auto result = sync_wait(cl.get_executor(), cl.call_for<add>(std::chrono::minutes(2), 1, 2));
+    auto result = sync_wait(cl.get_executor(),
+                            cl.call_for<add>(std::chrono::minutes(2), 1, 2));
     CHECK(result.ec == rpc_errc::ok);
   }
   {
@@ -175,7 +239,6 @@ TEST_CASE("test server start") {
     auto result2 = sync_wait(cl.get_executor(), cl.call<round1>(1));
     CHECK(result2.ec == rpc_errc::ok);
   }
-  
 
   ec = server.async_start();
   CHECK(!ec);

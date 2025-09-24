@@ -10,6 +10,14 @@
 #include <string_view>
 
 namespace rest_rpc {
+template <typename T>
+constexpr inline bool is_awaitable_v =
+    util::is_specialization_v<std::remove_cvref_t<T>, asio::awaitable>;
+
+template <typename T>
+constexpr inline bool is_void_v =
+    std::is_same_v<T, void> || std::is_same_v<T, asio::awaitable<void>>;
+
 struct rpc_result {
   rpc_result(std::string str) : result(std::move(str)) {}
   rpc_result(std::string_view str) : view(str) {}
@@ -65,7 +73,7 @@ public:
     return std::to_string(key);
   }
 
-  rpc_result route(uint32_t key, std::string_view data) {
+  asio::awaitable<rpc_result> route(uint32_t key, std::string_view data) {
     rpc_result route_result{};
     try {
       rpc_service::msgpack_codec codec;
@@ -74,7 +82,7 @@ public:
         route_result.result = "unknown function: " + get_name_by_key(key);
         route_result.ec = rpc_errc::no_such_function;
       } else {
-        it->second(data, route_result);
+        co_await it->second(data, route_result);
         route_result.ec = rpc_errc::ok;
       }
     } catch (const std::exception &ex) {
@@ -89,71 +97,39 @@ public:
       route_result.ec = rpc_errc::function_unknown_exception;
     }
 
-    return route_result;
+    co_return route_result;
   }
 
 private:
   template <typename Function, typename Self = void>
-  auto register_handler_impl(uint32_t key, std::string_view name,
+  void register_handler_impl(uint32_t key, std::string_view name,
                              const Function &f, Self *self = nullptr) {
     if (key2func_name_.find(key) != key2func_name_.end()) {
       throw std::invalid_argument("duplicate registration key !");
-    } else {
-      key2func_name_.emplace(key, name);
-      if constexpr (std::is_void_v<Self>) {
-        return register_nonmember_func(key, f);
-      } else {
-        return register_member_func(key, f, self);
-      }
     }
-  }
 
-  template <typename Function>
-  void register_nonmember_func(uint32_t key, Function f) {
-    this->map_invokers_[key] = [this,
-                                f = std::move(f)](std::string_view str,
-                                                  rpc_result &ret) mutable {
-      using args_tuple = typename function_traits<Function>::tuple_type;
-      using R = typename function_traits<Function>::return_type;
+    key2func_name_.emplace(key, name);
 
-      try {
-        if constexpr (std::tuple_size_v<args_tuple> == 0) {
-          handle_zero_arg<R>(f, ret);
-        } else {
-          using first_t = std::tuple_element_t<0, args_tuple>;
-          if constexpr (std::tuple_size_v<args_tuple> == 1 &&
-                        util::is_basic_v<first_t>) {
-            handle_one_arg<R, first_t>(str, f, ret);
-          } else {
-            handle_more_args<R, args_tuple>(str, f, ret);
-          }
-        }
-      } catch (std::invalid_argument &e) {
-        ret.ec = rpc_errc::invalid_argument;
-        ret.result = e.what();
-      } catch (const std::exception &e) {
-        ret.ec = rpc_errc::function_exception;
-        ret.result = e.what();
-      }
-    };
+    register_func_impl(key, f, self);
   }
 
   template <typename Function, typename Self>
-  void register_member_func(uint32_t key, const Function &f, Self *self) {
-    this->map_invokers_[key] = [this, f, self](std::string_view str,
-                                               rpc_result &ret) {
+  void register_func_impl(uint32_t key, const Function &f, Self *self) {
+    this->map_invokers_[key] =
+        [this, f, self](std::string_view str,
+                        rpc_result &ret) -> asio::awaitable<void> {
       using args_tuple = typename function_traits<Function>::tuple_type;
-      using R = typename function_traits<Function>::return_type;
+      using R = typename util::function_traits<Function>::return_type;
       try {
         if constexpr (std::tuple_size_v<args_tuple> == 0) {
-          handle_zero_arg<R>(f, self, ret);
+          co_await handle_zero_arg<R>(f, ret, self);
         } else {
           using first_t = std::tuple_element_t<0, args_tuple>;
           if constexpr (std::tuple_size_v<args_tuple> == 1 &&
                         util::is_basic_v<first_t>) {
-            handle_one_arg<R, first_t>(str, f, self, ret);
+            co_await handle_one_arg<R, first_t>(str, f, ret, self);
           } else {
-            handle_more_args<R, args_tuple>(str, f, self, ret);
+            co_await handle_more_args<R, args_tuple>(str, f, ret, self);
           }
         }
       } catch (std::invalid_argument &e) {
@@ -166,80 +142,134 @@ private:
     };
   }
 
-  template <typename R, typename F>
-  void handle_zero_arg(const F &f, rpc_result &ret) {
-    if constexpr (std::is_void_v<R>) {
-      f();
-    } else {
-      ret = rpc_service::msgpack_codec::pack_args(f());
-    }
-  }
-
   template <typename R, typename F, typename Self>
-  void handle_zero_arg(const F &f, Self *self, rpc_result &ret) {
-    if constexpr (std::is_void_v<R>) {
-      (*self.*f)();
+  asio::awaitable<void> handle_zero_arg(const F &f, rpc_result &ret,
+                                        Self *self) {
+    if constexpr (is_void_v<R>) {
+      if constexpr (std::is_void_v<Self>) {
+        if constexpr (is_awaitable_v<R>) {
+          co_await f();
+        } else {
+          f();
+        }
+      } else {
+        if constexpr (is_awaitable_v<R>) {
+          co_await (*self.*f)();
+        } else {
+          (*self.*f)();
+        }
+      }
     } else {
-      ret = rpc_service::msgpack_codec::pack_args((*self.*f)());
-    }
-  }
-
-  template <typename R, typename Arg, typename F>
-  void handle_one_arg(std::string_view str, const F &f, rpc_result &ret) {
-    rpc_service::msgpack_codec codec;
-    if constexpr (std::is_void_v<R>) {
-      f(codec.unpack<Arg>(str));
-    } else {
-      ret = rpc_service::msgpack_codec::pack_args(f(codec.unpack<Arg>(str)));
+      if constexpr (std::is_void_v<Self>) {
+        if constexpr (is_awaitable_v<R>) {
+          ret = rpc_service::msgpack_codec::pack_args(co_await f());
+        } else {
+          ret = rpc_service::msgpack_codec::pack_args(f());
+        }
+      } else {
+        if constexpr (is_awaitable_v<R>) {
+          ret = rpc_service::msgpack_codec::pack_args(co_await (*self.*f)());
+        } else {
+          ret = rpc_service::msgpack_codec::pack_args((*self.*f)());
+        }
+      }
     }
   }
 
   template <typename R, typename Arg, typename F, typename Self>
-  void handle_one_arg(std::string_view str, const F &f, Self *self,
-                      rpc_result &ret) {
+  asio::awaitable<void> handle_one_arg(std::string_view str, const F &f,
+                                       rpc_result &ret, Self *self) {
     rpc_service::msgpack_codec codec;
-    if constexpr (std::is_void_v<R>) {
-      (*self.*f)(codec.unpack<Arg>(str));
+    if constexpr (is_void_v<R>) {
+      if constexpr (std::is_void_v<Self>) {
+        if constexpr (is_awaitable_v<R>) {
+          co_await f(codec.unpack<Arg>(str));
+        } else {
+          f(codec.unpack<Arg>(str));
+        }
+      } else {
+        if constexpr (is_awaitable_v<R>) {
+          co_await (*self.*f)(codec.unpack<Arg>(str));
+        } else {
+          (*self.*f)(codec.unpack<Arg>(str));
+        }
+      }
     } else {
-      ret = rpc_service::msgpack_codec::pack_args(
-          (*self.*f)(codec.unpack<Arg>(str)));
+      if constexpr (std::is_void_v<Self>) {
+        if constexpr (is_awaitable_v<R>) {
+          ret = rpc_service::msgpack_codec::pack_args(
+              co_await f(codec.unpack<Arg>(str)));
+        } else {
+          ret =
+              rpc_service::msgpack_codec::pack_args(f(codec.unpack<Arg>(str)));
+        }
+      } else {
+        if constexpr (is_awaitable_v<R>) {
+          ret = rpc_service::msgpack_codec::pack_args(
+              co_await (*self.*f)(codec.unpack<Arg>(str)));
+        } else {
+          ret = rpc_service::msgpack_codec::pack_args(
+              (*self.*f)(codec.unpack<Arg>(str)));
+        }
+      }
     }
   }
 
-  template <typename R, typename args_tuple, typename F>
-  void handle_more_args(std::string_view str, const F &f, rpc_result &ret) {
+  template <typename R, typename Args, typename F, typename Self>
+  asio::awaitable<void> handle_more_args(std::string_view str, const F &f,
+                                         rpc_result &ret, Self *self) {
     rpc_service::msgpack_codec codec;
-    auto tp = codec.unpack<args_tuple>(str);
+    auto tp = codec.unpack<Args>(str);
     if constexpr (std::is_void_v<R>) {
-      std::apply(f, tp);
+      if constexpr (std::is_void_v<Self>) {
+        if constexpr (is_awaitable_v<R>) {
+          co_await std::apply(f, tp);
+        } else {
+          std::apply(f, tp);
+        }
+      } else {
+        if constexpr (is_awaitable_v<R>) {
+          co_await std::apply(
+              [self, &f](auto &&...args) {
+                return (*self.*f)(std::forward<decltype(args)>(args)...);
+              },
+              tp);
+        } else {
+          std::apply(
+              [self, &f](auto &&...args) {
+                return (*self.*f)(std::forward<decltype(args)>(args)...);
+              },
+              tp);
+        }
+      }
     } else {
-      ret = rpc_service::msgpack_codec::pack_args(std::apply(f, tp));
+      if constexpr (std::is_void_v<Self>) {
+        if constexpr (is_awaitable_v<R>) {
+          ret =
+              rpc_service::msgpack_codec::pack_args(co_await std::apply(f, tp));
+        } else {
+          ret = rpc_service::msgpack_codec::pack_args(std::apply(f, tp));
+        }
+      } else {
+        if constexpr (is_awaitable_v<R>) {
+          ret = rpc_service::msgpack_codec::pack_args(co_await std::apply(
+              [self, &f](auto &&...args) {
+                return (*self.*f)(std::forward<decltype(args)>(args)...);
+              },
+              tp));
+        } else {
+          ret = rpc_service::msgpack_codec::pack_args(std::apply(
+              [self, &f](auto &&...args) {
+                return (*self.*f)(std::forward<decltype(args)>(args)...);
+              },
+              tp));
+        }
+      }
     }
   }
 
-  template <typename R, typename args_tuple, typename F, typename Self>
-  void handle_more_args(std::string_view str, const F &f, Self *self,
-                        rpc_result &ret) {
-    rpc_service::msgpack_codec codec;
-    auto tp = codec.unpack<args_tuple>(str);
-
-    if constexpr (std::is_void_v<R>) {
-      std::apply(
-          [self, &f](auto &&...args) {
-            return (*self.*f)(std::forward<decltype(args)>(args)...);
-          },
-          tp);
-    } else {
-      ret = rpc_service::msgpack_codec::pack_args(std::apply(
-          [self, &f](auto &&...args) {
-            return (*self.*f)(std::forward<decltype(args)>(args)...);
-          },
-          tp));
-    }
-  }
-
-  std::unordered_map<uint32_t,
-                     std::function<void(std::string_view, rpc_result &)>>
+  std::unordered_map<uint32_t, std::function<asio::awaitable<void>(
+                                   std::string_view, rpc_result &)>>
       map_invokers_;
   std::unordered_map<uint32_t, std::string> key2func_name_;
 };

@@ -17,7 +17,8 @@ enum class rpc_errc : std::int8_t {
   resolve_timeout,
   connection_timeout,
   request_timeout,
-  protocol_error
+  protocol_error,
+  has_response,
 };
 
 class rpc_error_category : public std::error_category {
@@ -54,6 +55,8 @@ public:
       return "request timeout";
     case rpc_errc::protocol_error:
       return "protocol error";
+    case rpc_errc::has_response:
+      return "has response, duplicate response is not allowed";
     default:
       return "unknown error";
     }

@@ -15,26 +15,28 @@ public:
     return instance;
   }
 
-  rpc_context(rpc_context&& o) : conn_(std::move(o.conn_)), delay_(o.delay_) {}
-  rpc_context(const rpc_context& o) = delete;
+  rpc_context(rpc_context &&o) : conn_(std::move(o.conn_)), delay_(o.delay_) {}
+  rpc_context(const rpc_context &o) = delete;
 
   void set_connection(std::shared_ptr<rpc_connection> conn) { conn_ = conn; }
 
   bool delay() { return delay_; }
 
   void set_delay(bool r) { context().delay_ = r; }
-  
+
   auto get_executor();
 
   template <auto func, typename... Args>
   asio::awaitable<std::error_code> response(Args &&...args);
 
-  template <auto func, typename... Args> std::error_code sync_response(Args &&...args);
+  template <auto func, typename... Args>
+  std::error_code sync_response(Args &&...args);
 
 private:
   rpc_context() = default;
   std::shared_ptr<rpc_connection> conn_;
   bool delay_ = false;
+  bool has_response_ = false;
 };
 
 class rpc_connection : public std::enable_shared_from_this<rpc_connection> {
@@ -80,7 +82,7 @@ public:
 
       // route
       rpc_context::context().set_connection(self);
-      auto result = router_.route(header.function_id, body_);
+      auto result = co_await router_.route(header.function_id, body_);
       bool delay = rpc_context::context().delay();
       if (delay) {
         rpc_context::context().set_delay(false);
@@ -129,8 +131,14 @@ private:
 template <auto func, typename... Args>
 asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
   using args_tuple = typename function_traits<decltype(func)>::return_type;
-  static_assert(std::is_constructible_v<args_tuple, Args...>,
-                "rpc function return type and response arguments are not match");
+  static_assert(
+      std::is_constructible_v<args_tuple, Args...>,
+      "rpc function return type and response arguments are not match");
+  if (has_response_) {
+    co_return make_error_code(rpc_errc::has_response);
+  }
+
+  has_response_ = true;
   rpc_service::msgpack_codec codec;
   rpc_result result(codec.pack_args(std::forward<Args>(args)...));
   co_return co_await conn_->response(result);
@@ -138,10 +146,9 @@ asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
 
 template <auto func, typename... Args>
 std::error_code rpc_context::sync_response(Args &&...args) {
-  return sync_wait(conn_->get_executor(), response<func>(std::forward<Args>(args)...));
+  return sync_wait(conn_->get_executor(),
+                   response<func>(std::forward<Args>(args)...));
 }
 
-auto rpc_context::get_executor() {
-  return conn_->get_executor();
-}
+auto rpc_context::get_executor() { return conn_->get_executor(); }
 } // namespace rest_rpc
