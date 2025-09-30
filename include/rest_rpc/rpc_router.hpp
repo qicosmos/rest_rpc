@@ -174,6 +174,7 @@ private:
         }
       }
     }
+    co_return;
   }
 
   template <typename R, typename Arg, typename F, typename Self>
@@ -213,6 +214,7 @@ private:
         }
       }
     }
+    co_return;
   }
 
   template <typename R, typename Args, typename F, typename Self>
@@ -266,6 +268,7 @@ private:
         }
       }
     }
+    co_return;
   }
 
   std::unordered_map<uint32_t, std::function<asio::awaitable<void>(

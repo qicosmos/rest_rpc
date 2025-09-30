@@ -40,6 +40,17 @@ int round1(int i) { return i; }
 
 std::string_view echo_sv(std::string_view str) { return str; }
 
+template<auto func>
+asio::awaitable<void> response(auto ctx) {
+  auto ec = co_await ctx.response<func>("test");
+  if (ec) {
+    REST_LOG_ERROR << "response error: " << ec.message();
+  }
+  ec = co_await ctx.response<func>("test");
+  REST_LOG_ERROR << ec.message();
+  CHECK(ec);
+}
+
 std::string_view delay_response(std::string_view str) {
   auto &ctx = rpc_context::context();
   // set_delay before response in another thread
@@ -52,18 +63,8 @@ std::string_view delay_response(std::string_view str) {
     //      REST_LOG_ERROR << "response error: " << ec.message();
     //    }
     auto executor = ctx.get_executor();
-    auto coro = [ctx = std::move(ctx)]() mutable -> asio::awaitable<void> {
-      auto ec = co_await ctx.response<delay_response>("test");
-      if (ec) {
-        REST_LOG_ERROR << "response error: " << ec.message();
-      }
-      ec = co_await ctx.response<delay_response>("test");
-      REST_LOG_ERROR << ec.message();
-      CHECK(ec);
-    };
-
-    async_start(executor, std::move(coro));
-    //    asio::co_spawn(executor, std::move(coro), asio::detached);
+    // async_start(executor, response<delay_response>(std::move(ctx)));
+    asio::co_spawn(executor, response<delay_response>(std::move(ctx)), asio::detached);
   });
   thd.detach();
 
