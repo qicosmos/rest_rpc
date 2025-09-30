@@ -46,12 +46,14 @@ public:
       : socket_(std::move(socket)), conn_id_(conn_id), router_(router),
         cross_ending_(cross_ending) {}
 
+  ~rpc_connection() { close(); }
   asio::awaitable<void> start() {
     rest_rpc_header header;
     auto self = this->shared_from_this();
     while (true) {
       std::error_code ec;
       size_t size;
+      set_last_time();
       std::tie(ec, size) = co_await asio::async_read(
           socket_, asio::buffer(&header, sizeof(rest_rpc_header)),
           asio::as_tuple(asio::use_awaitable));
@@ -72,6 +74,7 @@ public:
       detail::resize(body_, header.body_len);
 
       if (header.body_len > 0) {
+        set_last_time();
         std::tie(ec, size) = co_await asio::async_read(
             socket_, asio::buffer(body_), asio::as_tuple(asio::use_awaitable));
         if (ec) {
@@ -111,18 +114,63 @@ public:
     if (!result.empty())
       buffers.push_back(asio::buffer(result.data()));
 
+    set_last_time();
     auto [ec, size] = co_await asio::async_write(
         socket_, buffers, asio::as_tuple(asio::use_awaitable));
+    if (ec) {
+      REST_LOG_WARNING << "write error: " << ec.message();
+      close();
+    }
     co_return ec;
   }
 
   uint64_t id() const { return conn_id_; }
   auto get_executor() { return socket_.get_executor(); }
 
+  void
+  set_quit_callback(std::function<void(const uint64_t &conn_id)> callback) {
+    quit_cb_ = std::move(callback);
+  }
+
+  void close(bool need_cb = true) {
+    if (has_closed_) {
+      return;
+    }
+
+    asio::dispatch(socket_.get_executor(),
+                   [this, need_cb, self = shared_from_this()] {
+                     std::error_code ec;
+                     socket_.shutdown(asio::socket_base::shutdown_both, ec);
+                     socket_.close(ec);
+                     if (need_cb && quit_cb_) {
+                       quit_cb_(conn_id_);
+                     }
+                     has_closed_ = true;
+                   });
+  }
+
+  void set_last_time() {
+    if (checkout_timeout_) {
+      last_rwtime_ = std::chrono::system_clock::now();
+    }
+  }
+
+  asio::awaitable<std::chrono::system_clock::time_point> get_last_rwtime() {
+    co_await asio::this_coro::executor;
+    co_return last_rwtime_;
+  }
+
+  void set_check_timeout(bool r) { checkout_timeout_ = r; }
+
 private:
   tcp_socket socket_;
   uint64_t conn_id_;
   std::string body_;
+  std::function<void(const uint64_t &conn_id)> quit_cb_ = nullptr;
+  std::atomic<bool> has_closed_{false};
+  std::chrono::system_clock::time_point last_rwtime_ =
+      std::chrono::system_clock::now();
+  bool checkout_timeout_ = false;
   rpc_router &router_;
   bool cross_ending_;
 };

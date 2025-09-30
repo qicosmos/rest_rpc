@@ -187,6 +187,8 @@ TEST_CASE("test server start") {
   server.register_handler<echo_sv>();
   server.register_handler<round1>();
   server.register_handler<delay_response>();
+  server.set_conn_max_age(std::chrono::seconds(5));
+  server.set_check_conn_interval(std::chrono::seconds(1));
   auto ec = server.async_start();
   CHECK(!ec);
   client cl;
@@ -267,7 +269,7 @@ TEST_CASE("test server start") {
   rest_rpc_server server3("127.0.0.1:9005");
   server3.stop();
   CHECK(server3.has_stopped());
-  ec = server3.start();
+  ec = server3.async_start();
   CHECK(ec);
   std::cout << ec.message() << "\n";
 }

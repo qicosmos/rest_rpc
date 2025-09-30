@@ -11,7 +11,8 @@ public:
   rest_rpc_server(std::string address,
                   size_t num_thread = std::thread::hardware_concurrency())
       : io_context_pool_(num_thread),
-        acceptor_(io_context_pool_.get_io_context()) {
+        acceptor_(io_context_pool_.get_io_context()),
+        check_timer_(io_context_pool_.get_io_context()) {
     size_t pos = address.find(':');
     if (pos != std::string::npos) {
       host_ = address.substr(0, pos);
@@ -23,12 +24,26 @@ public:
                   size_t num_thread = std::thread::hardware_concurrency())
       : io_context_pool_(num_thread),
         acceptor_(io_context_pool_.get_io_context()), host_(std::move(host)),
-        port_(std::move(port)) {}
+        port_(std::move(port)),
+        check_timer_(io_context_pool_.get_io_context()) {}
   ~rest_rpc_server() { stop(); }
 
   std::error_code start() { return start_impl(false); }
 
   std::error_code async_start() { return start_impl(true); }
+
+  void set_conn_max_age(std::chrono::steady_clock::duration dur) {
+    if (dur > std::chrono::steady_clock::duration::zero()) {
+      need_check_ = true;
+      timeout_duration_ = dur;
+      asio::co_spawn(check_timer_.get_executor(), start_check_timer(),
+                     asio::detached);
+    }
+  }
+
+  void set_check_conn_interval(std::chrono::steady_clock::duration dur) {
+    check_duration_ = dur;
+  }
 
   void stop() {
     if (has_stop_.load(std::memory_order_acquire)) {
@@ -42,6 +57,16 @@ public:
         (void)acceptor_.cancel(ec);
         (void)acceptor_.close(ec);
       });
+
+      stop_timer_ = true;
+
+      {
+        std::scoped_lock lock(*conn_mtx_);
+        for (auto &conn : conns_) {
+          conn.second->close(false);
+        }
+        conns_.clear();
+      }
 
       io_context_pool_.stop();
     });
@@ -71,6 +96,11 @@ public:
   void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
 
   void enable_cross_ending(bool r) { cross_ending_ = r; }
+
+  size_t connection_count() {
+    std::scoped_lock lock(*conn_mtx_);
+    return conns_.size();
+  }
 
 private:
   std::error_code listen() {
@@ -136,7 +166,24 @@ private:
       REST_LOG_INFO << "new connction comming...";
       auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
                                                    router_, cross_ending_);
-      conns_.emplace(conn_id++, conn);
+      if (need_check_) {
+        conn->set_check_timeout(true);
+      }
+      std::weak_ptr<std::mutex> weak(conn_mtx_);
+      conn->set_quit_callback([this, weak](const uint64_t &id) {
+        auto mtx = weak.lock();
+        if (mtx) {
+          std::scoped_lock lock(*mtx);
+          if (!conns_.empty())
+            conns_.erase(id);
+        }
+      });
+
+      {
+        std::scoped_lock lock(*conn_mtx_);
+        conns_.emplace(conn_id++, conn);
+      }
+
       co_spawn(socket.get_executor(), conn->start(), asio::detached);
     }
   }
@@ -167,6 +214,35 @@ private:
     return ec;
   }
 
+  asio::awaitable<void> check_timeout() {
+    auto cur_time = std::chrono::system_clock::now();
+
+    {
+      std::scoped_lock lock(*conn_mtx_);
+      for (auto it = conns_.begin(); it != conns_.end();) {
+        if (cur_time - co_await it->second->get_last_rwtime() >
+            timeout_duration_) {
+          it->second->close(false);
+          conns_.erase(it++);
+        } else {
+          ++it;
+        }
+      }
+    }
+  }
+
+  asio::awaitable<void> start_check_timer() {
+    while (true) {
+      check_timer_.expires_after(check_duration_);
+      auto [ec] =
+          co_await check_timer_.async_wait(asio::as_tuple(asio::use_awaitable));
+      if (ec || stop_timer_) {
+        co_return;
+      }
+      co_await check_timeout();
+    }
+  }
+
   io_context_pool io_context_pool_;
   std::thread thd_;
   asio::ip::tcp::acceptor acceptor_;
@@ -176,6 +252,16 @@ private:
   std::once_flag stop_flag_;
   std::atomic<bool> has_stop_ = false;
   std::unordered_map<uint64_t, std::shared_ptr<rpc_connection>> conns_;
+
+  std::shared_ptr<std::mutex> conn_mtx_ = std::make_shared<std::mutex>();
+  std::chrono::steady_clock::duration check_duration_ =
+      std::chrono::seconds(12);
+  std::chrono::steady_clock::duration timeout_duration_{
+      std::chrono::seconds(10)};
+  asio::steady_timer check_timer_;
+  std::atomic<bool> stop_timer_ = false;
+  bool need_check_ = false;
+
   rpc_router router_;
   bool tcp_no_delay_ = true;
   bool cross_ending_ = false;
