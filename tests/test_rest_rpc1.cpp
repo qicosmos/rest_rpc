@@ -42,11 +42,11 @@ std::string_view echo_sv(std::string_view str) { return str; }
 
 template<auto func>
 asio::awaitable<void> response(auto ctx) {
-  auto ec = co_await ctx.response<func>("test");
+  auto ec = co_await ctx.template response<func>("test");
   if (ec) {
     REST_LOG_ERROR << "response error: " << ec.message();
   }
-  ec = co_await ctx.response<func>("test");
+  ec = co_await ctx.template response<func>("test");
   REST_LOG_ERROR << ec.message();
   CHECK(ec);
 }
