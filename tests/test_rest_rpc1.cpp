@@ -2,7 +2,7 @@
 
 #include "doctest/doctest.h"
 #include <asio/any_completion_handler.hpp>
-#include <rest_rpc/client.hpp>
+#include <rest_rpc/rest_rpc_client.hpp>
 #include <rest_rpc/rest_rpc_server.hpp>
 #include <rest_rpc/traits.h>
 
@@ -192,7 +192,7 @@ TEST_CASE("test server start") {
   server.set_check_conn_interval(std::chrono::seconds(1));
   auto ec = server.async_start();
   CHECK(!ec);
-  client cl;
+  rest_rpc_client cl;
 
   static_assert(util::CharArrayRef<char const(&)[5]>);
   static_assert(util::CharArray<const char[5]>);
