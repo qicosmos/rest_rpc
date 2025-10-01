@@ -4,7 +4,7 @@
 #include "error_code.h"
 #include "io_context_pool.hpp"
 #include "logger.hpp"
-#include "meta_util.hpp"
+// #include "meta_util.hpp"
 #include "rest_rpc_protocol.hpp"
 #include "string_resize.hpp"
 #include "traits.h"
@@ -13,6 +13,8 @@
 #include <asio/experimental/awaitable_operators.hpp>
 #include <asio/steady_timer.hpp>
 using namespace asio::experimental::awaitable_operators;
+
+using namespace rest_rpc::util;
 
 namespace rest_rpc {
 template <typename R> struct call_result {
@@ -100,7 +102,7 @@ public:
   asio::awaitable<
       call_result<typename function_traits<decltype(func)>::return_type>>
   call_for(auto duration, Args &&...args) {
-    using args_tuple = typename function_traits<decltype(func)>::tuple_type;
+    using args_tuple = typename function_traits<decltype(func)>::parameters_type;
     static_assert(std::is_constructible_v<args_tuple, Args...>,
                   "called rpc function and arguments are not match");
 

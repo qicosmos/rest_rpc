@@ -58,59 +58,59 @@ struct function_traits<Return (This::*)(Arguments...) const noexcept> {
 };
 
 template <typename Return> struct function_traits<Return (*)()> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
 };
 
 template <typename Return> struct function_traits<Return (*)() noexcept> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
 };
 
 template <typename Return> struct function_traits<Return (&)()> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
 };
 
 template <typename Return> struct function_traits<Return (&)() noexcept> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
 };
 
 template <typename Return> struct function_traits<Return()> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
 };
 
 template <typename Return> struct function_traits<Return() noexcept> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
 };
 
 template <typename This, typename Return>
 struct function_traits<Return (This::*)()> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
   using class_type = This;
 };
 
 template <typename This, typename Return>
 struct function_traits<Return (This::*)() noexcept> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
   using class_type = This;
 };
 
 template <typename This, typename Return>
 struct function_traits<Return (This::*)() const> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
   using class_type = This;
 };
 
 template <typename This, typename Return>
 struct function_traits<Return (This::*)() const noexcept> {
-  using parameters_type = void;
+  using parameters_type = std::tuple<>;
   using return_type = Return;
   using class_type = This;
 };
