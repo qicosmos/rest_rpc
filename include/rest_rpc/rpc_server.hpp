@@ -6,10 +6,10 @@
 #include <string>
 #include <thread>
 namespace rest_rpc {
-class rest_rpc_server {
+class rpc_server {
 public:
-  rest_rpc_server(std::string address,
-                  size_t num_thread = std::thread::hardware_concurrency())
+  rpc_server(std::string address,
+             size_t num_thread = std::thread::hardware_concurrency())
       : io_context_pool_(num_thread),
         acceptor_(io_context_pool_.get_io_context()),
         check_timer_(io_context_pool_.get_io_context()) {
@@ -20,13 +20,13 @@ public:
     }
   }
 
-  rest_rpc_server(std::string host, std::string port,
-                  size_t num_thread = std::thread::hardware_concurrency())
+  rpc_server(std::string host, std::string port,
+             size_t num_thread = std::thread::hardware_concurrency())
       : io_context_pool_(num_thread),
         acceptor_(io_context_pool_.get_io_context()), host_(std::move(host)),
         port_(std::move(port)),
         check_timer_(io_context_pool_.get_io_context()) {}
-  ~rest_rpc_server() { stop(); }
+  ~rpc_server() { stop(); }
 
   std::error_code start() { return start_impl(false); }
 

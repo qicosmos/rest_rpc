@@ -1,6 +1,6 @@
 #include <iostream>
-#include <rest_rpc/rest_rpc_client.hpp>
-#include <rest_rpc/rest_rpc_server.hpp>
+#include <rest_rpc/rpc_client.hpp>
+#include <rest_rpc/rpc_server.hpp>
 
 using namespace rest_rpc;
 
@@ -13,7 +13,7 @@ std::string_view echo_sv(std::string_view str) {
   return str;
 }
 
-asio::awaitable<void> bench(std::shared_ptr<rest_rpc_client> cl) {
+asio::awaitable<void> bench(std::shared_ptr<rpc_client> cl) {
   co_await cl->connect(address);
   std::string_view str = "it is a test";
   while (true) {
@@ -31,7 +31,7 @@ void watch() {
 }
 
 int main(int argc, char **argv) {
-  rest_rpc_server server(address);
+  rpc_server server(address);
   server.register_handler<echo_sv>();
   if (argc == 1) {
     std::thread thd([] { watch(); });
@@ -43,9 +43,9 @@ int main(int argc, char **argv) {
   auto arg = argv[1];
   int par = atoi(arg);
 
-  std::vector<std::shared_ptr<rest_rpc_client>> clients;
+  std::vector<std::shared_ptr<rpc_client>> clients;
   for (int i = 0; i < par; i++) {
-    clients.push_back(std::make_shared<rest_rpc_client>());
+    clients.push_back(std::make_shared<rpc_client>());
   }
 
   for (size_t i = 0; i < par; i++) {

@@ -24,9 +24,9 @@ template <> struct call_result<void> {
   rpc_errc ec;
 };
 
-class rest_rpc_client {
+class rpc_client {
 public:
-  rest_rpc_client() : socket_(get_global_executor()) {}
+  rpc_client() : socket_(get_global_executor()) {}
 
   auto get_executor() { return socket_.get_executor(); }
 

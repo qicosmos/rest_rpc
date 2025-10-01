@@ -2,8 +2,8 @@
 
 #include "doctest/doctest.h"
 #include <asio/any_completion_handler.hpp>
-#include <rest_rpc/rest_rpc_client.hpp>
-#include <rest_rpc/rest_rpc_server.hpp>
+#include <rest_rpc/rpc_client.hpp>
+#include <rest_rpc/rpc_server.hpp>
 #include <rest_rpc/traits.h>
 
 using namespace rest_rpc;
@@ -180,7 +180,7 @@ asio::awaitable<void> void_returning_coroutine() {
 }
 
 TEST_CASE("test server start") {
-  rest_rpc_server server("127.0.0.1:9005");
+  rpc_server server("127.0.0.1:9005");
   server.register_handler<add>();
   server.register_handler<foo>();
   server.register_handler<no_arg>();
@@ -192,7 +192,7 @@ TEST_CASE("test server start") {
   server.set_check_conn_interval(std::chrono::seconds(1));
   auto ec = server.async_start();
   CHECK(!ec);
-  rest_rpc_client cl;
+  rpc_client cl;
 
   static_assert(util::CharArrayRef<char const(&)[5]>);
   static_assert(util::CharArray<const char[5]>);
@@ -254,11 +254,11 @@ TEST_CASE("test server start") {
   CHECK(ec);
   std::cout << ec.message() << "\n";
 
-  rest_rpc_server server1("127.0.0.1:9007");
+  rpc_server server1("127.0.0.1:9007");
   ec = server1.async_start();
   CHECK(!ec);
 
-  rest_rpc_server server2("127.0.0.1:9007");
+  rpc_server server2("127.0.0.1:9007");
   ec = server2.async_start();
   CHECK(ec);
   std::cout << ec.message() << "\n";
@@ -267,7 +267,7 @@ TEST_CASE("test server start") {
   std::cout << ec.message() << "\n";
 
   // if server has stopped, start server will be failed.
-  rest_rpc_server server3("127.0.0.1:9005");
+  rpc_server server3("127.0.0.1:9005");
   server3.stop();
   CHECK(server3.has_stopped());
   ec = server3.async_start();
