@@ -117,7 +117,8 @@ private:
     this->map_invokers_[key] =
         [this, f, self](std::string_view str,
                         rpc_result &ret) -> asio::awaitable<void> {
-      using args_tuple = typename util::function_traits<Function>::parameters_type;
+      using args_tuple =
+          typename util::function_traits<Function>::parameters_type;
       using R = typename util::function_traits<Function>::return_type;
       try {
         if constexpr (std::tuple_size_v<args_tuple> == 0) {

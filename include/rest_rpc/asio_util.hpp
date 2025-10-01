@@ -2,20 +2,18 @@
 #include "use_asio.hpp"
 
 namespace rest_rpc {
-template<typename Coro>
-inline auto async_start(auto executor, Coro &&coro) {
-  using R = typename std::remove_cvref_t<std::invoke_result_t<Coro>>::value_type;
+template <typename Coro> inline auto async_start(auto executor, Coro &&coro) {
+  using R =
+      typename std::remove_cvref_t<std::invoke_result_t<Coro>>::value_type;
   static_assert(std::is_void_v<R>);
   asio::co_spawn(executor, std::forward<Coro>(coro), asio::detached);
 }
-  
-  template<typename Coro>
-inline auto async_future(auto executor, Coro &&coro) {
+
+template <typename Coro> inline auto async_future(auto executor, Coro &&coro) {
   return asio::co_spawn(executor, std::forward<Coro>(coro), asio::use_future);
 }
-  
-  template<typename Coro>
-inline auto sync_wait(auto executor, Coro &&coro) {
+
+template <typename Coro> inline auto sync_wait(auto executor, Coro &&coro) {
   return async_future(executor, std::forward<Coro>(coro)).get();
 }
 

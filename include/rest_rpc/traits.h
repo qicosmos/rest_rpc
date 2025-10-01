@@ -2,7 +2,8 @@
 #include <functional>
 #include <memory>
 
-namespace rest_rpc::util {
+namespace rest_rpc {
+namespace util {
 template <typename Function> struct function_traits;
 
 template <typename Return, typename... Arguments>
@@ -213,4 +214,13 @@ concept CharArray =
 template <typename T, typename...>
 inline constexpr bool is_basic_v =
     std::is_fundamental_v<T> || string<T> || CharArray<T> || CharArrayRef<T>;
-} // namespace rest_rpc::util
+} // namespace util
+
+template <typename Function>
+using function_return_type_t =
+    typename util::function_traits<std::remove_cvref_t<Function>>::return_type;
+
+template <typename Function>
+using function_parameters_t = typename util::function_traits<
+    std::remove_cvref_t<Function>>::parameters_type;
+} // namespace rest_rpc

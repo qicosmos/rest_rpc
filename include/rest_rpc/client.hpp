@@ -14,15 +14,15 @@
 #include <asio/steady_timer.hpp>
 using namespace asio::experimental::awaitable_operators;
 
-using namespace rest_rpc::util;
-
 namespace rest_rpc {
 template <typename R> struct call_result {
   rpc_errc ec;
   R value;
 };
 
-template <> struct call_result<void> { rpc_errc ec; };
+template <> struct call_result<void> {
+  rpc_errc ec;
+};
 
 class client {
 public:
@@ -92,21 +92,19 @@ public:
   }
 
   template <auto func, typename... Args>
-  asio::awaitable<
-      call_result<typename function_traits<decltype(func)>::return_type>>
+  asio::awaitable<call_result<function_return_type_t<decltype(func)>>>
   call(Args &&...args) {
     return call_for<func>(std::chrono::seconds(5), std::forward<Args>(args)...);
   }
 
   template <auto func, typename... Args>
-  asio::awaitable<
-      call_result<typename function_traits<decltype(func)>::return_type>>
+  asio::awaitable<call_result<function_return_type_t<decltype(func)>>>
   call_for(auto duration, Args &&...args) {
-    using args_tuple = typename function_traits<decltype(func)>::parameters_type;
+    using args_tuple = function_parameters_t<decltype(func)>;
     static_assert(std::is_constructible_v<args_tuple, Args...>,
                   "called rpc function and arguments are not match");
 
-    using R = typename function_traits<decltype(func)>::return_type;
+    using R = function_return_type_t<decltype(func)>;
     auto r = co_await (watchdog(duration) ||
                        call_impl<func>(std::forward<Args>(args)...));
     if (r.index() == 0) {
@@ -121,8 +119,7 @@ public:
 
 private:
   template <auto func, typename... Args>
-  asio::awaitable<
-      call_result<typename function_traits<decltype(func)>::return_type>>
+  asio::awaitable<call_result<function_return_type_t<decltype(func)>>>
   call_impl(Args &&...args) {
     rest_rpc_header header{};
     header.magic = 39;
@@ -141,7 +138,7 @@ private:
       buffers.push_back(asio::buffer(buf.data(), buf.size()));
     }
 
-    using R = typename function_traits<decltype(func)>::return_type;
+    using R = function_return_type_t<decltype(func)>;
     call_result<R> result{};
     std::error_code ec;
     size_t size;

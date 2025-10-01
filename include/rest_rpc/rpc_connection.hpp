@@ -178,7 +178,8 @@ private:
 // zero or one arguments
 template <auto func, typename... Args>
 asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
-  using args_tuple = typename util::function_traits<decltype(func)>::return_type;
+  using args_tuple =
+      typename util::function_traits<decltype(func)>::return_type;
   static_assert(
       std::is_constructible_v<args_tuple, Args...>,
       "rpc function return type and response arguments are not match");
