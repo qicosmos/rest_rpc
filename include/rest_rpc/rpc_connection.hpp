@@ -27,10 +27,15 @@ public:
   auto get_executor();
 
   template <auto func, typename... Args>
-  asio::awaitable<std::error_code> response(Args &&...args);
+  asio::awaitable<std::error_code> response_s(Args &&...args);
 
   template <auto func, typename... Args>
-  std::error_code sync_response(Args &&...args);
+  std::error_code sync_response_s(Args &&...args);
+
+  template <typename... Args>
+  asio::awaitable<std::error_code> response(Args &&...args);
+
+  template <typename... Args> std::error_code sync_response(Args &&...args);
 
 private:
   rpc_context() = default;
@@ -177,12 +182,24 @@ private:
 
 // zero or one arguments
 template <auto func, typename... Args>
-asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
+asio::awaitable<std::error_code> rpc_context::response_s(Args &&...args) {
   using args_tuple =
       typename util::function_traits<decltype(func)>::return_type;
   static_assert(
       std::is_constructible_v<args_tuple, Args...>,
       "rpc function return type and response arguments are not match");
+
+  return response(std::forward<Args>(args)...);
+}
+
+template <auto func, typename... Args>
+std::error_code rpc_context::sync_response_s(Args &&...args) {
+  return sync_wait(conn_->get_executor(),
+                   response_s<func>(std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
   if (has_response_) {
     co_return make_error_code(rpc_errc::has_response);
   }
@@ -193,10 +210,10 @@ asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
   co_return co_await conn_->response(result);
 }
 
-template <auto func, typename... Args>
+template <typename... Args>
 std::error_code rpc_context::sync_response(Args &&...args) {
   return sync_wait(conn_->get_executor(),
-                   response<func>(std::forward<Args>(args)...));
+                   response(std::forward<Args>(args)...));
 }
 
 auto rpc_context::get_executor() { return conn_->get_executor(); }

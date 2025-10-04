@@ -42,11 +42,15 @@ std::string_view echo_sv(std::string_view str) { return str; }
 
 template<auto func>
 asio::awaitable<void> response(auto ctx) {
-  auto ec = co_await ctx.template response<func>("test");
+  auto ec = co_await ctx.template response_s<func>("test");
   if (ec) {
     REST_LOG_ERROR << "response error: " << ec.message();
   }
-  ec = co_await ctx.template response<func>("test");
+  ec = co_await ctx.template response_s<func>("test");
+  REST_LOG_ERROR << ec.message();
+  CHECK(ec);
+
+  ec = co_await ctx.response("test");
   REST_LOG_ERROR << ec.message();
   CHECK(ec);
 }
@@ -56,17 +60,20 @@ std::string_view delay_response(std::string_view str) {
   // set_delay before response in another thread
   ctx.set_delay(true);
 
-  std::thread thd([ctx = std::move(ctx)]() mutable {
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    //    auto ec = ctx.sync_response("it is from a detached thread");
-    //    if (ec) {
-    //      REST_LOG_ERROR << "response error: " << ec.message();
-    //    }
-    auto executor = ctx.get_executor();
-    // async_start(executor, response<delay_response>(std::move(ctx)));
-    asio::co_spawn(executor, response<delay_response>(std::move(ctx)), asio::detached);
-  });
-  thd.detach();
+  // std::thread thd([ctx = std::move(ctx)]() mutable {
+  //   std::this_thread::sleep_for(std::chrono::seconds(2));
+  //   //    auto ec = ctx.sync_response("it is from a detached thread");
+  //   //    if (ec) {
+  //   //      REST_LOG_ERROR << "response error: " << ec.message();
+  //   //    }
+  //   auto executor = ctx.get_executor();
+  //   // async_start(executor, response<delay_response>(std::move(ctx)));
+  //   asio::co_spawn(executor, response<delay_response>(std::move(ctx)), asio::detached);
+  // });
+  // thd.detach();
+
+  auto executor = ctx.get_executor();
+  asio::co_spawn(executor, response<delay_response>(std::move(ctx)), asio::detached);
 
   // this return value is meaningless, because it will response later, the
   // return type is important for client, so just return an empty value here.
@@ -89,7 +96,7 @@ asio::awaitable<std::string> no_arg_coro1() {
   co_return "test";
 }
 
-// TODO: handle connection lifetime, client pool, pub/sub
+// TODO: client pool, pub/sub
 asio::awaitable<void> test_router() {
   rpc_router router;
   router.register_handler<add>();
@@ -228,6 +235,11 @@ TEST_CASE("test server start") {
     // cl.call_for<no_arg>(std::chrono::minutes(2)));
     // CHECK(result.ec==rpc_errc::ok);
     auto result0 =
+        sync_wait(cl.get_executor(),
+                  cl.call_for<delay_response>(std::chrono::minutes(2), "test"));
+    CHECK(result0.ec == rpc_errc::ok);
+
+    result0 =
         sync_wait(cl.get_executor(),
                   cl.call_for<delay_response>(std::chrono::minutes(2), "test"));
     CHECK(result0.ec == rpc_errc::ok);

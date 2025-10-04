@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #endif
 
-#ifdef __APPLE__
+#if  defined(__APPLE__) || defined(_WIN32)
 #else
 inline uint64_t htonll(uint64_t value) {
   return ((uint64_t)htonl(value & 0xFFFFFFFF) << 32) | htonl(value >> 32);
