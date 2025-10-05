@@ -6,7 +6,7 @@
 #include <arpa/inet.h>
 #endif
 
-#if  defined(__APPLE__) || defined(_WIN32)
+#if defined(__APPLE__) || defined(_WIN32)
 #else
 inline uint64_t htonll(uint64_t value) {
   return ((uint64_t)htonl(value & 0xFFFFFFFF) << 32) | htonl(value >> 32);
@@ -20,7 +20,7 @@ inline uint64_t ntohll(uint64_t value) {
 namespace rest_rpc {
 inline constexpr uint8_t REST_MAGIC_NUM = 39;
 struct rest_rpc_header {
-  uint8_t magic;
+  uint8_t magic = REST_MAGIC_NUM;
   uint8_t version;
   uint8_t serialize_type;
   uint8_t msg_type;

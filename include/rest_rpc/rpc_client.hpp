@@ -104,13 +104,46 @@ public:
     static_assert(std::is_constructible_v<args_tuple, Args...>,
                   "called rpc function and arguments are not match");
 
+    rest_rpc_header header{};
+    header.function_id = get_key<func>();
     using R = function_return_type_t<decltype(func)>;
     auto r = co_await (watchdog(duration) ||
-                       call_impl<func>(std::forward<Args>(args)...));
+                       call_impl<R>(header, std::forward<Args>(args)...));
     if (r.index() == 0) {
       co_return call_result<R>{rpc_errc::request_timeout};
     }
     co_return std::get<1>(r);
+  }
+
+  template <typename R = void>
+  asio::awaitable<call_result<R>> subscribe(std::string_view topic) {
+    uint32_t topic_id = MD5::MD5Hash32(topic.data(), topic.size()); // topic id
+    bool b = false;
+    call_result<R> ret{};
+    auto it = sub_ops_.find(topic_id);
+    if (it == sub_ops_.end()) {
+      rest_rpc_header header{};
+      header.msg_type = 1; // pub/sub
+
+      header.function_id = topic_id;
+      auto [it, r] = sub_ops_.emplace(topic_id, sub_operation{});
+      if (!r) {
+        REST_LOG_ERROR << "subscribe duplicate topic";
+        co_return call_result<R>{rpc_errc::duplicate_topic};
+      }
+
+      std::tie(b, ret) = co_await (
+          asio::async_compose<decltype(asio::use_awaitable), void(bool)>(
+              std::ref(it->second), asio::use_awaitable) &&
+          call_impl<R>(header));
+    } else {
+      std::tie(b, ret) = co_await (
+          asio::async_compose<decltype(asio::use_awaitable), void(bool)>(
+              std::ref(it->second), asio::use_awaitable) &&
+          wait_response<R>());
+    }
+
+    co_return std::move(ret);
   }
 
   void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
@@ -118,12 +151,9 @@ public:
   void enable_cross_ending(bool r) { cross_ending_ = r; }
 
 private:
-  template <auto func, typename... Args>
-  asio::awaitable<call_result<function_return_type_t<decltype(func)>>>
-  call_impl(Args &&...args) {
-    rest_rpc_header header{};
-    header.magic = 39;
-    header.function_id = get_key<func>();
+  template <typename R, typename... Args>
+  asio::awaitable<call_result<R>> call_impl(rest_rpc_header &header,
+                                            Args &&...args) {
     rpc_service::msgpack_codec codec;
     auto buf = codec.pack_args(std::forward<Args>(args)...);
     header.body_len = buf.size();
@@ -138,7 +168,6 @@ private:
       buffers.push_back(asio::buffer(buf.data(), buf.size()));
     }
 
-    using R = function_return_type_t<decltype(func)>;
     call_result<R> result{};
     std::error_code ec;
     size_t size;
@@ -149,6 +178,13 @@ private:
       co_return result;
     }
 
+    co_return co_await wait_response<R>();
+  }
+
+  template <typename R> asio::awaitable<call_result<R>> wait_response() {
+    call_result<R> result{};
+    std::error_code ec;
+    size_t size;
     rest_rpc_header resp_header;
     std::tie(ec, size) = co_await asio::async_read(
         socket_, asio::buffer(&resp_header, sizeof(rest_rpc_header)),
@@ -176,16 +212,19 @@ private:
       co_return result;
     }
     result.ec = (rpc_errc)body_[0];
-    if (resp_header.body_len > 0) {
-      auto view = std::string_view(body_.data() + 1, resp_header.body_len - 1);
-      REST_LOG_INFO << view;
-    }
     if constexpr (!std::is_void_v<R>) {
+      rpc_service::msgpack_codec codec;
       result.value = codec.unpack<R>(
           std::string_view(body_.data() + 1, resp_header.body_len - 1));
     }
 
-    co_return result;
+    if (resp_header.msg_type == 1) { // pubsub
+      if (auto it = sub_ops_.find(resp_header.function_id);
+          it != sub_ops_.end()) {
+        it->second.complete(true);
+      }
+    }
+    co_return std::move(result);
   }
 
   asio::awaitable<std::error_code> watchdog(auto duration) {
@@ -195,9 +234,27 @@ private:
     co_return ec;
   }
 
+  class sub_operation {
+  public:
+    template <typename Self> void operator()(Self &&self) {
+      using SelfType = std::decay_t<Self>;
+      auto shared_self = std::make_shared<SelfType>(std::move(self));
+
+      complete_handler_ = [shared_self](bool r) mutable {
+        shared_self->complete(r);
+      };
+    }
+
+    void complete(bool r) { complete_handler_(r); }
+
+  private:
+    std::function<void(bool)> complete_handler_;
+  };
+
   tcp_socket socket_;
   std::string body_;
   bool tcp_no_delay_ = true;
   bool cross_ending_ = false;
+  std::unordered_map<uint32_t, sub_operation> sub_ops_;
 };
 } // namespace rest_rpc

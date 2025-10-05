@@ -102,6 +102,27 @@ public:
     return conns_.size();
   }
 
+  auto get_connections() {
+    std::scoped_lock lock(*conn_mtx_);
+    return conns_;
+  }
+
+  template <typename T>
+  asio::awaitable<void> publish(std::string_view topic, T &&t) {
+    auto id = MD5::MD5Hash32(topic.data(), topic.size());
+    auto conns = get_connections();
+    for (auto &[_, conn] : conns) {
+      if (conn->topic_id() == id) {
+        co_await conn->response(
+            rpc_service::msgpack_codec::pack_args(std::forward<T>(t)), id);
+      }
+    }
+  }
+
+  template <typename T> void sync_publish(std::string_view topic, T &&t) {
+    sync_wait(get_global_executor(), publish(topic, std::forward<T>(t)));
+  }
+
 private:
   std::error_code listen() {
     using asio::ip::tcp;

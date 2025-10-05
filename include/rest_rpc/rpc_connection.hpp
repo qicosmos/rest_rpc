@@ -76,6 +76,11 @@ public:
         break;
       }
 
+      if (header.msg_type == 1) { // pub sub
+        topic_id_ = header.function_id;
+        continue;
+      }
+
       detail::resize(body_, header.body_len);
 
       if (header.body_len > 0) {
@@ -105,9 +110,14 @@ public:
     }
   }
 
-  asio::awaitable<std::error_code> response(const rpc_result &result) {
+  asio::awaitable<std::error_code> response(const rpc_result &result,
+                                            uint32_t func_id = 0) {
     rest_rpc_header resp_header{};
     resp_header.magic = 39;
+    if (func_id != 0) {
+      resp_header.msg_type = 1;
+      resp_header.function_id = func_id;
+    }
     resp_header.body_len = result.size() + 1;
     if (cross_ending_) {
       prepare_for_send(resp_header);
@@ -131,6 +141,7 @@ public:
 
   uint64_t id() const { return conn_id_; }
   auto get_executor() { return socket_.get_executor(); }
+  uint32_t topic_id() const { return topic_id_; }
 
   void
   set_quit_callback(std::function<void(const uint64_t &conn_id)> callback) {
@@ -178,6 +189,7 @@ private:
   bool checkout_timeout_ = false;
   rpc_router &router_;
   bool cross_ending_;
+  uint32_t topic_id_;
 };
 
 // zero or one arguments
