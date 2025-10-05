@@ -40,8 +40,7 @@ int round1(int i) { return i; }
 
 std::string_view echo_sv(std::string_view str) { return str; }
 
-template<auto func>
-asio::awaitable<void> response(auto ctx) {
+template <auto func> asio::awaitable<void> response(auto ctx) {
   auto ec = co_await ctx.template response_s<func>("test");
   if (ec) {
     REST_LOG_ERROR << "response error: " << ec.message();
@@ -68,12 +67,14 @@ std::string_view delay_response(std::string_view str) {
   //   //    }
   //   auto executor = ctx.get_executor();
   //   // async_start(executor, response<delay_response>(std::move(ctx)));
-  //   asio::co_spawn(executor, response<delay_response>(std::move(ctx)), asio::detached);
+  //   asio::co_spawn(executor, response<delay_response>(std::move(ctx)),
+  //   asio::detached);
   // });
   // thd.detach();
 
   auto executor = ctx.get_executor();
-  asio::co_spawn(executor, response<delay_response>(std::move(ctx)), asio::detached);
+  asio::co_spawn(executor, response<delay_response>(std::move(ctx)),
+                 asio::detached);
 
   // this return value is meaningless, because it will response later, the
   // return type is important for client, so just return an empty value here.
@@ -285,6 +286,38 @@ TEST_CASE("test server start") {
   ec = server3.async_start();
   CHECK(ec);
   std::cout << ec.message() << "\n";
+}
+
+TEST_CASE("test pub sub") {
+  rpc_server server("127.0.0.1:9004");
+  server.async_start();
+
+  rpc_client client{};
+  sync_wait(get_global_executor(), client.connect("127.0.0.1:9004"));
+
+  std::promise<void> promise;
+  auto sub = [&]() -> asio::awaitable<void> {
+    for (int i = 0; i < 5; i++) {
+      auto [ec, result] = co_await client.subscribe<std::string>("topic1");
+      REST_LOG_INFO << result;
+      CHECK(ec == rpc_errc::ok);
+      CHECK(result == "publish message");
+    }
+    promise.set_value();
+  };
+
+  asio::co_spawn(client.get_executor(), sub(), asio::detached);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  auto pub = [&]() -> asio::awaitable<void> {
+    for (int i = 0; i < 5; i++) {
+      co_await server.publish("topic1", "publish message");
+    }
+  };
+
+  asio::co_spawn(client.get_executor(), pub(), asio::detached);
+
+  promise.get_future().wait();
 }
 
 // doctest comments
