@@ -20,9 +20,7 @@ template <typename R> struct call_result {
   R value;
 };
 
-template <> struct call_result<void> {
-  rpc_errc ec;
-};
+template <> struct call_result<void> { rpc_errc ec; };
 
 class rpc_client {
 public:
@@ -35,9 +33,9 @@ public:
       std::chrono::steady_clock::duration duration = std::chrono::seconds(5)) {
     asio::ip::tcp::resolver resolver(socket_.get_executor());
 
-    auto r = co_await (watchdog(duration) ||
-                       resolver.async_resolve(
-                           host, port, asio::as_tuple(asio::use_awaitable)));
+    auto r = co_await(watchdog(duration) ||
+                      resolver.async_resolve(
+                          host, port, asio::as_tuple(asio::use_awaitable)));
     if (r.index() == 0) {
       REST_LOG_ERROR << "resolve timeout";
       co_return make_error_code(rpc_errc::resolve_timeout);
@@ -56,7 +54,7 @@ public:
     }
 
     auto endpoint = it->endpoint();
-    auto conn_r = co_await (
+    auto conn_r = co_await(
         watchdog(duration) ||
         socket_.async_connect(endpoint, asio::as_tuple(asio::use_awaitable)));
     if (conn_r.index() == 0) {
@@ -107,8 +105,8 @@ public:
     rest_rpc_header header{};
     header.function_id = get_key<func>();
     using R = function_return_type_t<decltype(func)>;
-    auto r = co_await (watchdog(duration) ||
-                       call_impl<R>(header, std::forward<Args>(args)...));
+    auto r = co_await(watchdog(duration) ||
+                      call_impl<R>(header, std::forward<Args>(args)...));
     if (r.index() == 0) {
       co_return call_result<R>{rpc_errc::request_timeout};
     }
@@ -117,7 +115,8 @@ public:
 
   template <typename R = void>
   asio::awaitable<call_result<R>> subscribe(std::string_view topic) {
-    uint32_t topic_id = MD5::MD5Hash32(topic.data(), topic.size()); // topic id
+    uint32_t topic_id =
+        MD5::MD5Hash32(topic.data(), (uint32_t)topic.size()); // topic id
     bool b = false;
     call_result<R> ret{};
     auto it = sub_ops_.find(topic_id);
@@ -132,12 +131,12 @@ public:
         co_return call_result<R>{rpc_errc::duplicate_topic};
       }
 
-      std::tie(b, ret) = co_await (
+      std::tie(b, ret) = co_await(
           asio::async_compose<decltype(asio::use_awaitable), void(bool)>(
               std::ref(it->second), asio::use_awaitable) &&
           call_impl<R>(header));
     } else {
-      std::tie(b, ret) = co_await (
+      std::tie(b, ret) = co_await(
           asio::async_compose<decltype(asio::use_awaitable), void(bool)>(
               std::ref(it->second), asio::use_awaitable) &&
           wait_response<R>());

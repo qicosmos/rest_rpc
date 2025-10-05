@@ -109,7 +109,7 @@ public:
 
   template <typename T>
   asio::awaitable<void> publish(std::string_view topic, T &&t) {
-    auto id = MD5::MD5Hash32(topic.data(), topic.size());
+    auto id = MD5::MD5Hash32(topic.data(), (uint32_t)topic.size());
     auto conns = get_connections();
     for (auto &[_, conn] : conns) {
       if (conn->topic_id() == id) {
