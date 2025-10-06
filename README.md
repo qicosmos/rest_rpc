@@ -15,15 +15,13 @@ Modern C++开发的RPC库就是这么简单好用！
 
 # rest_rpc简介
 
-rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(commit id:f70f65ae54351c209c3a24704624144bfe8e70a3) 
+rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(tag:asio-1-36-0) 
 
 可以快速上手，使用者只需要关注自己的业务逻辑即可。
 
 # 谁在用rest_rpc
 
 1. 博世汽车
-2. 浙江智网科技
-3. purecpp.org
 
 [在这里增加用户](https://github.com/qicosmos/rest_rpc/wiki/%E4%BD%BF%E7%94%A8rest_rpc%E7%9A%84%E7%94%A8%E6%88%B7%E5%88%97%E8%A1%A8)
 
@@ -135,9 +133,8 @@ auto result = client.call<std::string>("echo", "hello");
 客户端异步回调接口
 
 ```
-client.async_call("echo", [](asio::error_code ec, string_view data){
-	auto str = as<std::string>(data);
-	std::cout << "echo " << str << '\n';
+client.async_call<R>("echo", [](asio::error_code ec, R data){
+	std::cout << "echo " << data << '\n';
 });
 ```
 
@@ -151,22 +148,21 @@ std::future<std::string> future = client.async_call<CallModel::future>("echo", "
 
 带超时的异步回调接口：
 ```
-async_call<timeout_ms>("some_rpc_service_name", callback, service_args...);
+async_call<R, timeout_ms>("some_rpc_service_name", callback, service_args...);
 ```
 
 如果不显式设置超时时间的话，则会用默认的5s超时.
 ```
-async_call("some_rpc_service_name", callback, args...);
+async_call<R>("some_rpc_service_name", callback, args...);
 ```
 
 ```
-client.async_call("echo", [](asio::error_code ec, string_view data) {
+client.async_call<std::string>("echo", [](asio::error_code ec, std::string result) {
     if (ec) {                
         std::cout << ec.message() <<" "<< data << "\n";
         return;
     }
 
-    auto result = as<std::string>(data);
     std::cout << result << " async\n";
 }, "purecpp");
 ```
