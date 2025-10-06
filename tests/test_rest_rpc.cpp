@@ -320,6 +320,19 @@ TEST_CASE("test pub sub") {
   promise.get_future().wait();
 }
 
+TEST_CASE("test reconnect") {
+  rpc_server server("127.0.0.1:9004");
+  server.async_start();
+  rpc_server server1("127.0.0.1:9005");
+  server1.async_start();
+
+  rpc_client client{};
+  auto ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9004"));
+  CHECK(!ec);
+  ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9005"));
+  CHECK(!ec);
+}
+
 // doctest comments
 // 'function' : must be 'attribute' - see issue #182
 DOCTEST_MSVC_SUPPRESS_WARNING_WITH_PUSH(4007)
