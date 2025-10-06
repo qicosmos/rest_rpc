@@ -4,6 +4,7 @@ on:
   pull_request_target:
     branches:
       - master
+      - cpp20
 
 jobs:
   build:
