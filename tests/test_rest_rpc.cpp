@@ -298,10 +298,10 @@ TEST_CASE("test pub sub") {
   std::promise<void> promise;
   auto sub = [&]() -> asio::awaitable<void> {
     for (int i = 0; i < 5; i++) {
-      auto [ec, result] = co_await client.subscribe<std::string>("topic1");
-      REST_LOG_INFO << result;
-      CHECK(ec == rpc_errc::ok);
-      CHECK(result == "publish message");
+      auto result = co_await client.subscribe<std::string>("topic1");
+      REST_LOG_INFO << result.value;
+      CHECK(result.ec == rpc_errc::ok);
+      CHECK(result.value == "publish message");
     }
     promise.set_value();
   };
