@@ -59,7 +59,7 @@ public:
       });
 
       stop_timer_ = true;
-
+      REST_LOG_INFO << "server stoping";
       {
         std::scoped_lock lock(*conn_mtx_);
         for (auto &conn : conns_) {

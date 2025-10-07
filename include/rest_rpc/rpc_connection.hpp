@@ -63,7 +63,12 @@ public:
           socket_, asio::buffer(&header, sizeof(rest_rpc_header)),
           asio::as_tuple(asio::use_awaitable));
       if (ec) {
-        REST_LOG_INFO << "read head error: " << ec.message();
+        if (ec != asio::error::eof) {
+          REST_LOG_INFO << "read http head error: " << ec.message();
+        } else {
+          REST_LOG_INFO << "read head error: " << ec.message();
+        }
+        close();
         break;
       }
 
@@ -89,6 +94,7 @@ public:
             socket_, asio::buffer(body_), asio::as_tuple(asio::use_awaitable));
         if (ec) {
           REST_LOG_WARNING << "read body error: " << ec.message();
+          close();
           break;
         }
       }
@@ -153,16 +159,17 @@ public:
       return;
     }
 
-    asio::dispatch(socket_.get_executor(),
-                   [this, need_cb, self = shared_from_this()] {
-                     std::error_code ec;
-                     socket_.shutdown(asio::socket_base::shutdown_both, ec);
-                     socket_.close(ec);
-                     if (need_cb && quit_cb_) {
-                       quit_cb_(conn_id_);
-                     }
-                     has_closed_ = true;
-                   });
+    auto self = shared_from_this();
+    asio::dispatch(socket_.get_executor(), [this, need_cb, self] {
+      std::error_code ec;
+      socket_.shutdown(asio::socket_base::shutdown_both, ec);
+      socket_.close(ec);
+      REST_LOG_INFO << "close socket " << need_cb;
+      if (need_cb && quit_cb_) {
+        quit_cb_(conn_id_);
+      }
+      has_closed_ = true;
+    });
   }
 
   void set_last_time() {
@@ -189,7 +196,7 @@ private:
   bool checkout_timeout_ = false;
   rpc_router &router_;
   bool cross_ending_;
-  uint32_t topic_id_;
+  std::atomic<uint32_t> topic_id_;
 };
 
 // zero or one arguments

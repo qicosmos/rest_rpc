@@ -97,7 +97,7 @@ asio::awaitable<std::string> no_arg_coro1() {
   co_return "test";
 }
 
-// TODO: client pool, pub/sub
+// TODO: client pool
 asio::awaitable<void> test_router() {
   rpc_router router;
   router.register_handler<add>();
