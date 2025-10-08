@@ -271,37 +271,23 @@ struct MD5CE {
   }
   //////////////////////////////////////////////////////////////////////////////
   // HELPER FUNCTIONS
-  static constexpr uint32_t StringLength(const char *string) {
-    const char *end = string;
-    while (*end != 0)
-      ++end;
-    // Double check that the precision losing conversion is safe.
-    //    DCHECK(end >= string);
-    //    DCHECK(static_cast<std::ptrdiff_t>(static_cast<uint32_t>(end -
-    //    string)) ==
-    //           (end - string));
-    return static_cast<uint32_t>(end - string);
-  }
   static constexpr uint32_t SwapEndian(uint32_t a) {
     return ((a & 0xff) << 24) | (((a >> 8) & 0xff) << 16) |
            (((a >> 16) & 0xff) << 8) | ((a >> 24) & 0xff);
   }
   //////////////////////////////////////////////////////////////////////////////
   // WRAPPER FUNCTIONS
-  static constexpr uint64_t Hash64(const char *data, uint32_t n) {
-    IntermediateData intermediate = ProcessMessage(data, n);
-    return (static_cast<uint64_t>(SwapEndian(intermediate.a)) << 32) |
-           static_cast<uint64_t>(SwapEndian(intermediate.b));
-  }
+  //  static constexpr uint64_t Hash64(const char *data, uint32_t n) {
+  //    IntermediateData intermediate = ProcessMessage(data, n);
+  //    return (static_cast<uint64_t>(SwapEndian(intermediate.a)) << 32) |
+  //           static_cast<uint64_t>(SwapEndian(intermediate.b));
+  //  }
   static constexpr uint32_t Hash32(const char *data, uint32_t n) {
     IntermediateData intermediate = ProcessMessage(data, n);
     return SwapEndian(intermediate.a);
   }
 };
 // https://chromium.googlesource.com/chromium/src/base/+/refs/heads/main/hash/md5_constexpr_internal.h
-constexpr uint32_t MD5Hash32(const char *string) {
-  return MD5CE::Hash32(string, MD5CE::StringLength(string));
-}
 constexpr uint32_t MD5Hash32(const char *string, uint32_t length) {
   return MD5CE::Hash32(string, length);
 }

@@ -20,9 +20,7 @@ template <typename R> struct call_result {
   R value;
 };
 
-template <> struct call_result<void> {
-  rpc_errc ec;
-};
+template <> struct call_result<void> { rpc_errc ec; };
 
 class rpc_client {
 public:
@@ -56,11 +54,6 @@ public:
       co_return ec;
     }
     auto it = endpoints.begin();
-
-    if (it == endpoints.end()) {
-      REST_LOG_ERROR << "resolve failed";
-      co_return std::make_error_code(std::errc::bad_address);
-    }
 
     auto endpoint = it->endpoint();
     auto conn_r = co_await (watchdog(duration) ||
@@ -137,10 +130,6 @@ public:
 
       header.function_id = topic_id;
       auto [it, r] = socket_->sub_ops_.emplace(topic_id, sub_operation{});
-      if (!r) {
-        REST_LOG_ERROR << "subscribe duplicate topic";
-        co_return call_result<R>{rpc_errc::duplicate_topic};
-      }
 
       std::tie(b, ret) = co_await (
           asio::async_compose<decltype(asio::use_awaitable), void(bool)>(

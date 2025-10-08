@@ -210,6 +210,11 @@ asio::awaitable<void> test_router() {
 
 TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
+TEST_CASE("test context pool") {
+  io_context_pool pool(0);
+  CHECK(pool.size() == 1);
+}
+
 TEST_CASE("test server start") {
   rpc_server server("127.0.0.1:9005");
   server.register_handler<add>();
@@ -261,6 +266,7 @@ TEST_CASE("test server start") {
     auto result0 =
         sync_wait(cl.get_executor(),
                   cl.call_for<delay_response>(std::chrono::minutes(2), "test"));
+    REST_LOG_INFO << make_error_code(result0.ec).message();
     CHECK(result0.ec == rpc_errc::ok);
 
     result0 =
@@ -275,8 +281,16 @@ TEST_CASE("test server start") {
     auto result1 = sync_wait(
         cl.get_executor(), cl.call_for<echo>(std::chrono::minutes(2), "test"));
     CHECK(result1.ec == rpc_errc::ok);
+    cl.enable_tcp_no_delay(false);
     auto result2 = sync_wait(cl.get_executor(), cl.call<round1>(1));
     CHECK(result2.ec == rpc_errc::ok);
+  }
+
+  {
+    auto result =
+        sync_wait(cl.get_executor(),
+                  cl.call_for<add>(std::chrono::milliseconds(0), 1, 2));
+    CHECK(result.ec == rpc_errc::request_timeout);
   }
 
   ec = server.async_start();
@@ -285,6 +299,11 @@ TEST_CASE("test server start") {
   CHECK(!ec);
   server.stop();
   server.stop();
+
+  {
+    auto result = sync_wait(cl.get_executor(), cl.call<add>(1, 2));
+    CHECK(result.ec != rpc_errc::ok);
+  }
 
   ec = server.async_start();
   CHECK(ec);
@@ -312,7 +331,16 @@ TEST_CASE("test server start") {
 }
 
 TEST_CASE("test cross ending") {
+  rpc_server server("127.0.0.1:9004");
+  server.register_handler<echo>();
+  server.enable_cross_ending(true);
+  server.async_start();
 
+  rpc_client client{};
+  client.enable_cross_ending(true);
+  sync_wait(get_global_executor(), client.connect("127.0.0.1:9004"));
+  auto ret = sync_wait(client.get_executor(), client.call<echo>("test"));
+  CHECK(ret.value == "test");
 }
 
 TEST_CASE("test pub sub") {
@@ -330,6 +358,7 @@ TEST_CASE("test pub sub") {
       CHECK(result.ec == rpc_errc::ok);
       CHECK(result.value == "publish message");
     }
+
     promise.set_value();
   };
 
@@ -358,6 +387,25 @@ TEST_CASE("test reconnect") {
   CHECK(!ec);
   ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9005"));
   CHECK(!ec);
+
+  ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9006"));
+  CHECK(ec);
+  REST_LOG_INFO << ec.message();
+  ec = sync_wait(
+      get_global_executor(),
+      client.connect("127.0.0.0:9006", std::chrono::milliseconds(200)));
+  CHECK(ec);
+  REST_LOG_INFO << ec.message();
+  ec =
+      sync_wait(get_global_executor(),
+                client.connect("127.0.0.x:9006", std::chrono::milliseconds(0)));
+  CHECK(ec);
+  REST_LOG_INFO << ec.message();
+  ec = sync_wait(
+      get_global_executor(),
+      client.connect("127.0.0.x:9006", std::chrono::milliseconds(200)));
+  CHECK(ec);
+  REST_LOG_INFO << ec.message();
 }
 
 // doctest comments
