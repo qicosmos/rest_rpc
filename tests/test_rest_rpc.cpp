@@ -210,13 +210,6 @@ asio::awaitable<void> test_router() {
 
 TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
-asio::awaitable<void> void_returning_coroutine() {
-  auto executor = co_await asio::this_coro::executor;
-  asio::io_context &ioc = static_cast<asio::io_context &>(executor.context());
-
-  co_return;
-}
-
 TEST_CASE("test server start") {
   rpc_server server("127.0.0.1:9005");
   server.register_handler<add>();
@@ -316,6 +309,10 @@ TEST_CASE("test server start") {
   ec = server3.async_start();
   CHECK(ec);
   std::cout << ec.message() << "\n";
+}
+
+TEST_CASE("test cross ending") {
+
 }
 
 TEST_CASE("test pub sub") {
