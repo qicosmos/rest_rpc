@@ -87,6 +87,10 @@ asio::awaitable<std::string> echo_coro(std::string str) { co_return str; }
 
 void no_arg() { std::cout << "no args\n"; }
 
+void exception_func() { throw std::invalid_argument("invalid"); }
+
+void unknown_exception_func() { throw 1; }
+
 asio::awaitable<void> no_arg_coro() {
   std::cout << "no args\n";
   co_return;
@@ -109,8 +113,25 @@ asio::awaitable<void> test_router() {
   router.register_handler<no_arg_coro>();
   router.register_handler<no_arg_coro1>();
   router.register_handler<add_coro>();
+  router.register_handler<no_arg>();
+
+  auto name = router.get_name_by_key(get_key<add>());
+  CHECK(name == "add");
+  router.remove_handler<add>();
+  name = router.get_name_by_key(get_key<add>());
+  CHECK(name != "add");
+  router.register_handler<add>();
+  name = router.get_name_by_key(get_key<add>());
+  CHECK(name == "add");
+  CHECK_THROWS_AS(router.register_handler<add>(), std::invalid_argument);
+
+  name = router.get_name_by_key(111);
+  CHECK(name == "111");
 
   {
+    auto ret0 = co_await router.route(get_key<no_arg>(), "");
+    CHECK(ret0.ec == rpc_errc::ok);
+
     auto ret = co_await router.route(get_key<no_arg_coro>(), "");
     CHECK(ret.ec == rpc_errc::ok);
 
@@ -119,6 +140,15 @@ asio::awaitable<void> test_router() {
 
     auto ret2 = co_await router.route(get_key<echo_coro>(), "test");
     CHECK(ret2.ec == rpc_errc::ok);
+
+    router.register_handler<exception_func>();
+    router.register_handler<unknown_exception_func>();
+    auto ret3 = co_await router.route(get_key<exception_func>(), "");
+    CHECK(ret3.ec == rpc_errc::function_exception);
+    auto ret4 = co_await router.route(get_key<unknown_exception_func>(), "");
+    CHECK(ret4.ec == rpc_errc::function_unknown_exception);
+    auto ret5 = co_await router.route(111, "");
+    CHECK(ret5.ec == rpc_errc::no_such_function);
   }
 
   dummy d{};

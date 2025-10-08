@@ -85,12 +85,10 @@ public:
         route_result.ec = rpc_errc::ok;
       }
     } catch (const std::exception &ex) {
-      rpc_service::msgpack_codec codec;
       route_result.result =
           std::string("exception occur when call").append(ex.what());
       route_result.ec = rpc_errc::function_exception;
     } catch (...) {
-      rpc_service::msgpack_codec codec;
       route_result.result = std::string("unknown exception occur when call ")
                                 .append(get_name_by_key(key));
       route_result.ec = rpc_errc::function_unknown_exception;
@@ -120,24 +118,16 @@ private:
       using args_tuple =
           typename util::function_traits<Function>::parameters_type;
       using R = typename util::function_traits<Function>::return_type;
-      try {
-        if constexpr (std::tuple_size_v<args_tuple> == 0) {
-          co_await handle_zero_arg<R>(f, ret, self);
+      if constexpr (std::tuple_size_v<args_tuple> == 0) {
+        co_await handle_zero_arg<R>(f, ret, self);
+      } else {
+        using first_t = std::tuple_element_t<0, args_tuple>;
+        if constexpr (std::tuple_size_v<args_tuple> == 1 &&
+                      util::is_basic_v<first_t>) {
+          co_await handle_one_arg<R, first_t>(str, f, ret, self);
         } else {
-          using first_t = std::tuple_element_t<0, args_tuple>;
-          if constexpr (std::tuple_size_v<args_tuple> == 1 &&
-                        util::is_basic_v<first_t>) {
-            co_await handle_one_arg<R, first_t>(str, f, ret, self);
-          } else {
-            co_await handle_more_args<R, args_tuple>(str, f, ret, self);
-          }
+          co_await handle_more_args<R, args_tuple>(str, f, ret, self);
         }
-      } catch (std::invalid_argument &e) {
-        ret.ec = rpc_errc::invalid_argument;
-        ret.result = e.what();
-      } catch (const std::exception &e) {
-        ret.ec = rpc_errc::function_exception;
-        ret.result = e.what();
       }
     };
   }
