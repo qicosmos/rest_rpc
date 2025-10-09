@@ -10,7 +10,7 @@
 namespace rest_rpc {
 namespace detail {
 template <auto Func>
-constexpr std::string_view qualified_name_of_impl() noexcept {
+constexpr auto qualified_name_of_impl() noexcept {
 #ifdef _MSC_VER
   constexpr std::size_t suffix_size{16};
   constexpr std::string_view keyword{
