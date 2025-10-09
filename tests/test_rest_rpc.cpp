@@ -400,6 +400,8 @@ TEST_CASE("test reconnect") {
   rpc_server server("127.0.0.1:9004");
   server.async_start();
   rpc_server server1("127.0.0.1:9005");
+  server1.set_check_conn_interval(std::chrono::milliseconds(100));
+  server1.set_conn_max_age(std::chrono::milliseconds(200));
   server1.async_start();
 
   rpc_client client{};
@@ -408,7 +410,12 @@ TEST_CASE("test reconnect") {
   ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9005"));
   CHECK(!ec);
 
-  ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9006"));
+  CHECK(server1.connection_count() == 1);
+  std::this_thread::sleep_for(std::chrono::milliseconds(600));
+  // expired connection has been removed.
+  CHECK(server1.connection_count() == 0);
+
+  ec = sync_wait(get_global_executor(), client.connect("127.0.0.1:9999"));
   CHECK(ec);
   REST_LOG_INFO << ec.message();
   ec = sync_wait(
@@ -426,6 +433,31 @@ TEST_CASE("test reconnect") {
       client.connect("127.0.0.x:9006", std::chrono::milliseconds(200)));
   CHECK(ec);
   REST_LOG_INFO << ec.message();
+}
+
+TEST_CASE("test server address") {
+  rpc_server server("127.0.0.1", "9004");
+  server.enable_tcp_no_delay(false);
+  auto ec = server.async_start();
+  CHECK(!ec);
+
+  server.register_handler<add>();
+  server.remove_handler("add");
+  CHECK_NOTHROW(server.register_handler<add>());
+  server.remove_handler<add>();
+  CHECK_NOTHROW(server.register_handler<add>());
+
+  rpc_server server1("127.0.0.x:9004");
+  ec = server1.async_start();
+  CHECK(ec);
+  REST_LOG_INFO << ec.message();
+
+  rpc_server server2("127.0.0.1:9005");
+  std::thread thd([&] { server2.start(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+  std::thread thd2([&] { server2.stop(); });
+  thd2.join();
+  thd.join();
 }
 
 // doctest comments

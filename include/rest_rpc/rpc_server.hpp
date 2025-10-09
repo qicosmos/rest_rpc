@@ -135,10 +135,6 @@ private:
 
     auto it = endpoints.begin();
 
-    if (it == endpoints.end()) {
-      return std::make_error_code(std::errc::bad_address);
-    }
-
     auto endpoint = it->endpoint();
     acceptor_.open(endpoint.protocol(), ec);
     if (ec) {
