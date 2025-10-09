@@ -195,8 +195,16 @@ private:
         auto mtx = weak.lock();
         if (mtx) {
           std::scoped_lock lock(*mtx);
-          if (!conns_.empty())
-            conns_.erase(id);
+          if (!conns_.empty()) {
+            std::erase_if(conns_, [id](const auto &pair) {
+              if (pair.first == id) {
+                pair.second->close(false);
+                return true;
+              }
+
+              return false;
+            });
+          }
         }
       });
 

@@ -51,7 +51,6 @@ public:
       : socket_(std::move(socket)), conn_id_(conn_id), router_(router),
         cross_ending_(cross_ending) {}
 
-  ~rpc_connection() { close(); }
   asio::awaitable<void> start() {
     rest_rpc_header header;
     auto self = this->shared_from_this();
@@ -164,7 +163,7 @@ public:
       std::error_code ec;
       socket_.shutdown(asio::socket_base::shutdown_both, ec);
       socket_.close(ec);
-      REST_LOG_INFO << "close socket " << need_cb;
+      REST_LOG_INFO << "close connection, id " << conn_id_;
       if (need_cb && quit_cb_) {
         quit_cb_(conn_id_);
       }

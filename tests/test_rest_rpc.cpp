@@ -210,6 +210,26 @@ asio::awaitable<void> test_router() {
 
 TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
+TEST_CASE("test rpc_connection") {
+  uint64_t conn_id = 999;
+  size_t num_thread = 4;
+  asio::io_context io_ctx;
+  tcp_socket socket(io_ctx);
+  bool cross_ending_ = false;
+  rpc_router router;
+  dummy d{};
+  router.register_handler<&dummy::add>(&d);
+  auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
+                                               router, cross_ending_);
+  CHECK_EQ(conn->id(), conn_id);
+  conn->set_check_timeout(true);
+  conn->set_last_time();
+  auto last_rw_time = conn->get_last_rwtime();
+  std::cout << "topic_id: " << conn->topic_id() << std::endl;
+  conn->close();
+  io_ctx.run();
+}
+
 TEST_CASE("test context pool") {
   io_context_pool pool(0);
   CHECK(pool.size() == 1);
