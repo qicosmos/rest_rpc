@@ -210,25 +210,25 @@ asio::awaitable<void> test_router() {
 
 TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
+asio::awaitable<void>
+get_last_rwtime_coro(std::shared_ptr<rpc_connection> conn) {
+  // 更新并获取时间
+  conn->set_last_time();
 
-asio::awaitable<void> get_last_rwtime_coro(std::shared_ptr<rpc_connection> conn) {
-    // 更新并获取时间
-    conn->set_last_time();
-    
-    // 等待一小段时间
-    asio::steady_timer timer(co_await asio::this_coro::executor);
-    timer.expires_after(std::chrono::milliseconds(100));
-    co_await timer.async_wait(asio::use_awaitable);
-    
-    // 再次更新时间
-    conn->set_last_time();
-    
-    // 获取时间
-    auto time = co_await conn->get_last_rwtime();
-    
-    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        time.time_since_epoch());
-    std::cout << "Time in coroutine: " << ms.count() << "ms\n";
+  // 等待一小段时间
+  asio::steady_timer timer(co_await asio::this_coro::executor);
+  timer.expires_after(std::chrono::milliseconds(100));
+  co_await timer.async_wait(asio::use_awaitable);
+
+  // 再次更新时间
+  conn->set_last_time();
+
+  // 获取时间
+  auto time = co_await conn->get_last_rwtime();
+
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      time.time_since_epoch());
+  std::cout << "Time in coroutine: " << ms.count() << "ms\n";
 }
 
 TEST_CASE("test rpc_connection") {
