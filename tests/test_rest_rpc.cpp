@@ -210,24 +210,45 @@ asio::awaitable<void> test_router() {
 
 TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
+
+asio::awaitable<void> get_last_rwtime_coro(std::shared_ptr<rpc_connection> conn) {
+    // 更新并获取时间
+    conn->set_last_time();
+    
+    // 等待一小段时间
+    asio::steady_timer timer(co_await asio::this_coro::executor);
+    timer.expires_after(std::chrono::milliseconds(100));
+    co_await timer.async_wait(asio::use_awaitable);
+    
+    // 再次更新时间
+    conn->set_last_time();
+    
+    // 获取时间
+    auto time = co_await conn->get_last_rwtime();
+    
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        time.time_since_epoch());
+    std::cout << "Time in coroutine: " << ms.count() << "ms\n";
+}
+
 TEST_CASE("test rpc_connection") {
   uint64_t conn_id = 999;
   size_t num_thread = 4;
   asio::io_context io_ctx;
   tcp_socket socket(io_ctx);
-  bool cross_ending_ = false;
+  bool cross_ending = false;
   rpc_router router;
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
-                                               router, cross_ending_);
+                                               router, cross_ending);
   CHECK_EQ(conn->id(), conn_id);
   conn->set_check_timeout(true);
-  conn->set_last_time();
-  auto last_rw_time = conn->get_last_rwtime();
+  asio::co_spawn(io_ctx, get_last_rwtime_coro(conn), asio::detached);
+  io_ctx.run();
   std::cout << "topic_id: " << conn->topic_id() << std::endl;
   conn->close();
-  io_ctx.run();
+  io_ctx.stop();
 }
 
 TEST_CASE("test context pool") {

@@ -5,6 +5,7 @@ on:
     branches:
       - master
       - cpp20
+      - unit_test_for_cpp20
 
 jobs:
   build:
@@ -35,7 +36,9 @@ jobs:
           cd tests
           ./test_rest_rpc
           llvm-profdata merge -sparse test_rest_rpc-*.profraw -o test_rest_rpc.profdata
+          llvm-cov --version
           llvm-cov show ./test_rest_rpc -instr-profile=test_rest_rpc.profdata -format=html -output-dir=../.coverage_llvm_cov -ignore-filename-regex="string_view.hpp|nonstd_any.hpp|examples|thirdparty|tests" -show-instantiations=false
+          ls ../.coverage_llvm_cov/*
           echo "Done!"
 
       - name: Upload Coverage Results
