@@ -226,8 +226,14 @@ private:
     result.ec = (rpc_errc)socket_->body_[0];
     if constexpr (!std::is_void_v<R>) {
       rpc_service::msgpack_codec codec;
-      result.value = codec.unpack<R>(std::string_view(
-          socket_->body_.data() + 1, resp_header.body_len - 1));
+      if constexpr (util::is_basic_v<R>) {
+        result.value = codec.unpack<R>(std::string_view(
+            socket_->body_.data() + 1, resp_header.body_len - 1));
+      } else {
+        auto tp = codec.unpack<std::tuple<R>>(std::string_view(
+            socket_->body_.data() + 1, resp_header.body_len - 1));
+        result.value = std::move(std::get<0>(tp));
+      }
     }
 
     if (resp_header.msg_type == 1) { // pubsub

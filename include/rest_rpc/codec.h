@@ -29,11 +29,11 @@ struct msgpack_codec {
     } else {
       buffer_type buffer(init_size);
       msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
-      return buffer;
+      return std::string(buffer.data(), buffer.size());
     }
   }
 
-  template <typename Arg> static std::string pack_to_string(Arg &arg) {
+  template <typename Arg> static std::string pack_to_string(Arg &&arg) {
     buffer_type buffer(init_size);
     msgpack::pack(buffer, arg);
     return std::string(buffer.data(), buffer.size());

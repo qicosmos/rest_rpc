@@ -8,6 +8,20 @@
 
 using namespace rest_rpc;
 
+struct person {
+  size_t id;
+  std::string name;
+  size_t age;
+  MSGPACK_DEFINE(id, name, age);
+};
+
+person get_person(person p) { return p; }
+
+person modify_person(person p, std::string name) {
+  p.name = name;
+  return p;
+}
+
 struct dummy {
   int add(int a, int b) { return a + b; }
 
@@ -217,6 +231,15 @@ TEST_CASE("test rpc_connection") {
   tcp_socket socket(io_ctx);
   bool cross_ending_ = false;
   rpc_router router;
+  router.register_handler<get_person>();
+  rpc_service::msgpack_codec codec;
+  person p{1, "tom", 20};
+
+  auto buf = codec.pack_to_string(std::tuple(p));
+  auto ret = sync_wait(get_global_executor(),
+                       router.route(get_key<get_person>(), buf));
+  auto tp =
+      codec.unpack<std::tuple<person>>(ret.data().data(), ret.data().size());
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
@@ -244,6 +267,8 @@ TEST_CASE("test server start") {
   server.register_handler<echo_sv>();
   server.register_handler<round1>();
   server.register_handler<delay_response>();
+  server.register_handler<get_person>();
+  server.register_handler<modify_person>();
   server.set_conn_max_age(std::chrono::seconds(5));
   server.set_check_conn_interval(std::chrono::seconds(1));
   auto ec = server.async_start();
@@ -278,6 +303,19 @@ TEST_CASE("test server start") {
     auto result = sync_wait(cl.get_executor(),
                             cl.call_for<add>(std::chrono::minutes(2), 1, 2));
     CHECK(result.ec == rpc_errc::ok);
+    CHECK(result.value == 3);
+  }
+  {
+    person p{1, "tom", 20};
+    auto result = sync_wait(
+        cl.get_executor(), cl.call_for<get_person>(std::chrono::minutes(2), p));
+    CHECK(result.ec == rpc_errc::ok);
+
+    auto result1 = sync_wait(
+        cl.get_executor(),
+        cl.call_for<modify_person>(std::chrono::minutes(2), p, "jack"));
+    CHECK(result1.ec == rpc_errc::ok);
+    CHECK(result1.value.name == "jack");
   }
   {
     // auto result = sync_wait(cl.get_executor(),

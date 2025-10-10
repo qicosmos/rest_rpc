@@ -63,7 +63,7 @@ public:
           asio::as_tuple(asio::use_awaitable));
       if (ec) {
         if (ec != asio::error::eof) {
-          REST_LOG_INFO << "read http head error: " << ec.message();
+          REST_LOG_INFO << "read head error: " << ec.message();
         } else {
           REST_LOG_INFO << "read head error: " << ec.message();
         }
