@@ -241,11 +241,10 @@ asio::awaitable<void> test_router() {
     auto ret2 = co_await router.route(get_key<&dummy::echo_coro>(), "test");
     CHECK(ret2.ec == rpc_errc::ok);
   }
-  rpc_service::msgpack_codec codec;
 
   {
-    auto s = codec.pack_args(1);
-    auto s1 = codec.pack_args("test");
+    auto s = msgpack_codec::pack_args(1);
+    auto s1 = msgpack_codec::pack_args("test");
     auto r = co_await router.route(get_key<round1>(), s);
     auto r1 = co_await router.route(get_key<echo>(), s1);
 
@@ -254,7 +253,7 @@ asio::awaitable<void> test_router() {
     std::cout << "\n";
   }
 
-  auto args = codec.pack_args(1, 2);
+  auto args = msgpack_codec::pack_args(1, 2);
   std::string_view str(args.data(), args.size());
 
   {
@@ -263,12 +262,12 @@ asio::awaitable<void> test_router() {
     std::cout << "\n";
   }
 
-  auto args1 = codec.pack_args("it is a test");
+  auto args1 = msgpack_codec::pack_args("it is a test");
   std::string_view str1(args1.data(), args1.size());
 
   {
     auto result = co_await router.route(get_key<&dummy::add>(), str);
-    auto r = codec.unpack<int>(result.result);
+    auto r = msgpack_codec::unpack<int>(result.result);
     auto result1 = co_await router.route(get_key<&dummy::foo>(), str1);
     CHECK(r == 3);
     CHECK(result1.ec == rpc_errc::ok);
@@ -291,14 +290,13 @@ TEST_CASE("test rpc_connection") {
   bool cross_ending_ = false;
   rpc_router router;
   router.register_handler<get_person>();
-  rpc_service::msgpack_codec codec;
+
   person p{1, "tom", 20};
 
-  auto buf = codec.pack_to_string(std::tuple(p));
+  auto buf = msgpack_codec::pack_args(p);
   auto ret = sync_wait(get_global_executor(),
                        router.route(get_key<get_person>(), buf));
-  auto tp =
-      codec.unpack<std::tuple<person>>(ret.data().data(), ret.data().size());
+  auto tp = msgpack_codec::unpack<std::tuple<person>>(ret.data());
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
@@ -336,12 +334,12 @@ TEST_CASE("test server start") {
 
   static_assert(util::CharArrayRef<char const(&)[5]>);
   static_assert(util::CharArray<const char[5]>);
-  rpc_service::msgpack_codec::pack_args();
-  rpc_service::msgpack_codec::pack_args(1, 2);
-  auto s1 = rpc_service::msgpack_codec::pack_args("test");
-  auto s2 = rpc_service::msgpack_codec::pack_args(std::string_view("test2"));
-  auto s3 = rpc_service::msgpack_codec::pack_args(std::string("test2"));
-  auto s5 = rpc_service::msgpack_codec::pack_args(123);
+  msgpack_codec::pack_args();
+  msgpack_codec::pack_args(1, 2);
+  auto s1 = msgpack_codec::pack_args("test");
+  auto s2 = msgpack_codec::pack_args(std::string_view("test2"));
+  auto s3 = msgpack_codec::pack_args(std::string("test2"));
+  auto s5 = msgpack_codec::pack_args(123);
 
   //  auto future = asio::co_spawn(cl.get_executor(),
   //  cl.connect("127.0.0.1:9005"), asio::use_future); auto conn_ec =

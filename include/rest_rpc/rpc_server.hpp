@@ -113,8 +113,8 @@ public:
     auto conns = get_connections();
     for (auto &[_, conn] : conns) {
       if (conn->topic_id() == id) {
-        co_await conn->response(
-            rpc_service::msgpack_codec::pack_args(std::forward<T>(t)), id);
+        co_await conn->response(msgpack_codec::pack_args(std::forward<T>(t)),
+                                id);
       }
     }
   }

@@ -237,8 +237,8 @@ asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
     REST_LOG_ERROR << "rpc context init failed";
     co_return make_error_code(rpc_errc::rpc_context_init_failed);
   }
-  rpc_service::msgpack_codec codec;
-  rpc_result result(codec.pack_args(std::forward<Args>(args)...));
+
+  rpc_result result(msgpack_codec::pack_args(std::forward<Args>(args)...));
   has_response_ = true;
   co_return co_await conn_->response(result);
 }
