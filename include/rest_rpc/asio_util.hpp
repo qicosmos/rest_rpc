@@ -1,11 +1,23 @@
 #pragma once
+#include "traits.h"
 #include "use_asio.hpp"
 
 namespace rest_rpc {
+template <typename T>
+constexpr inline bool is_awaitable_v =
+    util::is_specialization_v<std::remove_cvref_t<T>, asio::awaitable>;
+
+template <typename T, bool IsAwaitable = is_awaitable_v<T>> struct return_type {
+  using type = T;
+};
+
+template <typename T> struct return_type<T, true> {
+  using type = typename std::remove_cvref_t<T>::value_type;
+};
+
+template <typename T> using return_type_t = typename return_type<T>::type;
+
 template <typename Coro> inline auto async_start(auto executor, Coro &&coro) {
-  using R =
-      typename std::remove_cvref_t<std::invoke_result_t<Coro>>::value_type;
-  static_assert(std::is_void_v<R>);
   asio::co_spawn(executor, std::forward<Coro>(coro), asio::detached);
 }
 

@@ -2,6 +2,7 @@
 #include "codec.h"
 #include "error_code.h"
 
+#include "asio_util.hpp"
 #include "util.hpp"
 #include <cstdint>
 #include <functional>
@@ -9,10 +10,6 @@
 #include <string_view>
 
 namespace rest_rpc {
-template <typename T>
-constexpr inline bool is_awaitable_v =
-    util::is_specialization_v<std::remove_cvref_t<T>, asio::awaitable>;
-
 template <typename T>
 constexpr inline bool is_void_v =
     std::is_same_v<T, void> || std::is_same_v<T, asio::awaitable<void>>;

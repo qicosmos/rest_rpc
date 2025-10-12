@@ -69,9 +69,8 @@ template <auto func> asio::awaitable<void> response(auto ctx) {
 }
 
 std::string_view delay_response(std::string_view str) {
-  auto &ctx = rpc_context::context();
+  rpc_context ctx;
   // set_delay before response in another thread
-  ctx.set_delay(true);
 
   // std::thread thd([ctx = std::move(ctx)]() mutable {
   //   std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -113,6 +112,66 @@ asio::awaitable<void> no_arg_coro() {
 asio::awaitable<std::string> no_arg_coro1() {
   std::cout << "no args\n";
   co_return "test";
+}
+
+std::string delay_response1(std::string_view str) {
+  rpc_context ctx; // right, created in io thread.
+  async_start(ctx.get_executor(), ctx.response(std::string(str)));
+
+  return "";
+}
+
+asio::awaitable<std::string> delay_response2(std::string_view str) {
+  auto coro = []() -> asio::awaitable<void> {
+    rpc_context ctx; // rpc_context init will be failed, it should be defined in
+                     // io thread.
+    auto ret = co_await ctx.response("test");
+    REST_LOG_INFO << ret.message();
+    CHECK(ret);
+  };
+  sync_wait(get_global_executor(), coro());
+
+  rpc_context ctx;
+  co_await ctx.response(str);
+  auto ret = co_await ctx.response(str);
+  CHECK(ret);
+
+  co_return "";
+}
+
+std::string delay_response3(std::string str) {
+  rpc_context ctx;
+  std::thread thd([ctx = std::move(ctx), str]() mutable {
+    sync_wait(ctx.get_executor(), ctx.response(std::move(str)));
+  });
+  thd.detach();
+
+  return "";
+}
+
+TEST_CASE("test delay response") {
+  using T = return_type_t<int>;
+  rpc_server server("127.0.0.1:9005");
+  server.register_handler<delay_response1>();
+  server.register_handler<delay_response2>();
+  server.register_handler<delay_response3>();
+  server.async_start();
+  rpc_client client;
+  sync_wait(client.get_executor(), client.connect("127.0.0.1:9005"));
+  auto result =
+      sync_wait(client.get_executor(), client.call<delay_response1>("test"));
+  CHECK(result.value == "test");
+  auto result1 =
+      sync_wait(client.get_executor(), client.call<delay_response2>("test"));
+  CHECK(result1.value == "test");
+  result1 =
+      sync_wait(client.get_executor(), client.call<delay_response2>("test"));
+  CHECK(result1.value == "test");
+  auto result2 = sync_wait(
+      client.get_executor(),
+      client.call_for<delay_response3>(std::chrono::minutes(2), "test"));
+  CHECK(result2.value == "test");
+  server.stop();
 }
 
 // TODO: client pool

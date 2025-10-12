@@ -94,13 +94,15 @@ public:
   }
 
   template <auto func, typename... Args>
-  asio::awaitable<call_result<function_return_type_t<decltype(func)>>>
+  asio::awaitable<
+      call_result<return_type_t<function_return_type_t<decltype(func)>>>>
   call(Args &&...args) {
     return call_for<func>(std::chrono::seconds(5), std::forward<Args>(args)...);
   }
 
   template <auto func, typename... Args>
-  asio::awaitable<call_result<function_return_type_t<decltype(func)>>>
+  asio::awaitable<
+      call_result<return_type_t<function_return_type_t<decltype(func)>>>>
   call_for(auto duration, Args &&...args) {
     using args_tuple = function_parameters_t<decltype(func)>;
     static_assert(std::is_constructible_v<args_tuple, Args...>,
@@ -108,7 +110,7 @@ public:
 
     rest_rpc_header header{};
     header.function_id = get_key<func>();
-    using R = function_return_type_t<decltype(func)>;
+    using R = return_type_t<function_return_type_t<decltype(func)>>;
     auto r = co_await (watchdog(duration) ||
                        call_impl<R>(header, std::forward<Args>(args)...));
     if (r.index() == 0) {

@@ -20,6 +20,7 @@ enum class rpc_errc : std::int8_t {
   protocol_error,
   has_response,
   duplicate_topic,
+  rpc_context_init_failed,
 };
 
 class rpc_error_category : public std::error_category {
@@ -60,6 +61,9 @@ public:
       return "has response, duplicate response is not allowed";
     case rpc_errc::duplicate_topic:
       return "duplicate topic";
+    case rpc_errc::rpc_context_init_failed:
+      return "the rpc context init failed, it must be created in rpc handler "
+             "io thread, otherwise will init failed";
     default:
       return "unknown error";
     }

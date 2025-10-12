@@ -8,39 +8,42 @@
 namespace rest_rpc {
 class rpc_connection;
 
-class rpc_context {
+class tls_data {
 public:
-  static auto &context() {
-    thread_local rpc_context instance;
-    return instance;
-  }
-
-  rpc_context(rpc_context &&o) : conn_(std::move(o.conn_)), delay_(o.delay_) {}
-  rpc_context(const rpc_context &o) = delete;
-
   void set_connection(std::shared_ptr<rpc_connection> conn) { conn_ = conn; }
 
   bool delay() { return delay_; }
 
-  void set_delay(bool r) { context().delay_ = r; }
+  void set_delay(bool r) { delay_ = r; }
+
+  auto get_executor();
+  std::shared_ptr<rpc_connection> get_conn() { return conn_; }
+
+private:
+  std::shared_ptr<rpc_connection> conn_ = nullptr;
+  bool delay_ = false;
+};
+
+inline auto &get_context() {
+  static thread_local tls_data instance;
+  return instance;
+}
+
+class rpc_context {
+public:
+  rpc_context();
 
   auto get_executor();
 
   template <auto func, typename... Args>
   asio::awaitable<std::error_code> response_s(Args &&...args);
 
-  template <auto func, typename... Args>
-  std::error_code sync_response_s(Args &&...args);
-
   template <typename... Args>
   asio::awaitable<std::error_code> response(Args &&...args);
 
-  template <typename... Args> std::error_code sync_response(Args &&...args);
-
 private:
-  rpc_context() = default;
-  std::shared_ptr<rpc_connection> conn_;
-  bool delay_ = false;
+  asio::any_io_executor executor_;
+  std::shared_ptr<rpc_connection> conn_ = nullptr;
   bool has_response_ = false;
 };
 
@@ -99,11 +102,11 @@ public:
       }
 
       // route
-      rpc_context::context().set_connection(self);
+      get_context().set_connection(self);
       auto result = co_await router_.route(header.function_id, body_);
-      bool delay = rpc_context::context().delay();
+      bool delay = get_context().delay();
       if (delay) {
-        rpc_context::context().set_delay(false);
+        get_context().set_delay(false);
         continue;
       }
 
@@ -198,6 +201,21 @@ private:
   std::atomic<uint32_t> topic_id_;
 };
 
+auto tls_data::get_executor() {
+  if (!conn_) {
+    return asio::any_io_executor();
+  }
+  return conn_->get_executor();
+}
+
+auto rpc_context::get_executor() { return executor_; }
+
+rpc_context::rpc_context() {
+  executor_ = get_context().get_executor();
+  conn_ = get_context().get_conn();
+  get_context().set_delay(true);
+}
+
 // zero or one arguments
 template <auto func, typename... Args>
 asio::awaitable<std::error_code> rpc_context::response_s(Args &&...args) {
@@ -210,29 +228,19 @@ asio::awaitable<std::error_code> rpc_context::response_s(Args &&...args) {
   return response(std::forward<Args>(args)...);
 }
 
-template <auto func, typename... Args>
-std::error_code rpc_context::sync_response_s(Args &&...args) {
-  return sync_wait(conn_->get_executor(),
-                   response_s<func>(std::forward<Args>(args)...));
-}
-
 template <typename... Args>
 asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
   if (has_response_) {
     co_return make_error_code(rpc_errc::has_response);
   }
-
-  has_response_ = true;
+  if (!conn_) {
+    REST_LOG_ERROR << "rpc context init failed";
+    co_return make_error_code(rpc_errc::rpc_context_init_failed);
+  }
   rpc_service::msgpack_codec codec;
   rpc_result result(codec.pack_args(std::forward<Args>(args)...));
+  has_response_ = true;
   co_return co_await conn_->response(result);
 }
 
-template <typename... Args>
-std::error_code rpc_context::sync_response(Args &&...args) {
-  return sync_wait(conn_->get_executor(),
-                   response(std::forward<Args>(args)...));
-}
-
-auto rpc_context::get_executor() { return conn_->get_executor(); }
 } // namespace rest_rpc
