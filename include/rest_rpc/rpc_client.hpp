@@ -20,7 +20,9 @@ template <typename R> struct call_result {
   R value;
 };
 
-template <> struct call_result<void> { rpc_errc ec; };
+template <> struct call_result<void> {
+  rpc_errc ec;
+};
 
 class rpc_client {
 public:
@@ -161,10 +163,26 @@ public:
   }
 
 private:
+  template <typename... Args> auto get_buffer(Args &&...args) {
+    if constexpr (sizeof...(Args) == 0) {
+      return rpc_codec::pack_args();
+    } else if constexpr (sizeof...(Args) > 1) {
+      return rpc_codec::pack_args(
+          std::forward_as_tuple(std::forward<Args>(args)...));
+    } else {
+      if constexpr (util::is_basic_v<Args...>) {
+        return rpc_codec::pack_args(std::forward<Args>(args)...);
+      } else {
+        return rpc_codec::pack_args(
+            std::forward_as_tuple(std::forward<Args>(args)...));
+      }
+    }
+  }
+
   template <typename R, typename... Args>
   asio::awaitable<call_result<R>> call_impl(rest_rpc_header &header,
                                             Args &&...args) {
-    auto buf = rpc_codec::pack_args(std::forward<Args>(args)...);
+    auto buf = get_buffer(std::forward<Args>(args)...);
     header.body_len = buf.size();
     if (cross_ending_) {
       prepare_for_send(header);

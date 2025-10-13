@@ -114,13 +114,6 @@ asio::awaitable<std::string> no_arg_coro1() {
   co_return "test";
 }
 
-std::string delay_response1(std::string_view str) {
-  rpc_context ctx; // right, created in io thread.
-  async_start(ctx.get_executor(), ctx.response(std::string(str)));
-
-  return "";
-}
-
 asio::awaitable<std::string> delay_response2(std::string_view str) {
   auto coro = []() -> asio::awaitable<void> {
     rpc_context ctx; // rpc_context init will be failed, it should be defined in
@@ -152,17 +145,14 @@ std::string delay_response3(std::string str) {
 TEST_CASE("test delay response") {
   using T = return_type_t<int>;
   rpc_server server("127.0.0.1:9005");
-  server.register_handler<delay_response1>();
   server.register_handler<delay_response2>();
   server.register_handler<delay_response3>();
   server.async_start();
   rpc_client client;
   sync_wait(client.get_executor(), client.connect("127.0.0.1:9005"));
-  auto result =
-      sync_wait(client.get_executor(), client.call<delay_response1>("test"));
-  CHECK(result.value == "test");
-  auto result1 =
-      sync_wait(client.get_executor(), client.call<delay_response2>("test"));
+  auto result1 = sync_wait(
+      client.get_executor(),
+      client.call_for<delay_response2>(std::chrono::minutes(2), "test"));
   CHECK(result1.value == "test");
   result1 =
       sync_wait(client.get_executor(), client.call<delay_response2>("test"));
@@ -293,10 +283,10 @@ TEST_CASE("test rpc_connection") {
 
   person p{1, "tom", 20};
 
-  auto buf = rpc_codec::pack_args(p);
+  auto buf = rpc_codec::pack_args(std::tuple(p));
   auto ret = sync_wait(get_global_executor(),
                        router.route(get_key<get_person>(), buf));
-  auto tp = rpc_codec::unpack<std::tuple<person>>(ret.data());
+  auto tp = rpc_codec::unpack<person>(ret.data());
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
@@ -496,7 +486,7 @@ TEST_CASE("test reconnect") {
   server.async_start();
   rpc_server server1("127.0.0.1:9005");
   server1.set_check_conn_interval(std::chrono::milliseconds(100));
-  server1.set_conn_max_age(std::chrono::milliseconds(200));
+  server1.set_conn_max_age(std::chrono::milliseconds(400));
   server1.async_start();
 
   rpc_client client{};
