@@ -563,7 +563,12 @@ template <typename... Args>
 std::string serialize(rest_adl_tag, Args &&...args) {
   in_user_pack = true;
   msgpack::sbuffer buffer(2 * 1024);
-  msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
+  if constexpr (sizeof...(Args) > 1) {
+    msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
+  } else {
+    msgpack::pack(buffer, std::forward<Args>(args)...);
+  }
+
   return std::string(buffer.data(), buffer.size());
 }
 
