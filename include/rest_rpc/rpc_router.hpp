@@ -148,15 +148,15 @@ private:
     } else {
       if constexpr (std::is_void_v<Self>) {
         if constexpr (is_awaitable_v<R>) {
-          ret = msgpack_codec::pack_args(co_await f());
+          ret = rpc_codec::pack_args(co_await f());
         } else {
-          ret = msgpack_codec::pack_args(f());
+          ret = rpc_codec::pack_args(f());
         }
       } else {
         if constexpr (is_awaitable_v<R>) {
-          ret = msgpack_codec::pack_args(co_await (*self.*f)());
+          ret = rpc_codec::pack_args(co_await (*self.*f)());
         } else {
-          ret = msgpack_codec::pack_args((*self.*f)());
+          ret = rpc_codec::pack_args((*self.*f)());
         }
       }
     }
@@ -169,32 +169,30 @@ private:
     if constexpr (is_void_v<R>) {
       if constexpr (std::is_void_v<Self>) {
         if constexpr (is_awaitable_v<R>) {
-          co_await f(msgpack_codec::unpack<Arg>(str));
+          co_await f(rpc_codec::unpack<Arg>(str));
         } else {
-          f(msgpack_codec::unpack<Arg>(str));
+          f(rpc_codec::unpack<Arg>(str));
         }
       } else {
         if constexpr (is_awaitable_v<R>) {
-          co_await (*self.*f)(msgpack_codec::unpack<Arg>(str));
+          co_await (*self.*f)(rpc_codec::unpack<Arg>(str));
         } else {
-          (*self.*f)(msgpack_codec::unpack<Arg>(str));
+          (*self.*f)(rpc_codec::unpack<Arg>(str));
         }
       }
     } else {
       if constexpr (std::is_void_v<Self>) {
         if constexpr (is_awaitable_v<R>) {
-          ret = msgpack_codec::pack_args(
-              co_await f(msgpack_codec::unpack<Arg>(str)));
+          ret = rpc_codec::pack_args(co_await f(rpc_codec::unpack<Arg>(str)));
         } else {
-          ret = msgpack_codec::pack_args(f(msgpack_codec::unpack<Arg>(str)));
+          ret = rpc_codec::pack_args(f(rpc_codec::unpack<Arg>(str)));
         }
       } else {
         if constexpr (is_awaitable_v<R>) {
-          ret = msgpack_codec::pack_args(
-              co_await (*self.*f)(msgpack_codec::unpack<Arg>(str)));
+          ret = rpc_codec::pack_args(
+              co_await (*self.*f)(rpc_codec::unpack<Arg>(str)));
         } else {
-          ret = msgpack_codec::pack_args(
-              (*self.*f)(msgpack_codec::unpack<Arg>(str)));
+          ret = rpc_codec::pack_args((*self.*f)(rpc_codec::unpack<Arg>(str)));
         }
       }
     }
@@ -204,7 +202,7 @@ private:
   template <typename R, typename Args, typename F, typename Self>
   asio::awaitable<void> handle_more_args(std::string_view str, const F &f,
                                          rpc_result &ret, Self *self) {
-    auto tp = msgpack_codec::unpack<Args>(str);
+    auto tp = rpc_codec::unpack<Args>(str);
     if constexpr (std::is_void_v<R>) {
       if constexpr (std::is_void_v<Self>) {
         if constexpr (is_awaitable_v<R>) {
@@ -230,19 +228,19 @@ private:
     } else {
       if constexpr (std::is_void_v<Self>) {
         if constexpr (is_awaitable_v<R>) {
-          ret = msgpack_codec::pack_args(co_await std::apply(f, tp));
+          ret = rpc_codec::pack_args(co_await std::apply(f, tp));
         } else {
-          ret = msgpack_codec::pack_args(std::apply(f, tp));
+          ret = rpc_codec::pack_args(std::apply(f, tp));
         }
       } else {
         if constexpr (is_awaitable_v<R>) {
-          ret = msgpack_codec::pack_args(co_await std::apply(
+          ret = rpc_codec::pack_args(co_await std::apply(
               [self, &f](auto &&...args) {
                 return (*self.*f)(std::forward<decltype(args)>(args)...);
               },
               tp));
         } else {
-          ret = msgpack_codec::pack_args(std::apply(
+          ret = rpc_codec::pack_args(std::apply(
               [self, &f](auto &&...args) {
                 return (*self.*f)(std::forward<decltype(args)>(args)...);
               },

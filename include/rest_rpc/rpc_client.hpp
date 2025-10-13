@@ -164,7 +164,7 @@ private:
   template <typename R, typename... Args>
   asio::awaitable<call_result<R>> call_impl(rest_rpc_header &header,
                                             Args &&...args) {
-    auto buf = msgpack_codec::pack_args(std::forward<Args>(args)...);
+    auto buf = rpc_codec::pack_args(std::forward<Args>(args)...);
     header.body_len = buf.size();
     if (cross_ending_) {
       prepare_for_send(header);
@@ -227,10 +227,10 @@ private:
     result.ec = (rpc_errc)socket_->body_[0];
     if constexpr (!std::is_void_v<R>) {
       if constexpr (util::is_basic_v<R>) {
-        result.value = msgpack_codec::unpack<R>(std::string_view(
+        result.value = rpc_codec::unpack<R>(std::string_view(
             socket_->body_.data() + 1, resp_header.body_len - 1));
       } else {
-        auto tp = msgpack_codec::unpack<std::tuple<R>>(std::string_view(
+        auto tp = rpc_codec::unpack<std::tuple<R>>(std::string_view(
             socket_->body_.data() + 1, resp_header.body_len - 1));
         result.value = std::move(std::get<0>(tp));
       }

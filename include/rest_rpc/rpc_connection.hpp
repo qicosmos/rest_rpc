@@ -238,7 +238,7 @@ asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
     co_return make_error_code(rpc_errc::rpc_context_init_failed);
   }
 
-  rpc_result result(msgpack_codec::pack_args(std::forward<Args>(args)...));
+  rpc_result result(rpc_codec::pack_args(std::forward<Args>(args)...));
   has_response_ = true;
   co_return co_await conn_->response(result);
 }
