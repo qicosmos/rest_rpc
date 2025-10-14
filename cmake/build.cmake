@@ -1,5 +1,10 @@
 # Compile Standard
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
+
+include_directories(
+    "../thirdparty"
+    "../thirdparty/asio"
+)
 
 add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/bigobj>")
 

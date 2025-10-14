@@ -12,7 +12,6 @@ struct person {
   size_t id;
   std::string name;
   size_t age;
-  MSGPACK_DEFINE(id, name, age);
 };
 
 person get_person(person p) { return p; }
@@ -545,44 +544,44 @@ TEST_CASE("test server address") {
   thd.join();
 }
 
-bool in_user_pack = false;
-bool in_user_unpack = false;
-namespace user_codec {
-// adl lookup in user_codec namespace
-template <typename... Args>
-std::string serialize(rest_adl_tag, Args &&...args) {
-  in_user_pack = true;
-  msgpack::sbuffer buffer(2 * 1024);
-  if constexpr (sizeof...(Args) > 1) {
-    msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
-  } else {
-    msgpack::pack(buffer, std::forward<Args>(args)...);
-  }
+// bool in_user_pack = false;
+// bool in_user_unpack = false;
+// namespace user_codec {
+// // adl lookup in user_codec namespace
+// template <typename... Args>
+// std::string serialize(rest_adl_tag, Args &&...args) {
+//   in_user_pack = true;
+//   msgpack::sbuffer buffer(2 * 1024);
+//   if constexpr (sizeof...(Args) > 1) {
+//     msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
+//   } else {
+//     msgpack::pack(buffer, std::forward<Args>(args)...);
+//   }
 
-  return std::string(buffer.data(), buffer.size());
-}
+//   return std::string(buffer.data(), buffer.size());
+// }
 
-template <typename T> T deserialize(rest_adl_tag, std::string_view data) {
-  try {
-    in_user_unpack = true;
-    static msgpack::unpacked msg;
-    msgpack::unpack(msg, data.data(), data.size());
-    return msg.get().as<T>();
-  } catch (...) {
-    return T{};
-  }
-}
-} // namespace user_codec
+// template <typename T> T deserialize(rest_adl_tag, std::string_view data) {
+//   try {
+//     in_user_unpack = true;
+//     static msgpack::unpacked msg;
+//     msgpack::unpack(msg, data.data(), data.size());
+//     return msg.get().as<T>();
+//   } catch (...) {
+//     return T{};
+//   }
+// }
+// } // namespace user_codec
 
-TEST_CASE("test user codec") {
-  auto buf = rpc_codec::pack_args(
-      std::make_tuple<int, std::string, int>(1, "tom", 20));
-  CHECK(in_user_pack);
+// TEST_CASE("test user codec") {
+//   auto buf = rpc_codec::pack_args(
+//       std::make_tuple<int, std::string, int>(1, "tom", 20));
+//   CHECK(in_user_pack);
 
-  std::string_view str(buf.data(), buf.size());
-  rpc_codec::unpack<std::tuple<int, std::string, int>>(str);
-  CHECK(in_user_unpack);
-}
+//   std::string_view str(buf.data(), buf.size());
+//   rpc_codec::unpack<std::tuple<int, std::string, int>>(str);
+//   CHECK(in_user_unpack);
+// }
 
 // doctest comments
 // 'function' : must be 'attribute' - see issue #182

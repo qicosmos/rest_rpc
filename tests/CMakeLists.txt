@@ -2,8 +2,8 @@ project(test_rest_rpc)
 set(project_name test_rest_rpc)
 
 include_directories(
-        "../thirdparty/msgpack-c/include"
         "../thirdparty/asio"
+        "../thirdparty"
         )
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")

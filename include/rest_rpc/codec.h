@@ -3,7 +3,7 @@
 
 #include "traits.h"
 #include <charconv>
-#include <msgpack.hpp>
+#include <ylt/struct_pack.hpp>
 
 namespace user_codec {
 struct rest_adl_tag {};
@@ -38,15 +38,11 @@ struct rpc_codec {
         return serialize(user_codec::rest_adl_tag{},
                          std::forward<Args>(args)...);
       } else {
-        msgpack::sbuffer buffer(2 * 1024);
         if constexpr (sizeof...(Args) > 1) {
-          msgpack::pack(buffer,
-                        std::forward_as_tuple(std::forward<Args>(args)...));
+          return struct_pack::serialize<std::string>(std::forward_as_tuple(std::forward<Args>(args)...));              
         } else {
-          msgpack::pack(buffer, std::forward<Args>(args)...);
+          return struct_pack::serialize<std::string>(std::forward<Args>(args)...);
         }
-
-        return std::string(buffer.data(), buffer.size());
       }
     }
   }
@@ -67,13 +63,11 @@ struct rpc_codec {
       if constexpr (detail::has_user_pack_v<T>) {
         return deserialize<T>(user_codec::rest_adl_tag{}, data);
       } else {
-        try {
-          static msgpack::unpacked msg;
-          msgpack::unpack(msg, data.data(), data.size());
-          return msg.get().as<T>();
-        } catch (...) {
-          throw std::invalid_argument("unpack failed: Args not match!");
+        auto r = struct_pack::deserialize<T>(data);
+        if(!r) {
+          throw std::invalid_argument("unpack failed: " + std::string(r.error().message()));
         }
+        return r.value();
       }
     }
   }
