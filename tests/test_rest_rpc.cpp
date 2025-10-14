@@ -359,8 +359,8 @@ TEST_CASE("test server start") {
     CHECK(result.ec == rpc_errc::ok);
 
     auto result1 = sync_wait(
-        cl.get_executor(),
-        cl.call_for<modify_person>(std::chrono::minutes(2), p, "jack"));
+        cl.get_executor(), cl.call_for<modify_person>(std::chrono::minutes(2),
+                                                      p, std::string("jack")));
     CHECK(result1.ec == rpc_errc::ok);
     CHECK(result1.value.name == "jack");
   }
