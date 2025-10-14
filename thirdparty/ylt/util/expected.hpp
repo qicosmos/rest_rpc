@@ -16,44 +16,28 @@
 #pragma once
 #include "tl/expected.hpp"
 namespace ylt {
-#if __cpp_lib_expected >= 202202L && __cplusplus > 202002L
-template <class T, class E>
-using expected = std::expected<T, E>;
 
-template <class T>
-using unexpected = std::unexpected<T>;
+template <class T, class E> using expected = tl::expected<T, E>;
 
-using unexpect_t = std::unexpect_t;
-
-#else
-template <class T, class E>
-using expected = tl::expected<T, E>;
-
-template <class T>
-using unexpected = tl::unexpected<T>;
+template <class T> using unexpected = tl::unexpected<T>;
 
 using unexpect_t = tl::unexpect_t;
-#endif
 
 static constexpr unexpect_t unexpect;
 
-}  // namespace ylt
+} // namespace ylt
 // decrepeted, instead by ylt::expected
 namespace coro_rpc {
-template <class T, class E>
-using expected = ylt::expected<T, E>;
+template <class T, class E> using expected = ylt::expected<T, E>;
 
-template <class T>
-using unexpected = ylt::unexpected<T>;
+template <class T> using unexpected = ylt::unexpected<T>;
 
 using unexpect_t = ylt::unexpect_t;
-}  // namespace coro_rpc
+} // namespace coro_rpc
 namespace struct_pack {
-template <class T, class E>
-using expected = ylt::expected<T, E>;
+template <class T, class E> using expected = ylt::expected<T, E>;
 
-template <class T>
-using unexpected = ylt::unexpected<T>;
+template <class T> using unexpected = ylt::unexpected<T>;
 
 using unexpect_t = ylt::unexpect_t;
-}  // namespace struct_pack
+} // namespace struct_pack
