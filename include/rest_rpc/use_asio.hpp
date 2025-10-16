@@ -18,23 +18,3 @@ using ssl_socket = asio::ssl::stream<asio::ip::tcp::socket>;
 #endif
 
 #include <string_view>
-
-#ifdef CINATRA_ENABLE_SSL
-#if __cplusplus > 201402L
-#if defined(__GNUC__)
-#if __GNUC__ < 8
-#include <experimental/filesystem>
-namespace rpcfs = std::experimental::filesystem;
-#else
-#include <filesystem>
-namespace rpcfs = std::filesystem;
-#endif
-#else
-#include <boost/filesystem.hpp>
-namespace rpcfs = boost::filesystem;
-#endif
-#else
-#include <boost/filesystem.hpp>
-namespace rpcfs = boost::filesystem;
-#endif
-#endif

@@ -20,9 +20,7 @@ template <typename R> struct call_result {
   R value;
 };
 
-template <> struct call_result<void> {
-  rpc_errc ec;
-};
+template <> struct call_result<void> { rpc_errc ec; };
 
 class rpc_client {
 public:
@@ -218,12 +216,14 @@ private:
         socket_->impl_, asio::buffer(&resp_header, sizeof(rest_rpc_header)),
         asio::as_tuple(asio::use_awaitable));
     if (ec) {
-      result.ec = rpc_errc::write_error;
+      result.ec = rpc_errc::read_error;
       close_socket(*socket_);
+      comple_all();
       co_return result;
     }
     if (resp_header.magic != 39) {
       result.ec = rpc_errc::protocol_error;
+      comple_all();
       co_return result;
     }
 
@@ -240,6 +240,7 @@ private:
       REST_LOG_WARNING << "read body error: " << ec.message();
       result.ec = rpc_errc::read_error;
       close_socket(*socket_);
+      comple_all();
       co_return result;
     }
     result.ec = (rpc_errc)socket_->body_[0];
@@ -255,6 +256,12 @@ private:
       }
     }
     co_return std::move(result);
+  }
+
+  void comple_all() {
+    for (auto &pair : socket_->sub_ops_) {
+      pair.second.complete(false);
+    }
   }
 
   asio::awaitable<std::error_code> watchdog(auto duration) {

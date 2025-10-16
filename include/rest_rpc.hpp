@@ -1,2 +1,2 @@
-#include "rest_rpc/rest_rpc_client.hpp"
-#include "rest_rpc/rest_rpc_server.h"
+#include "rest_rpc/rpc_client.hpp"
+#include "rest_rpc/rpc_server.hpp"

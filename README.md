@@ -7,7 +7,7 @@
 | macOS Monterey 12 (AppleClang 14.0.0.14000029) | ![win](https://github.com/qicosmos/rest_rpc/actions/workflows/mac.yml/badge.svg?branch=master)         |
 | Windows Server 2022 (MSVC 19.33.31630.0)       | ![win](https://github.com/qicosmos/rest_rpc/actions/workflows/windows.yml/badge.svg?branch=master)     |
 
-c++11, high performance, cross platform, easy to use rpc framework.
+c++20, high performance, cross platform, easy to use rpc framework.
 
 It's so easy to love RPC.
 
@@ -15,7 +15,7 @@ Modern C++开发的RPC库就是这么简单好用！
 
 # rest_rpc简介
 
-rest_rpc是一个高性能、易用、跨平台、header only的c++11 rpc库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(tag:asio-1-36-0) 
+rest_rpc是一个高性能、易用、跨平台、header only的基于c++20 协程的rpc 库，它的目标是让tcp通信变得非常简单易用，即使不懂网络通信的人也可以直接使用它。它依赖header-only的standalone [asio](https://github.com/chriskohlhoff/asio)(tag:asio-1-36-0) 
 
 可以快速上手，使用者只需要关注自己的业务逻辑即可。
 
@@ -36,29 +36,36 @@ rest_rpc为用户提供了非常简单易用的接口，几行代码就可以实
 ```
 //服务端注册加法rpc服务
 
-struct dummy{
-	int add(rpc_conn conn, int a, int b) { return a + b; }
-};
+int add(rpc_conn conn, int a, int b) { return a + b; }
 
 int main(){
-	rpc_server server(9000, std::thread::hardware_concurrency());
+  rpc_server server("127.0.0.1:9004", std::thread::hardware_concurrency());
 
-	dummy d;
-	server.register_handler("add", &dummy::add, &d);
-	
-	server.run();
+  server.register_handler<add>();
+
+  server.start();
 }
 ```
 
 ```
 //客户端调用加法的rpc服务
 int main(){
-	rpc_client client("127.0.0.1", 9000);
-	client.connect();
-
-	int result = client.call<int>("add", 1, 2);
-
-	client.run();
+  auto rpc_call = []() -> asio::awaitable<void> {
+    rpc_client client;
+    auto ec = co_await client.connect("127.0.0.1:9004");
+    if(ec) {
+      REST_LOG_ERROR << ec0.message();
+      co_return;
+    }
+    
+    auto r = co_await client.call<add>(1, 2);
+    if(r.ec==rpc_errc::ok) {
+      REST_LOG_INFO << "call result: " << r.value;
+      assert(r.value == 3);
+    }
+  };
+  
+  sync_wait(get_global_executor(), rpc_call());
 }
 ```
 
@@ -69,133 +76,134 @@ int main(){
 
 //1.先定义person对象
 struct person {
-	int id;
-	std::string name;
-	int age;
-
-	MSGPACK_DEFINE(id, name, age);
+  int id;
+  std::string name;
+  int age;
 };
 
 //2.提供并服务
-person get_person(rpc_conn conn) {
-	return { 1, "tom", 20 };
+person get_person(person p) {
+  p.name = "jack";
+  return p;
 }
 
 int main(){
-	//...
-	server.register_handler("get_person", get_person);
+  rpc_server server("127.0.0.1:9004", std::thread::hardware_concurrency());
+  server.register_handler<get_person>();
+  server.start();
 }
 ```
 
 ```
 //客户端调用获取person对象的rpc服务
 int main(){
-	rpc_client client("127.0.0.1", 9000);
-	client.connect();
-	
-	person result = client.call<person>("get_person");
-	std::cout << result.name << std::endl;
-	
-	client.run();
-}
-```
-
-## 酷
-
-异步？
-
-同步？
-
-future?
-
-callback？
-
-当初为了提供什么样的接口在社区群里还争论了一番，有人希望提供callback接口，有人希望提供future接口，最后我
-决定都提供，专治强迫症患者:)
-
-现在想要的这些接口都给你提供了，你想用什么类型的接口就用什么类型的接口，够酷吧，让我们来看看怎么用这些接口吧：
-
-```
-//服务端提供echo服务
-std::string echo(rpc_conn conn, const std::string& src) {
-	return src;
-}
-
-server.register_handler("echo", echo);
-```
-
-客户端同步接口
-
-```
-auto result = client.call<std::string>("echo", "hello");
-```
-
-客户端异步回调接口
-
-```
-client.async_call<R>("echo", [](asio::error_code ec, R data){
-	std::cout << "echo " << data << '\n';
-});
-```
-
-## async_call接口说明
-有两个重载的async_call接口，一个是返回future的接口，一个是带超时的异步接口。
-
-返回future的async_call接口：
-```
-std::future<std::string> future = client.async_call<CallModel::future>("echo", "purecpp");
-```
-
-带超时的异步回调接口：
-```
-async_call<R, timeout_ms>("some_rpc_service_name", callback, service_args...);
-```
-
-如果不显式设置超时时间的话，则会用默认的5s超时.
-```
-async_call<R>("some_rpc_service_name", callback, args...);
-```
-
-```
-client.async_call<std::string>("echo", [](asio::error_code ec, std::string result) {
-    if (ec) {                
-        std::cout << ec.message() <<" "<< data << "\n";
-        return;
+  auto rpc_call = []() -> asio::awaitable<void> {
+    rpc_client client;
+    auto ec = co_await client.connect("127.0.0.1:9004");
+    if(ec) {
+      REST_LOG_ERROR << ec0.message();
+      co_return;
     }
-
-    std::cout << result << " async\n";
-}, "purecpp");
-```
-
-客户端异步future接口
-
-```
-auto future = client->async_call<FUTURE>("echo", "hello");
-auto status = future.wait_for(std::chrono::seconds(2));
-if (status == std::future_status::timeout) {
-	std::cout << "timeout\n";
-}
-else if (status == std::future_status::ready) {
-	auto str = future.get().as<std::string>();
-	std::cout << "echo " << str << '\n';
+    
+    person p{1, "tom", 20};
+    auto r = co_await client.call<get_person>(p);
+    if(r.ec==rpc_errc::ok) {
+      REST_LOG_INFO << "call result: " << r.value.name;
+      assert(r.value.name == "jack");
+    }
+  };
+  
+  sync_wait(get_global_executor(), rpc_call());
 }
 ```
 
-除了上面的这些很棒的接口之外，更酷的是rest_rpc还支持了订阅发布的功能，这是目前很多rpc库做不到的。
+## 发布订阅
+以订阅某个topic为例：
 
-服务端订阅发布的例子在这里：
+server 端代码：
+```cpp
+void publish() {
+  rpc_server server("127.0.0.1:9004", 4);
+  server.async_start();
+  
+  REST_LOG_INFO << "will pubish, waiting for input";
+  auto pub = [&]() -> asio::awaitable<void> {
+    std::string str;
+    while (true) {
+      std::cin >> str;
+      if(str == "quit") {
+        break;
+      }
+      
+      co_await server.publish("topic1", str);// 向客户端发布一个string，你也可以发布一个对象，内部会自动序列化
+    }
+  };
+  
+  sync_wait(get_global_executor(), pub());
+}
 
-https://github.com/qicosmos/rest_rpc/blob/master/examples/server/main.cpp#L121
-https://github.com/qicosmos/rest_rpc/blob/master/examples/client/main.cpp#L383
+client 端代码：
+```cpp
+void subscribe() {
+  REST_LOG_INFO << "will subscribe, waiting for publish";
+  auto sub = [&]() -> asio::awaitable<void> {
+    rpc_client client;
+    co_await client.connect("127.0.0.1:9004");
+    while (true) {
+      // 订阅topic1，会自动将结果反序列化为std::string, 如果publish是一个person对象，则subscribe参数填person，内部会自动反序列化
+      auto [ec, result] = co_await client.subscribe<std::string>("topic1");
+      if (ec != rpc_errc::ok) {
+        REST_LOG_ERROR << "subscribe failed: " << make_error_code(ec).message();
+        break;
+      }
+      
+      REST_LOG_INFO << result;
+    }
+  };
+  
+  sync_wait(get_global_executor(), sub());
+}
+```
 
 ## 快
 
 rest_rpc是目前最快的rpc库，具体和grpc和brpc做了性能对比测试，rest_rpc性能是最高的，远超grpc。
 
-性能测试的结果在这里：
+性能测试代码在这里：
 
-https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%8D%95%E6%9C%BA%E4%B8%8Arest_rpc%E5%92%8Cbrpc%E6%80%A7%E8%83%BD%E6%B5%8B%E8%AF%95.md
+https://github.com/qicosmos/rest_rpc/tree/master/tests/bench.cpp
 
+## 使用自己的序列化库
+rest_rpc 默认使用yalantinglibs的struct_pack 去做系列化/反序列化的，它的性能非常好。
+
+rest_rpc 也支持用户使用自己的序列化库，只需要去实现一个序列化和一个反序列化函数。
+```cpp
+ namespace user_codec {
+ // adl lookup in user_codec namespace
+ template <typename... Args>
+ std::string serialize(rest_adl_tag, Args &&...args) {
+   msgpack::sbuffer buffer(2 * 1024);
+   if constexpr (sizeof...(Args) > 1) {
+     msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
+   } else {
+     msgpack::pack(buffer, std::forward<Args>(args)...);
+   }
+
+   return std::string(buffer.data(), buffer.size());
+ }
+
+ template <typename T> T deserialize(rest_adl_tag, std::string_view data) {
+   try {
+     static msgpack::unpacked msg;
+     msgpack::unpack(msg, data.data(), data.size());
+     return msg.get().as<T>();
+   } catch (...) {
+     return T{};
+   }
+ }
+ } // namespace user_codec
+```
+实现这两个函数之后rest_rpc 将会使用自定义的序列化/反序列化函数了。
 
 # rest_rpc的更多用法
 
@@ -203,9 +211,6 @@ https://github.com/qicosmos/rest_rpc/blob/master/doc/%E5%8D%95%E6%9C%BA%E4%B8%8A
 
 https://github.com/qicosmos/rest_rpc/tree/master/examples
 
-# future
-
-make an IDL tool to genrate the client code.
 
 ## 社区和群
 purecpp.cn
