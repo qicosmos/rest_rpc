@@ -8,20 +8,6 @@ if(BUILD_UNIT_TESTS)
 endif()
 
 SET(ENABLE_SSL OFF)
-SET(ENABLE_JAVA OFF)
-
-add_definitions(-DMSGPACK_NO_BOOST)
-
-if (ENABLE_SSL)
-    add_definitions(-DCINATRA_ENABLE_SSL)
-    message(STATUS "Use SSL")
-    find_package(Boost COMPONENTS system filesystem REQUIRED)
-endif()
-
-if (ENABLE_JAVA)
-    find_package(JNI REQUIRED)
-    message(STATUS "Use Java")
-endif()
 
 # coverage test
 option(COVERAGE_TEST "Build with unit test coverage" OFF)

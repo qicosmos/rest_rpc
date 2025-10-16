@@ -1,6 +1,10 @@
 name: Upload CodeCov Report
 
-on: [ push, pull_request ]
+on:
+  pull_request_target:
+    branches:
+      - master
+      - cpp20
 
 jobs:
   build:
