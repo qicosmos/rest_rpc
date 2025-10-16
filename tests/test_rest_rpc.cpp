@@ -67,32 +67,6 @@ template <auto func> asio::awaitable<void> response(auto ctx) {
   CHECK(ec);
 }
 
-std::string_view delay_response(std::string_view str) {
-  rpc_context ctx;
-  // set_delay before response in another thread
-
-  // std::thread thd([ctx = std::move(ctx)]() mutable {
-  //   std::this_thread::sleep_for(std::chrono::seconds(2));
-  //   //    auto ec = ctx.sync_response("it is from a detached thread");
-  //   //    if (ec) {
-  //   //      REST_LOG_ERROR << "response error: " << ec.message();
-  //   //    }
-  //   auto executor = ctx.get_executor();
-  //   // async_start(executor, response<delay_response>(std::move(ctx)));
-  //   asio::co_spawn(executor, response<delay_response>(std::move(ctx)),
-  //   asio::detached);
-  // });
-  // thd.detach();
-
-  auto executor = ctx.get_executor();
-  asio::co_spawn(executor, response<delay_response>(std::move(ctx)),
-                 asio::detached);
-
-  // this return value is meaningless, because it will response later, the
-  // return type is important for client, so just return an empty value here.
-  return "";
-}
-
 std::string echo(std::string str) { return str; }
 
 asio::awaitable<std::string> echo_coro(std::string str) { co_return str; }
@@ -123,11 +97,13 @@ asio::awaitable<std::string> delay_response2(std::string_view str) {
   };
   sync_wait(get_global_executor(), coro());
 
-  rpc_context ctx;
+  rpc_context ctx; // right, created in io thread.
   co_await ctx.response(str);
   auto ret = co_await ctx.response(str);
   CHECK(ret);
-
+  
+  // this return value is meaningless, because it will response later, the
+  // return type is important for client, so just return an empty value here.
   co_return "";
 }
 
@@ -312,7 +288,6 @@ TEST_CASE("test server start") {
   server.register_handler<echo>();
   server.register_handler<echo_sv>();
   server.register_handler<round1>();
-  server.register_handler<delay_response>();
   server.register_handler<get_person>();
   server.register_handler<modify_person>();
   server.set_conn_max_age(std::chrono::seconds(5));
@@ -330,21 +305,9 @@ TEST_CASE("test server start") {
   auto s3 = rpc_codec::pack_args(std::string("test2"));
   auto s5 = rpc_codec::pack_args(123);
 
-  //  auto future = asio::co_spawn(cl.get_executor(),
-  //  cl.connect("127.0.0.1:9005"), asio::use_future); auto conn_ec =
-  //  future.get();
   auto conn_ec = sync_wait(cl.get_executor(), cl.connect("127.0.0.1:9005"));
-  //  async_start(cl.get_executor(), cl.connect("127.0.0.1:9005"), [](auto
-  //  exptr, auto r){}); async_start(cl.get_executor(),
-  //  cl.connect("127.0.0.1:9005")); auto future =
-  //  async_future(cl.get_executor(), cl.connect("127.0.0.1:9005")); auto ec1 =
-  //  future.get();
-  //
-  //  auto future1 = async_future(cl.get_executor(),
-  //  void_returning_coroutine()); future1.get();
-
-  //  auto future1 = asio::co_spawn(cl.get_executor(), cl.call<add>(1, 2),
-  //  asio::use_future); auto result = future1.get();
+  CHECK(!conn_ec);
+  
   {
     auto result = sync_wait(cl.get_executor(),
                             cl.call_for<add>(std::chrono::minutes(2), 1, 2));
@@ -364,20 +327,6 @@ TEST_CASE("test server start") {
     CHECK(result1.value.name == "jack");
   }
   {
-    // auto result = sync_wait(cl.get_executor(),
-    // cl.call_for<no_arg>(std::chrono::minutes(2)));
-    // CHECK(result.ec==rpc_errc::ok);
-    auto result0 =
-        sync_wait(cl.get_executor(),
-                  cl.call_for<delay_response>(std::chrono::minutes(2), "test"));
-    REST_LOG_INFO << make_error_code(result0.ec).message();
-    CHECK(result0.ec == rpc_errc::ok);
-
-    result0 =
-        sync_wait(cl.get_executor(),
-                  cl.call_for<delay_response>(std::chrono::minutes(2), "test"));
-    CHECK(result0.ec == rpc_errc::ok);
-
     auto result =
         sync_wait(cl.get_executor(),
                   cl.call_for<echo_sv>(std::chrono::minutes(2), "test"));
