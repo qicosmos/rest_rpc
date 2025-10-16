@@ -59,7 +59,7 @@ int main(){
     rpc_client client;
     auto ec = co_await client.connect("127.0.0.1:9004");
     if(ec) {
-      REST_LOG_ERROR << ec0.message();
+      REST_LOG_ERROR << ec.message();
       co_return;
     }
     
@@ -86,7 +86,7 @@ struct person {
   int age;
 };
 
-//2.提供并服务
+//2.提供rpc服务
 person get_person(person p) {
   p.name = "jack";
   return p;
@@ -106,7 +106,7 @@ int main(){
     rpc_client client;
     auto ec = co_await client.connect("127.0.0.1:9004");
     if(ec) {
-      REST_LOG_ERROR << ec0.message();
+      REST_LOG_ERROR << ec.message();
       co_return;
     }
     
@@ -158,7 +158,7 @@ void subscribe() {
     rpc_client client;
     co_await client.connect("127.0.0.1:9004");
     while (true) {
-      // 订阅topic1，会自动将结果反序列化为std::string, 如果publish是一个person对象，则subscribe参数填person，内部会自动反序列化
+      // 订阅topic1，库会自动将结果反序列化为std::string, 如果publish是一个person对象，则subscribe参数填person，内部会自动反序列化
       auto [ec, result] = co_await client.subscribe<std::string>("topic1");
       if (ec != rpc_errc::ok) {
         REST_LOG_ERROR << "subscribe failed: " << make_error_code(ec).message();
@@ -217,11 +217,24 @@ rest_rpc 也支持用户使用自己的序列化库，只需要去实现一个�
 
 # rest_rpc的更多用法
 
+rest_rpc 支持零拷贝发数据，以echo函数为例：
+```cpp
+std::string_view echo(std::string_view str) {
+  return str;
+}
+```
+假如用户希望发送很大的一个数据，可能有数GB，如果按照常规的做法，需要先序列化，这样就存在内存拷贝，rest_rpc 针对这种场景专门做了优化，当client调用rpc函数时传入的是std::string_view 时，
+rest_rpc 将不会对传入的数据做拷贝，也不会去做序列化，直接通过socket发送到服务端。
+
+rpc函数的返回类型为std::string_view 时，client收到的响应数据也不会做反序列化和内存拷贝，直接返回的是收到的socket 数据。
+
+这样就可以实现rpc的零拷贝数据发送了，能获得最佳的性能。
+
 可以参考rest_rpc的example:
 
 https://github.com/qicosmos/rest_rpc/tree/master/examples
 
 ## 社区和群
-purecpp.cn
+http://purecpp.cn
 
 qq群:546487929

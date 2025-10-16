@@ -101,7 +101,7 @@ asio::awaitable<std::string> delay_response2(std::string_view str) {
   co_await ctx.response(str);
   auto ret = co_await ctx.response(str);
   CHECK(ret);
-  
+
   // this return value is meaningless, because it will response later, the
   // return type is important for client, so just return an empty value here.
   co_return "";
@@ -307,7 +307,7 @@ TEST_CASE("test server start") {
 
   auto conn_ec = sync_wait(cl.get_executor(), cl.connect("127.0.0.1:9005"));
   CHECK(!conn_ec);
-  
+
   {
     auto result = sync_wait(cl.get_executor(),
                             cl.call_for<add>(std::chrono::minutes(2), 1, 2));
@@ -502,7 +502,8 @@ TEST_CASE("test server address") {
 //   in_user_pack = true;
 //   msgpack::sbuffer buffer(2 * 1024);
 //   if constexpr (sizeof...(Args) > 1) {
-//     msgpack::pack(buffer, std::forward_as_tuple(std::forward<Args>(args)...));
+//     msgpack::pack(buffer,
+//     std::forward_as_tuple(std::forward<Args>(args)...));
 //   } else {
 //     msgpack::pack(buffer, std::forward<Args>(args)...);
 //   }
