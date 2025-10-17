@@ -38,7 +38,7 @@ rest_rpc为用户提供了非常简单易用的接口，几行代码就可以实
 
 ### 一个加法的rpc服务
 
-```
+```cpp
 //服务端注册加法rpc服务
 
 int add(rpc_conn conn, int a, int b) { return a + b; }
@@ -52,7 +52,7 @@ int main(){
 }
 ```
 
-```
+```cpp
 //客户端调用加法的rpc服务
 int main(){
   auto rpc_call = []() -> asio::awaitable<void> {
@@ -64,7 +64,7 @@ int main(){
     }
     
     auto r = co_await client.call<add>(1, 2);
-    if(r.ec==rpc_errc::ok) {
+    if(r.ec == rpc_errc::ok) {
       REST_LOG_INFO << "call result: " << r.value;
       assert(r.value == 3);
     }
@@ -76,7 +76,7 @@ int main(){
 
 ### 获取一个对象的rpc服务
 
-```
+```cpp
 //服务端注册获取person的rpc服务
 
 //1.先定义person对象
@@ -99,7 +99,7 @@ int main(){
 }
 ```
 
-```
+```cpp
 //客户端调用获取person对象的rpc服务
 int main(){
   auto rpc_call = []() -> asio::awaitable<void> {
@@ -228,9 +228,9 @@ rest_rpc 将不会对传入的数据做拷贝，也不会去做序列化，直�
 
 rpc函数的返回类型为std::string_view 时，client收到的响应数据也不会做反序列化和内存拷贝，直接返回的是收到的socket 数据。
 
-这样就可以实现rpc的零拷贝数据发送了，能获得最佳的性能。
+这样就可以实现rpc的零拷贝数据发送了，能获得最佳的性能。事实上当用户的rpc函数的参数为单参数并且类型为基本类型(字符串和数字类型)时，rest_rpc 不会做序列化，以获得更好的性能，只有多参数或者结构体时才会去序列化。
 
-可以参考rest_rpc的example:
+更多例子可以参考rest_rpc的example:
 
 https://github.com/qicosmos/rest_rpc/tree/master/examples
 
