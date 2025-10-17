@@ -77,8 +77,6 @@ int main(){
 ### 获取一个对象的rpc服务
 
 ```cpp
-//服务端注册获取person的rpc服务
-
 //1.先定义person对象
 struct person {
   int id;
