@@ -5,7 +5,6 @@
 #include <rest_rpc/rpc_client.hpp>
 #include <rest_rpc/rpc_server.hpp>
 #include <rest_rpc/traits.h>
-
 using namespace rest_rpc;
 
 struct person {
@@ -247,12 +246,29 @@ asio::awaitable<void> test_router() {
 
 TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
 
+asio::awaitable<void>
+get_last_rwtime_coro(std::shared_ptr<rpc_connection> conn) {
+  conn->set_last_time();
+
+  asio::steady_timer timer(co_await asio::this_coro::executor);
+  timer.expires_after(std::chrono::milliseconds(100));
+  co_await timer.async_wait(asio::use_awaitable);
+
+  conn->set_last_time();
+
+  auto time = co_await conn->get_last_rwtime();
+
+  auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      time.time_since_epoch());
+  std::cout << "Time in coroutine: " << ms.count() << "ms\n";
+}
+
 TEST_CASE("test rpc_connection") {
   uint64_t conn_id = 999;
   size_t num_thread = 4;
   asio::io_context io_ctx;
   tcp_socket socket(io_ctx);
-  bool cross_ending_ = false;
+  bool cross_ending = false;
   rpc_router router;
   router.register_handler<get_person>();
 
@@ -265,14 +281,14 @@ TEST_CASE("test rpc_connection") {
   dummy d{};
   router.register_handler<&dummy::add>(&d);
   auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
-                                               router, cross_ending_);
+                                               router, cross_ending);
   CHECK_EQ(conn->id(), conn_id);
   conn->set_check_timeout(true);
-  conn->set_last_time();
-  auto last_rw_time = conn->get_last_rwtime();
+  asio::co_spawn(io_ctx, get_last_rwtime_coro(conn), asio::detached);
+  io_ctx.run();
   std::cout << "topic_id: " << conn->topic_id() << std::endl;
   conn->close();
-  io_ctx.run();
+  io_ctx.stop();
 }
 
 TEST_CASE("test context pool") {
@@ -429,6 +445,34 @@ TEST_CASE("test pub sub") {
   promise.get_future().wait();
 }
 
+TEST_CASE("test sync pub sub") {
+  rpc_server server("127.0.0.1:9004");
+  server.async_start();
+
+  rpc_client client{};
+  sync_wait(get_global_executor(), client.connect("127.0.0.1:9004"));
+
+  std::promise<void> promise;
+  auto sub = [&]() -> asio::awaitable<void> {
+    for (int i = 0; i < 5; i++) {
+      auto result = co_await client.subscribe<std::string>("topic1");
+      REST_LOG_INFO << result.value;
+      CHECK(result.ec == rpc_errc::ok);
+      CHECK(result.value == "publish message");
+    }
+
+    promise.set_value();
+  };
+
+  asio::co_spawn(client.get_executor(), sub(), asio::detached);
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  for (int i = 0; i < 5; i++) {
+    server.sync_publish("topic1", "publish message");
+  }
+  promise.get_future().wait();
+}
+
 TEST_CASE("test reconnect") {
   rpc_server server("127.0.0.1:9004");
   server.async_start();
@@ -479,7 +523,6 @@ TEST_CASE("test server address") {
   CHECK_NOTHROW(server.register_handler<add>());
   server.remove_handler<add>();
   CHECK_NOTHROW(server.register_handler<add>());
-
   rpc_server server1("127.0.0.x:9004");
   ec = server1.async_start();
   CHECK(ec);
@@ -492,7 +535,221 @@ TEST_CASE("test server address") {
   thd2.join();
   thd.join();
 }
+TEST_CASE("test wrong client address") {
+  rpc_client client{};
+  auto ec0 = sync_wait(get_global_executor(), client.connect("127.0.0.1"));
+  CHECK(ec0);
+  auto ec1 = sync_wait(get_global_executor(), client.connect("127.0.0.1:"));
+  CHECK(ec1);
+  auto ec2 = sync_wait(get_global_executor(), client.connect(":9005"));
+  CHECK(ec2);
+  auto ec3 = sync_wait(get_global_executor(), client.connect(":"));
+  CHECK(ec3);
+}
+TEST_CASE("test_string_view_array_has_func") {
+  constexpr std::array<std::string_view, 3> arr = {"hello", "world", "test"};
+  auto result = string_view_array_has(arr, "hello");
+  CHECK_EQ(result, "hello");
+  result = string_view_array_has(arr, "hello world");
+  CHECK_EQ(result, "hello");
+  result = string_view_array_has(arr, "say hello");
+  CHECK_EQ(result, "");
+  result = string_view_array_has(arr, "goodbye");
+  CHECK_EQ(result, "");
+  result = string_view_array_has(arr, "");
+  CHECK_EQ(result, "");
+  // empty arr
+  constexpr std::array<std::string_view, 0> empty_arr{};
+  auto result1 = string_view_array_has(empty_arr, "hello");
+  CHECK_EQ(result1, "");
+  result1 = string_view_array_has(empty_arr, "");
+  CHECK_EQ(result1, "");
+}
 
+#ifdef _MSC_VER
+void __cdecl test_cdecl_func() {}
+void __stdcall test_stdcall_func() {}
+void __fastcall test_fastcall_func() {}
+#else
+void test_cdecl_func() {}
+void test_stdcall_func() {}
+void test_fastcall_func() {}
+#endif
+void normal_func() {}
+namespace rest_rpc {
+template <> struct qualified_name_of<test_cdecl_func> {
+  static constexpr std::string_view value = "__cdecl test_cdecl_func";
+};
+
+template <> struct qualified_name_of<test_stdcall_func> {
+  static constexpr std::string_view value = "__stdcall test_stdcall_func";
+};
+
+template <> struct qualified_name_of<test_fastcall_func> {
+  static constexpr std::string_view value = "__fastcall test_fastcall_func";
+};
+
+template <> struct qualified_name_of<normal_func> {
+  static constexpr std::string_view value = "normal_func";
+};
+
+struct TestStruct {};
+template <> struct qualified_name_of<TestStruct{}> {
+  static constexpr std::string_view value = "__thiscall TestStruct::method";
+};
+
+template <> struct qualified_name_of<nullptr> {
+  static constexpr std::string_view value = "";
+};
+} // namespace rest_rpc
+TEST_CASE("test_get_func_name") {
+  constexpr auto cdecl_name = get_func_name<test_cdecl_func>();
+  CHECK(cdecl_name == "test_cdecl_func");
+
+  constexpr auto stdcall_name = get_func_name<test_stdcall_func>();
+  CHECK(stdcall_name == "test_stdcall_func");
+
+  constexpr auto fastcall_name = get_func_name<test_fastcall_func>();
+  CHECK(fastcall_name == "test_fastcall_func");
+
+  constexpr auto normal_name = get_func_name<normal_func>();
+  CHECK(normal_name == "normal_func");
+
+  constexpr auto thiscall_name = get_func_name<rest_rpc::TestStruct{}>();
+  CHECK(thiscall_name == "TestStruct::method");
+  constexpr auto empty_name = get_func_name<nullptr>();
+  CHECK(empty_name == "");
+}
+TEST_CASE("test_error_code") {
+  const auto &cat = rest_rpc::category();
+  CHECK_EQ(cat.name(), "rest_rpc_error");
+  SUBCASE("rpc_errc::ok") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::ok)), "ok");
+  }
+
+  SUBCASE("rpc_errc::no_such_function") {
+    CHECK_EQ(
+        cat.message(static_cast<int>(rest_rpc::rpc_errc::no_such_function)),
+        "no such function");
+  }
+
+  SUBCASE("rpc_errc::no_such_key") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::no_such_key)),
+             "resolve failed");
+  }
+
+  SUBCASE("rpc_errc::invalid_req_type") {
+    CHECK_EQ(
+        cat.message(static_cast<int>(rest_rpc::rpc_errc::invalid_req_type)),
+        "invalid request type");
+  }
+
+  SUBCASE("rpc_errc::function_exception") {
+    CHECK_EQ(
+        cat.message(static_cast<int>(rest_rpc::rpc_errc::function_exception)),
+        "logic function exception happend");
+  }
+
+  SUBCASE("rpc_errc::function_unknown_exception") {
+    CHECK_EQ(cat.message(static_cast<int>(
+                 rest_rpc::rpc_errc::function_unknown_exception)),
+             "unknown function exception happend");
+  }
+
+  SUBCASE("rpc_errc::invalid_argument") {
+    CHECK_EQ(
+        cat.message(static_cast<int>(rest_rpc::rpc_errc::invalid_argument)),
+        "invalid argument");
+  }
+
+  SUBCASE("rpc_errc::write_error") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::write_error)),
+             "write failed");
+  }
+
+  SUBCASE("rpc_errc::read_error") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::read_error)),
+             "read failed");
+  }
+
+  SUBCASE("rpc_errc::socket_closed") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::socket_closed)),
+             "socket closed");
+  }
+
+  SUBCASE("rpc_errc::resolve_timeout") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::resolve_timeout)),
+             "resolve timeout");
+  }
+
+  SUBCASE("rpc_errc::connection_timeout") {
+    CHECK_EQ(
+        cat.message(static_cast<int>(rest_rpc::rpc_errc::connection_timeout)),
+        "connect timeout");
+  }
+
+  SUBCASE("rpc_errc::request_timeout") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::request_timeout)),
+             "request timeout");
+  }
+
+  SUBCASE("rpc_errc::protocol_error") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::protocol_error)),
+             "protocol error");
+  }
+
+  SUBCASE("rpc_errc::has_response") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::has_response)),
+             "has response, duplicate response is not allowed");
+  }
+
+  SUBCASE("rpc_errc::duplicate_topic") {
+    CHECK_EQ(cat.message(static_cast<int>(rest_rpc::rpc_errc::duplicate_topic)),
+             "duplicate topic");
+  }
+
+  SUBCASE("rpc_errc::rpc_context_init_failed") {
+    CHECK_EQ(cat.message(
+                 static_cast<int>(rest_rpc::rpc_errc::rpc_context_init_failed)),
+             "the rpc context init failed, it must be created in rpc handler "
+             "io thread, otherwise will init failed");
+  }
+  SUBCASE("negative error code") { CHECK_EQ(cat.message(-1), "unknown error"); }
+
+  SUBCASE("out of bounds positive error code") {
+    CHECK_EQ(cat.message(100), "unknown error");
+  }
+  SUBCASE("creates error_code with correct value and category") {
+    auto ec = rest_rpc::make_error_code(rest_rpc::rpc_errc::no_such_function);
+
+    CHECK_EQ(ec.value(),
+             static_cast<int>(rest_rpc::rpc_errc::no_such_function));
+    CHECK_EQ(ec.category().name(), "rest_rpc_error");
+    CHECK(ec);
+  }
+
+  SUBCASE("error_code for ok evaluates to true in boolean context") {
+    auto ec_ok = rest_rpc::make_error_code(rest_rpc::rpc_errc::ok);
+    CHECK_FALSE(ec_ok); // zero error code should be false in boolean context
+
+    auto ec_error = rest_rpc::make_error_code(rest_rpc::rpc_errc::read_error);
+    CHECK(ec_error); // non-zero error code should be true in boolean context
+  }
+  SUBCASE("operator== with matching error code") {
+    auto ec = rest_rpc::make_error_code(rest_rpc::rpc_errc::write_error);
+    CHECK(ec == rest_rpc::rpc_errc::write_error);
+  }
+
+  SUBCASE("operator== with non-matching error code") {
+    auto ec = rest_rpc::make_error_code(rest_rpc::rpc_errc::read_error);
+    CHECK_FALSE(ec == rest_rpc::rpc_errc::write_error);
+  }
+
+  SUBCASE("operator== with ok error code") {
+    auto ec_ok = rest_rpc::make_error_code(rest_rpc::rpc_errc::ok);
+    CHECK(ec_ok == rest_rpc::rpc_errc::ok);
+  }
+}
 // bool in_user_pack = false;
 // bool in_user_unpack = false;
 // namespace user_codec {
