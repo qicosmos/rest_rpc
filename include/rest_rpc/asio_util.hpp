@@ -1,4 +1,5 @@
 #pragma once
+#include "io_context_pool.hpp"
 #include "traits.h"
 #include "use_asio.hpp"
 
@@ -27,6 +28,18 @@ template <typename Coro> inline auto async_future(auto executor, Coro &&coro) {
 
 template <typename Coro> inline auto sync_wait(auto executor, Coro &&coro) {
   return async_future(executor, std::forward<Coro>(coro)).get();
+}
+
+template <typename Coro> inline auto async_start(Coro &&coro) {
+  async_start(get_global_executor(), std::forward<Coro>(coro));
+}
+
+template <typename Coro> inline auto async_future(Coro &&coro) {
+  return async_future(get_global_executor(), std::forward<Coro>(coro));
+}
+
+template <typename Coro> inline auto sync_wait(Coro &&coro) {
+  return sync_wait(get_global_executor(), std::forward<Coro>(coro));
 }
 
 inline auto async_start(auto executor, auto &&coro, auto callback) {

@@ -94,7 +94,7 @@ asio::awaitable<std::string> delay_response2(std::string_view str) {
     REST_LOG_INFO << ret.message();
     CHECK(ret);
   };
-  sync_wait(get_global_executor(), coro());
+  sync_wait(coro());
 
   rpc_context ctx; // right, created in io thread.
   co_await ctx.response(str);
@@ -244,7 +244,7 @@ asio::awaitable<void> test_router() {
   CHECK(result1.ec == rpc_errc::ok);
 }
 
-TEST_CASE("test router") { sync_wait(get_global_executor(), test_router()); }
+TEST_CASE("test router") { sync_wait(test_router()); }
 
 asio::awaitable<void>
 get_last_rwtime_coro(std::shared_ptr<rpc_connection> conn) {

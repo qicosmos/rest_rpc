@@ -70,7 +70,7 @@ int main(){
     }
   };
   
-  sync_wait(get_global_executor(), rpc_call());
+  sync_wait(rpc_call());
 }
 ```
 
@@ -116,7 +116,7 @@ int main(){
     }
   };
   
-  sync_wait(get_global_executor(), rpc_call());
+  sync_wait(rpc_call());
 }
 ```
 
@@ -145,7 +145,7 @@ void publish() {
     }
   };
   
-  sync_wait(get_global_executor(), pub());
+  sync_wait(pub());
 }
 
 client 端代码：
@@ -167,7 +167,7 @@ void subscribe() {
     }
   };
   
-  sync_wait(get_global_executor(), sub());
+  sync_wait(sub());
 }
 ```
 
