@@ -3,6 +3,7 @@
 #include "error_code.h"
 
 #include "asio_util.hpp"
+#include "rest_stream.hpp"
 #include "util.hpp"
 #include <cstdint>
 #include <functional>

@@ -97,6 +97,7 @@ asio::awaitable<std::string> delay_response2(std::string_view str) {
   sync_wait(coro());
 
   rpc_context ctx; // right, created in io thread.
+  auto stream = ctx.create_rest_stream();
   co_await ctx.response(str);
   auto ret = co_await ctx.response(str);
   CHECK(ret);
@@ -114,6 +115,19 @@ std::string delay_response3(std::string str) {
   thd.detach();
 
   return "";
+}
+
+asio::awaitable<int> test_stream(rest_stream stream) {
+  while (true) {
+    auto [ec, data] = co_await stream.recv();
+  }
+  
+}
+
+TEST_CASE("test rpc stream") {
+  rpc_client client{};
+  // rest_rpc::rest_stream stream(client.get_socket_wrapper());
+  auto stream = client.create_rest_stream();
 }
 
 TEST_CASE("test delay response") {

@@ -1,6 +1,7 @@
 #pragma once
 #include "logger.hpp"
 #include "rest_rpc_protocol.hpp"
+#include "rest_stream.hpp"
 #include "rpc_router.hpp"
 #include "string_resize.hpp"
 #include "use_asio.hpp"
@@ -40,6 +41,10 @@ public:
 
   template <typename... Args>
   asio::awaitable<std::error_code> response(Args &&...args);
+
+  auto create_rest_stream(size_t init_size = 2048) {
+    return rest_stream(conn_, init_size);
+  }
 
 private:
   asio::any_io_executor executor_;
@@ -186,6 +191,7 @@ public:
   }
 
   void set_check_timeout(bool r) { checkout_timeout_ = r; }
+  tcp_socket &get_socket() { return socket_; }
 
 private:
   tcp_socket socket_;

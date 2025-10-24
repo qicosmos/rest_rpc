@@ -6,6 +6,7 @@
 #include "logger.hpp"
 // #include "meta_util.hpp"
 #include "rest_rpc_protocol.hpp"
+#include "rest_stream.hpp"
 #include "string_resize.hpp"
 #include "traits.h"
 #include "use_asio.hpp"
@@ -20,7 +21,9 @@ template <typename R> struct call_result {
   R value;
 };
 
-template <> struct call_result<void> { rpc_errc ec; };
+template <> struct call_result<void> {
+  rpc_errc ec;
+};
 
 class rpc_client {
 public:
@@ -160,6 +163,12 @@ public:
                    [socket = socket_] { close_socket(*socket); });
   }
 
+  auto get_socket_wrapper() { return socket_; }
+
+  auto create_rest_stream(size_t init_size = 2048) {
+    return rest_stream(socket_, init_size);
+  }
+
 private:
   template <typename... Args> auto get_buffer(Args &&...args) {
     if constexpr (sizeof...(Args) == 0) {
@@ -294,6 +303,7 @@ private:
   struct socket_t {
     socket_t(auto executor) : impl_(executor) {}
     asio::any_io_executor get_executor() { return impl_.get_executor(); }
+    asio::ip::tcp::socket &get_socket() { return impl_; }
     asio::ip::tcp::socket impl_;
     std::atomic<bool> has_closed_ = true;
     std::string body_;
