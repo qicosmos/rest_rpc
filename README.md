@@ -235,4 +235,4 @@ https://github.com/qicosmos/rest_rpc/tree/master/examples
 ## 社区和群
 http://purecpp.cn
 
-qq群:546487929
+在线讨论:[项目讨论](https://purecpp.cn/chatroom.html)
