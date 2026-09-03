@@ -205,9 +205,9 @@ public:
 private:
   friend class rpc_context;
 
-  asio::awaitable<std::error_code>
-  response_with_seq(const rpc_result &result, uint32_t func_id,
-                    uint64_t seq_num) {
+  asio::awaitable<std::error_code> response_with_seq(const rpc_result &result,
+                                                     uint32_t func_id,
+                                                     uint64_t seq_num) {
     rest_rpc_header resp_header{};
     resp_header.magic = 39;
     resp_header.seq_num = seq_num;
@@ -231,8 +231,7 @@ private:
     }
 
     co_return co_await asio::co_spawn(
-        get_executor(),
-        enqueue_response(shared_from_this(), std::move(frame)),
+        get_executor(), enqueue_response(shared_from_this(), std::move(frame)),
         asio::use_awaitable);
   }
 
@@ -242,13 +241,12 @@ private:
       co_return make_error_code(rpc_errc::socket_closed);
     }
 
-    auto operation =
-        std::make_shared<write_operation>(self->get_executor(), std::move(frame));
+    auto operation = std::make_shared<write_operation>(self->get_executor(),
+                                                       std::move(frame));
     self->write_queue_.push_back(operation);
     if (!self->write_in_progress_) {
       self->write_in_progress_ = true;
-      asio::co_spawn(self->get_executor(), write_loop(self),
-                     asio::detached);
+      asio::co_spawn(self->get_executor(), write_loop(self), asio::detached);
     }
 
     if (!operation->completed_) {

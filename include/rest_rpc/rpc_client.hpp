@@ -235,15 +235,14 @@ private:
         MD5::MD5Hash32(topic.data(), static_cast<uint32_t>(topic.size()));
     auto it = socket->sub_ops_.find(topic_id);
     if (it == socket->sub_ops_.end()) {
-      auto state =
-          std::make_shared<subscription_state>(socket->get_executor());
+      auto state = std::make_shared<subscription_state>(socket->get_executor());
       it = socket->sub_ops_.emplace(topic_id, state).first;
 
       rest_rpc_header header{};
       header.msg_type = 1;
       header.function_id = topic_id;
-      queue_write(socket,
-                  write_request{0, false, make_frame(header, {}, cross_ending)});
+      queue_write(socket, write_request{0, false,
+                                        make_frame(header, {}, cross_ending)});
     }
     co_return co_await wait_subscription<R>(it->second);
   }
@@ -283,21 +282,19 @@ private:
       result.ec = rpc_errc::request_timeout;
       co_return result;
     }
-    if (socket->peer_mode_ == peer_mode::legacy &&
-        !socket->pending_.empty()) {
+    if (socket->peer_mode_ == peer_mode::legacy && !socket->pending_.empty()) {
       result.ec = rpc_errc::protocol_error;
       co_return result;
     }
 
     do {
       header.seq_num = ++socket->next_seq_num_;
-    } while (header.seq_num == 0 ||
-             socket->pending_.contains(header.seq_num) ||
+    } while (header.seq_num == 0 || socket->pending_.contains(header.seq_num) ||
              socket->timed_out_.contains(header.seq_num));
     header.body_len = request_body.size();
 
-    auto pending = std::make_shared<pending_response>(
-        socket->get_executor(), duration);
+    auto pending =
+        std::make_shared<pending_response>(socket->get_executor(), duration);
     socket->pending_.emplace(header.seq_num, pending);
     queue_write(socket,
                 write_request{header.seq_num, true,
@@ -384,10 +381,9 @@ private:
     }
   }
 
-  static asio::awaitable<void>
-  write_loop(std::shared_ptr<socket_t> socket, uint64_t generation) {
-    while (generation == socket->generation_ &&
-           !socket->write_queue_.empty()) {
+  static asio::awaitable<void> write_loop(std::shared_ptr<socket_t> socket,
+                                          uint64_t generation) {
+    while (generation == socket->generation_ && !socket->write_queue_.empty()) {
       auto request = std::move(socket->write_queue_.front());
       socket->write_queue_.pop_front();
       if (request.check_pending &&
@@ -395,9 +391,9 @@ private:
         continue;
       }
 
-      auto [ec, size] = co_await asio::async_write(
-          socket->impl_, asio::buffer(request.data),
-          asio::as_tuple(asio::use_awaitable));
+      auto [ec, size] =
+          co_await asio::async_write(socket->impl_, asio::buffer(request.data),
+                                     asio::as_tuple(asio::use_awaitable));
       if (generation != socket->generation_) {
         co_return;
       }
@@ -412,9 +408,9 @@ private:
     }
   }
 
-  static asio::awaitable<void>
-  read_loop(std::shared_ptr<socket_t> socket, bool cross_ending,
-            uint64_t generation) {
+  static asio::awaitable<void> read_loop(std::shared_ptr<socket_t> socket,
+                                         bool cross_ending,
+                                         uint64_t generation) {
     while (generation == socket->generation_) {
       rest_rpc_header header{};
       auto [ec, size] = co_await asio::async_read(
@@ -452,9 +448,9 @@ private:
         co_return;
       }
       if (!body.empty()) {
-        std::tie(ec, size) = co_await asio::async_read(
-            socket->impl_, asio::buffer(body),
-            asio::as_tuple(asio::use_awaitable));
+        std::tie(ec, size) =
+            co_await asio::async_read(socket->impl_, asio::buffer(body),
+                                      asio::as_tuple(asio::use_awaitable));
         if (generation != socket->generation_) {
           co_return;
         }

@@ -149,8 +149,7 @@ int timeout_delay_response(int value) {
   auto executor = ctx.get_executor();
   auto delay = value == 1 ? std::chrono::milliseconds(100)
                           : std::chrono::milliseconds(10);
-  asio::co_spawn(executor,
-                 delayed_response(std::move(ctx), value, delay),
+  asio::co_spawn(executor, delayed_response(std::move(ctx), value, delay),
                  asio::detached);
   return 0;
 }
@@ -256,9 +255,8 @@ TEST_CASE("test timeout response does not poison next call") {
   sync_wait(client.get_executor(), test_timeout_response(client));
 }
 
-asio::awaitable<void>
-destroy_client_after(std::unique_ptr<rpc_client> &client,
-                     std::chrono::milliseconds delay) {
+asio::awaitable<void> destroy_client_after(std::unique_ptr<rpc_client> &client,
+                                           std::chrono::milliseconds delay) {
   asio::steady_timer timer(co_await asio::this_coro::executor);
   timer.expires_after(delay);
   co_await timer.async_wait(asio::use_awaitable);
@@ -279,8 +277,7 @@ test_client_destruction(std::unique_ptr<rpc_client> &client) {
                  destroy_client_after(client, std::chrono::milliseconds(20)),
                  asio::detached);
 
-  auto [result1, result2] =
-      co_await (std::move(call1) && std::move(call2));
+  auto [result1, result2] = co_await (std::move(call1) && std::move(call2));
   CHECK(result1.ec == rpc_errc::socket_closed);
   CHECK(result2.ec == rpc_errc::socket_closed);
   server.stop();
