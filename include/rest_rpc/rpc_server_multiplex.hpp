@@ -144,23 +144,15 @@ private:
           if (!self) {
             co_return make_error_code(rpc_errc::socket_closed);
           }
-          auto executor = self->get_executor();
-          co_return co_await asio::co_spawn(
-              executor,
-              [self = std::move(self), request_header,
-               body = std::move(
-                   body)]() mutable -> asio::awaitable<std::error_code> {
-                if (self->stopped_) {
-                  co_return make_error_code(rpc_errc::socket_closed);
-                }
+          co_await asio::dispatch(self->get_executor(), asio::use_awaitable);
+          if (self->stopped_) {
+            co_return make_error_code(rpc_errc::socket_closed);
+          }
 
-                if (!self->enqueue_response(request_header, rpc_errc::ok,
-                                            body)) {
-                  co_return make_error_code(rpc_errc::queue_full);
-                }
-                co_return std::error_code{};
-              },
-              asio::use_awaitable);
+          if (!self->enqueue_response(request_header, rpc_errc::ok, body)) {
+            co_return make_error_code(rpc_errc::queue_full);
+          }
+          co_return std::error_code{};
         }};
   }
 
