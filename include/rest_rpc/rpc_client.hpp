@@ -117,6 +117,10 @@ public:
                   "called rpc function and arguments are not match");
 
     using R = return_type_t<function_return_type_t<decltype(func)>>;
+    using duration_type = std::remove_cvref_t<decltype(duration)>;
+    if (duration <= duration_type::zero()) {
+      co_return call_result<R>{rpc_errc::request_timeout};
+    }
     if (!select_mode(protocol_mode::v1)) {
       call_result<R> result{};
       result.ec = rpc_errc::protocol_mode_conflict;

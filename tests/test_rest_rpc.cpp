@@ -360,6 +360,10 @@ TEST_CASE("test server start") {
         sync_wait(cl.get_executor(),
                   cl.call_for<add>(std::chrono::milliseconds(0), 1, 2));
     CHECK(result.ec == rpc_errc::request_timeout);
+
+    auto next_result = sync_wait(cl.get_executor(), cl.call<add>(1, 2));
+    CHECK(next_result.ec == rpc_errc::ok);
+    CHECK(next_result.value == 3);
   }
 
   ec = server.async_start();
