@@ -1,632 +1,483 @@
-# rest_rpc 单连接请求复用设计
+# rest_rpc protocol v2 多路复用实现方案
 
-## 1. 背景
+## 1. 结论
 
-`rest_rpc_header` 已包含 `uint64_t seq_num`，但当前 client 发送请求时没有设置该字段，server 返回响应时也没有回传它。与此同时，每个 `call()` 都会直接从同一个 socket 读取响应。
+多路复用作为显式的 `protocol_v2` 能力实现，不修改 v1 的调用语义，也不通过 `seq_num == 0` 猜测对端能力。
 
-这会带来两个问题：
+- 现有 `call()`、`call_for()`、`subscribe()` 固定走 v1。
+- 新增 `send_call()`、`send_call_for()`、`send_calls()`，固定走 v2。
+- v1 的请求处理、同步读写和错误行为尽量保持原代码不动。
+- v2 使用非零 `seq_num`、client 单读循环、client/server 单写队列和 pending map。
+- server 的 v2 handler 独立执行，慢 handler 不阻塞连接继续读取后续请求。
+- 一条 TCP 连接只能选择一种协议模式；首次请求确定 v1 或 v2，之后混用立即失败。重连后可重新选择。
 
-1. 同一连接上不能安全地同时存在多个读操作。
-2. 请求按照 `1、2、3` 发出、响应按照 `3、2、1` 返回时，client 无法判断每个响应属于哪个 `co_await`。
+该边界比运行时兼容猜测更清楚：旧 client 和旧 server 继续使用 v1；只有新 client 的新接口与支持 v2 的 server 才启用多路复用。
 
-本设计使用协议头中的 `seq_num` 关联请求和响应，使多个 RPC 可以复用同一条 TCP 连接，并允许响应乱序到达。
+## 2. 目标与非目标
 
-## 2. 目标
+### 2.1 目标
 
-- 同一 client 连接允许存在多个并发的在途 RPC。
-- 请求和响应通过 `seq_num` 一一关联，不依赖响应顺序。
-- 请求按照 `1、2、3` 发出、响应按照 `3、2、1` 返回时，三个等待中的协程都能得到各自的结果。
-- 保持现有 `call()`、`call_for()` 和 `rpc_context::response()` API 不变。
-- 保持跨端序、延迟响应和发布订阅能力。
-- 连接内状态不引入 mutex。
+- 同一条 v2 TCP 连接允许多个 RPC 同时在途。
+- 请求和响应严格按 `seq_num` 关联，允许响应乱序。
+- 调用方可以先启动多个请求，再单独 `co_await` 任意一个结果，不强制 collect-all。
+- v2 server 读完一帧后立即继续读下一帧，不等待当前 handler 完成。
+- 超时、取消、断连、写失败和重连都只完成每个请求一次。
+- pending、请求写队列、服务端并发请求和响应队列都有上限。
+- v2 的实现、状态和测试与 v1 隔离。
 
-## 3. 非目标
+### 2.2 非目标
 
-- 本次不把 server 的普通 handler 改成并行执行。现有 server 读循环仍可以依次执行普通 handler；`rpc_context` 延迟响应或其他兼容协议的服务端可以产生乱序响应。
-- 本次不增加跨连接的请求迁移和自动重试。RPC 是否可以安全重试取决于业务幂等性。
-- 本次不改变序列化格式以及 `function_id` 的生成方式。
+- 不在 v1 连接上提供多路复用。
+- 不自动把 v1 调用升级为 v2。
+- 不自动重试失败的 RPC；是否可重试取决于业务幂等性。
+- 本次不设计取消远端 handler 的协议。取消只停止 client 本地等待；已经到达 server 的任务可以继续执行。
+- v2 首版不与 v1 的发布订阅混用；需要 v2 发布订阅时单独定义协议和接口。
 
-### 3.1 本次落地范围
+## 3. v1 与 v2 隔离
 
-结合“尽量复用现有接口和代码”的约束，本次实现不新增公开配置项，也不改变 `call()`、`call_for()`、`subscribe()`、`rpc_context::response()` 和 `rpc_connection::response()` 的既有调用方式。落地内容包括：非零 seq 分配与回传、client 单读循环、client/server 单写队列、pending 按 seq 分发、单请求超时、迟到响应隔离、连接错误批量完成、重连 generation 隔离、旧 peer 的安全降级，以及 `rpc_context` 副本共享一次响应状态。
+### 3.0 硬性代码边界
 
-后文中的 body/队列可配置上限、半帧读写超时、显式取消协议和 coroutine-local handler context 是完整加固设计。它们需要先确定默认值或新增配置/API，不在本次兼容性实现中隐式加入；相关异常和测试要求保留在文档中，作为后续加固边界，避免把“已考虑”误写成“已实现”。本次仅为迟到 seq 记录采用内部固定上限，防止服务端长期不返回造成该状态无限增长。
+v2 是一组新接口及其独立实现，不是给现有 v1 `call()` 打开的一个内部开关。实现中禁止以下做法：
 
-## 4. 线程模型与约束
+- 禁止把 `call()`、`call_for()` 改为 pending map + 单 read loop。
+- 禁止在 `connect()` 成功后无条件启动 v2 read loop。
+- 禁止让 v1 与 v2 共用 pending map、请求写队列、响应分发状态或超时状态。
+- 禁止在 v1 主流程内部散布 `if (version == v2)` 后复用同一套读写状态机。
+- 禁止用 `peer_mode`、seq 0 fallback 或响应特征把 v1 隐式升级成 v2。
 
-rest_rpc 的运行模型是一个线程运行一个 `io_context`，一个 socket 及其连接状态只在所属 `io_context` 线程内访问。因此：
+公开接口和实现归属固定如下：
 
-- `seq_num` 使用普通 `uint64_t`，不需要 atomic。
-- pending map 和写队列使用普通容器，不需要 mutex。
-- 响应分发和超时清理都在同一 `io_context` 上执行，不存在容器并发访问。
+| 协议 | 公开接口 | 内部实现 |
+|---|---|---|
+| v1 | `connect/call/call_for/subscribe` | 现有 v1 代码路径 |
+| v2 | `send_call/send_call_for/send_calls` | 新增 `multiplex_client_session` |
 
-单线程不代表可以重叠发起同类异步 I/O。一个协程在 `async_write` 处挂起后，另一个协程仍可能在前一个写操作完成前运行。因此每条连接仍需满足：
+`rpc_client` 只负责保存连接和在接口入口选择 session；v1 函数除一次模式占用检查外，网络读写函数体应恢复为 `master` 的实现。v2 所需的 seq、pending、reader、writer、deadline 和队列限制全部位于新增组件中。
 
-- 任意时刻只有一个异步读操作。
-- 任意时刻只有一个异步写操作。
-
-实现上使用一个常驻读循环和一个无锁写队列满足这两个约束。
-
-## 5. 协议约定
-
-### 5.1 RPC 请求
-
-- client 为每个 RPC 分配非零 `seq_num`。
-- 第一条请求使用 1，之后单调递增。
-- 发生无符号整数回绕时跳过 0，并跳过仍存在于 pending map 中的编号。
-- `seq_num` 在跨端序模式下继续使用现有 `htonll/ntohll` 转换。
-
-### 5.2 RPC 响应
-
-- server 必须把请求头中的 `seq_num` 原样写入对应响应头。
-- 普通同步响应和 `rpc_context` 延迟响应遵循相同规则。
-- `rpc_context` 创建时捕获当前请求的 `seq_num`，之后即使响应发生在线程切换或延迟之后，也使用捕获的编号。
-
-### 5.3 发布订阅
-
-- `seq_num == 0` 保留给不按 RPC 请求关联的消息。
-- 发布订阅继续使用 `msg_type == 1` 和 `function_id == topic_id` 分发。
-- 发布订阅响应不进入 RPC pending map。
-
-### 5.4 旧版本兼容
-
-旧 server 会把响应的 `seq_num` 保持为 0。简单地在“只有一个 pending”时接受 seq 0 并不完全安全：如果旧请求已经超时，旧 server 的迟到响应可能被错误地交给后续唯一的 pending 请求。
-
-因此每条连接需要维护 peer capability 状态：
+server 侧只允许在收到首个 header 后做一次协议入口分流；v2 委托给独立 session，v1 则继续进入现有循环：
 
 ```cpp
-enum class peer_mode {
-  unknown,
-  multiplex,
-  legacy,
+if (header.version == REST_RPC_PROTOCOL_V2) {
+  co_return co_await start_multiplex(std::move(header));
+}
+// protocol_v1: continue the existing v1 loop
+```
+
+现有 v1 循环保留原来的串行 handler 和直接响应路径；v2 的完整帧复制、并发 handler 与 response queue 只存在于 `multiplex_server_session`。后续帧版本与连接首次选定的版本不一致时直接视为协议错误，不跨路径处理。
+
+### 3.1 协议号
+
+```cpp
+inline constexpr uint8_t REST_RPC_PROTOCOL_V1 = 0;
+inline constexpr uint8_t REST_RPC_PROTOCOL_V2 = 1;
+inline constexpr uint8_t REST_RPC_SERIALIZE_TYPE = 0;
+```
+
+- v1 请求保持 `version == 0`、`seq_num == 0`。
+- v2 RPC 请求必须是 `version == 1`、`seq_num != 0`。
+- v2 响应必须原样带回请求的 `version` 和 `seq_num`。
+- v2 client 收到 v1 响应、零 seq 响应或错误版本时按 `protocol_error` 关闭连接。
+- 不保留 `peer_mode`、`legacy_seq_zero_safe` 或“仅有一个 pending 时接受 seq 0”等推断逻辑。
+
+### 3.2 连接模式
+
+```cpp
+enum class connection_mode {
+  unset,
+  v1,
+  v2,
 };
 ```
 
-处理规则如下：
+- `connect()` 成功后模式为 `unset`。
+- 第一次调用 `call/call_for/subscribe` 时切换为 `v1`。
+- 第一次调用 `send_call/send_call_for/send_calls` 时切换为 `v2` 并启动 v2 read loop。
+- 模式确定后，另一组接口返回 `protocol_mode_conflict`，不读写 socket。
+- 显式重连创建全新的连接状态并把模式恢复为 `unset`。
 
-- 收到合法的非零 seq 响应后，连接进入 `multiplex`，之后严格按照 seq 分发。
-- `unknown` 状态收到 seq 0，且恰好只有一个 pending RPC时，可以交给该请求，并进入 `legacy`。
-- `unknown` 或 `legacy` 状态收到 seq 0，但存在多个 pending RPC时，响应归属不明确，按协议错误关闭连接。
-- `legacy` 状态最多允许一个在途 RPC。
-- `legacy` 状态发生请求超时或取消后关闭连接，防止该请求的迟到 seq 0 响应污染下一次调用。
-- `unknown` 状态在确认 peer 支持非零 seq 前发生超时后，将该连接标记为不再接受 seq 0；后续收到 seq 0 时按协议错误关闭。这样既不会把旧 server 的迟到响应交给新请求，也允许尚未完成能力确认的新 server 继续用非零 seq 证明其支持 multiplex。
+模式互斥可保证 v1 的“调用协程自己读取响应”和 v2 的“唯一 read loop 读取所有响应”绝不会同时操作同一个 socket。
 
-新 client 与旧 server 之间只有严格的单请求顺序调用可以继续工作；连接复用要求 client 和 server 同时升级。后续可以通过启用 `version` 字段或握手能力位显式协商 multiplex，从而移除这种运行时推断。
+### 3.3 代码隔离
 
-### 5.5 响应 seq 的严格性
+v2 代码放进独立内部组件，公开类只增加薄转发接口：
 
-在 `multiplex` 模式下，非零响应 seq 分为三类：
+```text
+rpc_client
+  ├─ v1 path: 现有 connect/call/call_for/subscribe
+  └─ multiplex_client_session: 仅由 send_call/send_call_for/send_calls 使用
 
-- seq 存在于 pending map：正常完成该请求。
-- seq 存在于 `abandoned_seqs`：这是已超时或取消请求的迟到响应，移除记录并丢弃响应。
-- seq 两处都不存在：可能是重复响应、从未发出的 seq 或 peer 状态损坏，按协议错误关闭连接。
-
-不能把所有未知 seq 都静默丢弃，否则重复响应和错误 server 实现会被掩盖。`abandoned_seqs` 必须有容量上限；超过上限说明服务端持续积压或不返回请求，最安全的处理是关闭连接并清空该连接状态。
-
-seq 即将从 `UINT64_MAX` 回绕时应主动重连并从 1 重新开始，而不是在同一连接内复用旧编号。虽然实际很难发生，但这样可以从协议上排除极晚响应与新请求发生 seq 碰撞。
-
-### 5.6 协议字段校验
-
-读循环在分配 body 前必须完成以下校验：
-
-- `magic == REST_MAGIC_NUM`。
-- `version` 是本端支持的版本；兼容期可以接受 0 和新的 multiplex 版本。
-- `serialize_type` 是支持的序列化类型。
-- `msg_type` 是普通 RPC 响应或已定义的发布订阅类型，未知类型不能按普通 RPC 处理。
-- RPC 响应的 `body_len >= 1`，因为 body 至少包含一个 `rpc_errc` 字节。
-- `body_len <= max_body_size`，并且从 `uint64_t` 转换为 `size_t` 前检查溢出。
-- 当前实现不支持附件，因此要求 `attach_length == 0`。如果允许非零附件，就必须完整读取或跳过附件，否则下一帧会错位。
-- 发布订阅控制帧的 body 长度必须符合该消息类型的定义；不能在不消费 body 的情况下直接读取下一个 header。
-
-任何会破坏 TCP 字节流边界或表明双方协议不一致的校验失败，均按连接级 `protocol_error` 处理。
-
-## 6. Client 设计
-
-### 6.1 连接内状态
-
-每个 client socket 维护以下状态：
-
-```cpp
-uint64_t next_seq_num;
-unordered_map<uint64_t, pending_request> pending_requests;
-deque<outgoing_frame> write_queue;
-bool write_in_progress;
-unordered_map<uint32_t, subscription_state> subscriptions;
+rpc_connection
+  ├─ start_v1(): 现有 server 处理路径
+  └─ multiplex_server_session: v2 read loop、并发 handler、response queue
 ```
 
-`pending_request` 保存一个与等待协程关联的完成操作。网络读循环只负责产生未类型化的响应：
+实现时先从 `master` 恢复 v1 的 client/server 主路径，再以新函数或新头文件添加 v2。与协议无关的修复（例如 `rpc_context` 只响应一次的原子状态）可以保留，但必须有独立回归测试。
+
+## 4. Client 公开接口
+
+### 4.1 两阶段调用
 
 ```cpp
-struct raw_response {
-  rpc_errc transport_error;
-  rest_rpc_header header;
-  std::string body;
+template <typename R>
+class async_result; // 内部持有 asio::awaitable<call_result<R>>
+
+template <auto func, typename... Args>
+asio::awaitable<async_result<
+    return_type_t<function_return_type_t<decltype(func)>>>>
+send_call(Args&&... args);
+
+template <auto func, typename Rep, typename Period, typename... Args>
+asio::awaitable<async_result<
+    return_type_t<function_return_type_t<decltype(func)>>>>
+send_call_for(std::chrono::duration<Rep, Period> timeout, Args&&... args);
+```
+
+第一层 `co_await` 只负责启动请求：完成参数序列化、分配 seq、登记 pending、加入写队列，然后马上返回第二层 awaitable；它不等待网络响应。
+
+第二层 `co_await` 等待该 seq 的最终结果。响应可以在第二层开始等待之前到达，结果必须缓存在 request state 中，不能丢失。
+
+```cpp
+auto slow = co_await client.send_call<slow_rpc>(1);
+auto fast = co_await client.send_call<fast_rpc>(2);
+
+// 两个请求都已启动，可以先等任意一个。
+auto fast_result = co_await fast.wait();
+auto slow_result = co_await slow.wait();
+```
+
+`async_result<R>` 封装 Asio 1.36 的 move-only `asio::awaitable`，通过 `wait()` 在内部完成所有权转移，因此调用方不需要显式 `std::move`。结果仍是 single-consumer，第二次 `wait()` 会抛出 `std::logic_error`。Asio 的 `awaitable` promise 只接受其原生 awaitable/异步操作，无法在不修改 Asio 的情况下让普通包装器直接支持命名左值 `co_await sender`，所以使用明确的 `co_await sender.wait()`。
+
+这才是 v2 的主要用法。`awaitable_operators::operator&&` 或 collect-all 只能作为“确实需要等全部结果”时的组合工具，不能成为启动并发请求的必要条件。
+
+### 4.2 `send_calls()`
+
+`send_calls()` 是批量启动的便利接口，支持不同函数、参数和返回类型：
+
+```cpp
+auto [slow, fast] = client.send_calls(
+    client.send_call<slow_rpc>(1),
+    client.send_call<fast_rpc>(2));
+
+auto fast_result = co_await fast.wait();
+auto slow_result = co_await slow.wait();
+```
+
+它是立即启动函数，而不是 collect-all：
+
+1. 把每个外层 `send_call()` awaitable 立即 `co_spawn` 到 client executor。
+2. 为每个启动操作创建独立的 start state。
+3. 返回一组扁平化的 `async_result<R>`；每个结果只等待自己的启动过程和 RPC 响应。
+4. 一个请求失败、超时或被取消，不取消其他请求。
+5. 某个启动阶段抛出的异常保存到对应 start state，并在 `co_await` 该结果时重新抛出。
+
+`send_calls()` 不等待所有响应，也不要求按参数顺序等待结果。
+
+### 4.3 sender 的所有权
+
+- `async_result<R>` 是 move-only、single-consumer；公开的 `wait()` 隐藏底层 awaitable 的 move。
+- 每个 sender 只能调用并 `co_await wait()` 一次。
+- sender 暂时不被等待时，请求仍继续执行，响应会被缓存。
+- sender 被丢弃时，请求仍由 deadline 管理；响应、超时或连接关闭后状态会自动释放。
+- 需要主动取消时，通过等待协程的 Asio cancellation slot 取消；首版不额外增加远端 cancel 消息。
+
+## 5. v2 Client 内部设计
+
+### 5.1 连接状态
+
+```cpp
+struct multiplex_client_session {
+  shared_ptr<socket_t> transport;
+  strand<any_io_executor> executor;
+  uint64_t next_seq_num;
+  unordered_map<uint64_t, shared_ptr<pending_request>> pending;
+  unordered_set<uint64_t> abandoned_seqs;
+  deque<outgoing_frame> write_queue;
+  size_t queued_bytes;
+  bool writing;
+  bool reading;
 };
 ```
 
-每个 pending 请求还保存独立的 `steady_timer` 和请求状态：
+每次重连都会创建全新的 `socket_t` 和 `multiplex_client_session`；session 对象本身就是连接世代边界，不需要让旧回调读取 `rpc_client` 上的可变 generation 数字。
+
+所有字段只能在 session 自己的 executor 上访问，不使用 mutex。公开接口从其他 executor 调用时，必须通过 `co_spawn(session_executor, ..., use_awaitable)` 进入 session executor；完成后调用协程回到原 executor。
+
+异步读写、deadline 和 completion 回调只捕获 `shared_ptr<multiplex_client_session>`，不能捕获裸 `rpc_client*`。
+
+### 5.2 pending state
 
 ```cpp
 enum class request_state {
-  queued,   // 请求帧还在写队列中
-  writing,  // 正在写 socket
-  waiting,  // 已经写出，等待响应
+  queued,
+  writing,
+  waiting_response,
+  completed,
 };
 
 struct pending_request {
+  uint64_t seq_num;
+  uint64_t generation;
   request_state state;
-  steady_timer timer;
-  completion_handler completion;
+  steady_timer deadline;
+  steady_timer completion_notify;
+  optional<raw_response> response;
+  rpc_errc completion_error;
+  bool completed;
 };
 ```
 
-这些字段仅由 socket 所属 `io_context` 线程访问，因此状态转换不需要 atomic 或 mutex。
+deadline 与 completion notification 必须分开：即使调用方晚些时候才 `co_await` sender，请求也应按原始 deadline 超时并从 pending 中删除。
 
-具体返回类型的反序列化仍在发起 `call<R>()` 的协程中进行。这样读循环不需要保存或判断 RPC 的返回类型。
+### 5.3 启动顺序
 
-### 6.2 调用流程
+一次 `send_call_for()` 的外层 awaitable 按以下顺序执行：
 
-一次 `call<R>()` 的流程如下：
+1. 校验 timeout；`timeout <= 0` 返回一个已完成、结果为 `request_timeout` 的 sender，不序列化也不发送。
+2. 把参数按值保存在外层 coroutine frame，避免调用返回后引用悬空。
+3. 完成参数序列化和 request body 构造。
+4. 进入 client executor，确认连接打开且处于 v2/unset 模式。
+5. 检查 pending 数量、写队列条目数和写队列字节数上限。
+6. 分配递增的非零 seq；回绕前关闭并重建连接，不在同一代连接复用旧 seq。
+7. 设置 `version=v2`、`seq_num=seq`，构造完整且独立拥有内存的 frame。
+8. 创建 pending state 和 deadline operation。
+9. 先执行 `pending.emplace(seq, state)`。
+10. 再把 frame 加入唯一 write queue。
+11. 启动独立 deadline watcher。
+12. 返回只等待该 state 的第二层 `async_result<R>`。
 
-1. 在 socket 所属 executor 上分配新的非零 seq。
-2. 完成参数序列化，并生成拥有独立内存的完整请求帧。
-3. 在发送前把等待操作注册到 `pending_requests[seq]`。
-4. 把请求帧加入连接写队列。
-5. 当前协程挂起，等待响应、超时或连接错误。
-6. 读循环收到对应 seq 后，从 map 移除 pending 项并恢复该协程。
-7. 恢复后的协程检查错误码，并按照 `R` 反序列化响应体。
+必须先登记 pending 再把帧暴露给 writer。frame 构造、内存分配等所有可能抛异常的操作应尽量在 pending 登记前完成；登记后的任何异常必须通过 scope guard 把 pending 提取并完成，不能遗留孤儿项。
 
-必须先注册 pending 项再发送，避免响应到达时 map 中还没有对应等待者。
+### 5.4 唯一 writer
 
-计时从 `call_for()` 开始执行时启动，包含写队列等待、网络写入和等待服务端响应的全部时间。`call()` 继续使用现有的默认超时时间。
+- 每条 v2 连接最多一个 `async_write`。
+- 新请求只追加完整 frame，不直接写 socket。
+- writer 取出队首前再次检查 pending 是否仍存在；排队期间已超时或取消的请求直接跳过。
+- 写成功后把 pending 状态从 `writing` 改为 `waiting_response`。
+- 当前帧写失败时关闭连接，并以 `write_error` 完成全部 pending；队列中剩余 frame 一并清空。
 
-### 6.3 单一读循环
+### 5.5 唯一 reader
 
-连接成功后启动一个读循环，并且该连接生命周期内不再由 `call()` 直接读取 socket：
+- 每条 v2 连接只有一个常驻 read loop。
+- header 和 body 都是当前循环迭代的局部变量。
+- 分配 body 前校验 magic、version、serialize type、msg type、seq、body length 和 attachment length。
+- 收到响应后按 seq 从 pending map 中提取节点；只有提取成功者可以完成 state。
+- pending 命中：取消 deadline，缓存 raw response，唤醒该 sender。
+- seq 位于 `abandoned_seqs`：这是超时或取消后的迟到响应，删除记录并丢弃。
+- seq 两处都不存在：属于重复响应或对端发送的未知响应，直接丢弃，绝不误配给其他 pending。
 
-```text
-读取固定长度 header
-  -> 校验 magic 并处理端序
-  -> 读取 body
-  -> msg_type == pubsub：按 topic_id 分发
-  -> seq_num != 0：按 seq_num 分发
-  -> seq_num == 0：执行旧版本降级规则
-  -> 未找到 seq：作为已经超时或取消请求的迟到响应丢弃
-```
+返回值反序列化在 sender 恢复后执行。反序列化异常只由当前 sender 抛出，不能终止 read loop，也不能关闭连接。
 
-header 和 body 使用读循环当前迭代的局部对象。响应被移动给对应 pending 请求，不能复用一个连接级 body buffer，否则后续读取可能覆盖尚未反序列化的数据。
+## 6. v2 Server 内部设计
 
-### 6.4 写队列
+### 6.1 读循环与请求对象
 
-每个待发送项持有完整帧的所有权，避免异步写期间引用调用栈上的 header 或序列化临时对象。
-
-RPC 写队列项同时记录对应的 seq。write pump 准备发送队首前检查该 seq 是否仍存在于 pending map；如果请求已经在队列等待期间超时或取消，则直接丢弃该帧，不再把已经失效的请求发送给 server。
-
-写入流程：
-
-1. 调用方把帧追加到 `write_queue`。
-2. 如果当前没有写操作，启动 write pump。
-3. write pump 对队首执行一次 `asio::async_write`。
-4. 写完后移除队首，并继续写下一帧。
-5. 队列为空时退出，将 `write_in_progress` 设为 false。
-
-整个流程只在所属 `io_context` 线程运行，因此不需要锁。
-
-### 6.5 Executor 与 API 调用约束
-
-pending map 无锁的前提必须由实现保证，而不能只依赖调用方碰巧正确：
-
-- `connect/call/call_for/subscribe` 的连接状态修改必须发生在 `client.get_executor()` 上。
-- 如果 API 允许从其他线程或 executor 调用，入口应先把内部操作调度到 client executor；否则必须在公开文档中明确禁止，并在 Debug 构建中断言。
-- `close()` 和析构可能从其他线程调用，应只投递关闭动作，不直接访问连接容器。
-- 完成 pending 请求前先把它从 map 移出，再恢复用户协程，防止协程恢复后立即重入 client 并修改同一容器。
-
-不支持两个并发的 `connect()`。连接中的 client 再次调用 `connect()` 视为显式重连：先以 `socket_closed` 完成旧连接的全部 pending 请求和订阅，再建立新连接。不能把旧连接的 pending 请求带到新连接。
-
-### 6.6 Client 对象生命周期
-
-读循环、写队列项、timer 回调和 pending 完成操作不能捕获裸 `rpc_client*`。它们应持有独立的共享连接状态；client 析构时执行一次幂等关闭：
-
-1. 把连接状态标记为 closing。
-2. 取消读写和所有 timer。
-3. 从容器移出 pending 项。
-4. 以 `socket_closed` 恢复所有等待协程。
-5. 最后释放 socket 和共享状态。
-
-旧连接异步操作的完成回调必须携带普通的 connection generation。generation 与当前连接不一致时只释放旧操作自身，不能关闭或修改已经重连成功的新 socket。
-
-### 6.7 本地异常安全
-
-- 参数序列化、内存分配或完整帧构造失败发生在 pending 注册前时，异常直接返回给调用方，连接不受影响。
-- 如果异常发生在 pending 注册后，使用作用域清理保证 map、timer 和写队列引用不会残留。
-- 返回值反序列化发生在 pending 已移出 map 之后；反序列化异常只影响当前调用，不能终止读循环或关闭连接。
-- server 返回非 `ok` 的 `rpc_errc` 时，client 不按正常返回类型 `R` 反序列化错误正文。
-- 完成处理器应通过 executor 调度，读循环本身只做帧解析和分发，避免用户协程中的耗时反序列化或异常重入读循环。
-
-## 7. Server 设计
-
-server 读取并解析请求头后，需要在请求上下文中保留 seq：
-
-```text
-request header.seq_num
-  -> router/当前请求上下文
-  -> 普通 response 或 rpc_context 延迟 response
-  -> response header.seq_num
-```
-
-普通响应直接把当前请求 header 的 seq 传给 `rpc_connection::response()`。
-
-`rpc_context` 构造时同时捕获：
-
-- 当前 `rpc_connection`；
-- 当前请求的 `seq_num`。
-
-之后调用 `rpc_context::response()` 时使用捕获的 seq，而不是读取可能已经属于另一个请求的 thread-local 当前值。
-
-server 连接同样使用单线程无锁写队列。原因不是多线程竞争，而是普通响应、延迟响应和 publish 可能在不同协程中重叠发起 `async_write`。
-
-### 7.1 Handler 与延迟响应异常
-
-- 请求反序列化失败、handler 抛出异常、普通响应序列化失败时，server 使用同一个 seq 返回对应 RPC 错误，不关闭连接。
-- `rpc_context` 延迟响应在序列化阶段抛出异常时，也应尽可能用捕获的 seq 返回错误；如果错误响应本身无法构造，则 client 最终按请求超时处理。
-- client 已断开后调用延迟响应，server 写操作返回连接错误；不能因为持有 `rpc_context` 而访问已经销毁的连接对象。
-- server 写响应前如果连接已经关闭，应立即返回 `socket_closed`，不能继续向写队列追加数据。
-
-`rpc_context` 的“一次响应”状态必须在它的所有副本之间共享，或者把 `rpc_context` 设计为只能移动。否则复制同一个 context 后，每个副本都有独立的 `has_response_`，可能对同一个 seq 返回多次响应。第二次响应必须返回 `has_response`，不能写入 socket。
-
-### 7.2 请求上下文边界
-
-当前 `rpc_context` 通过 thread-local 数据获得连接。一个 `io_context` 虽然只有一个线程，但同一线程上可以交错运行多个连接协程，因此 thread-local 并不等同于 coroutine-local。
-
-在不改 API 的前提下，至少必须保证：
-
-- router 调用 handler 前设置当前连接和 seq。
-- `rpc_context` 必须在 handler 第一次挂起前构造，并立即复制连接和 seq，之后不再读取 thread-local 值。
-- 每次 route 开始和结束都重置 `delay`、连接和 seq；异常路径也通过 RAII request scope 重置，不能把前一个请求的 delay 状态泄漏给下一个请求。
-
-如果要允许 handler 在一次 `co_await` 之后才创建 `rpc_context`，现有 thread-local 方案无法保证取到正确请求，后续需要把 context 显式作为 handler 参数或实现真正的 coroutine-local 请求上下文。这是现有延迟响应 API 的限制，必须写入公开文档并增加误用测试。
-
-### 7.3 Server 背压
-
-慢 client 可能使 server 响应写队列持续增长。每条连接应限制：
-
-- 写队列帧数；
-- 写队列总字节数；
-- 延迟响应的最大未完成数量。
-
-超过上限时不能无限分配内存。由于响应已经产生但无法安全丢弃单个 TCP 帧，推荐关闭该慢连接，并让尚未完成的 server 写操作返回连接错误。
-
-## 8. 超时、取消与连接错误
-
-### 8.1 单请求超时
-
-每个 pending 请求拥有独立的 `steady_timer`。timer 到期时在连接所属 `io_context` 上执行以下操作：
-
-1. 在 `pending_requests` 中查找该 seq。
-2. 如果已经不存在，说明响应、连接错误或取消先完成，timer 不再执行任何动作。
-3. 如果仍然存在，则先从 map 移除，保证该请求只能完成一次。
-4. 恢复对应协程并返回 `rpc_errc::request_timeout`。
-5. 不关闭 TCP 连接，也不影响其他在途请求。
-
-根据请求当前所处阶段，超时后的处理不同：
-
-- `queued`：写队列稍后发现 seq 已不在 pending map，跳过该请求帧。
-- `writing`：不取消 socket 上的写操作，避免影响同连接其他请求；写完后的响应将被视为迟到响应。
-- `waiting`：请求已被 server 接收，client 只能停止等待，不能撤回服务端工作。
-
-迟到响应到达时，读循环找不到对应 seq，直接丢弃并继续读取后续响应。它不能被交给下一个请求。
-
-超时与响应可能在非常接近的时间到达，但两者都在同一个 `io_context` 线程执行。以谁先从 `pending_requests` 成功移除该 seq 为准：
-
-```text
-响应先执行：移除 pending -> cancel timer -> 返回响应
-超时先执行：移除 pending -> 返回 request_timeout -> 迟到响应丢弃
-```
-
-因此不需要锁，也不会发生同一个 `co_await` 被恢复两次。
-
-这是连接复用下比“一个请求超时就关闭整条连接”更合适的语义。
-
-### 8.2 协程取消
-
-取消某个调用时取消该请求的 timer，并删除对应 pending 项，但不关闭连接。尚未发送的帧由 write pump 跳过；已经写出的请求无法撤回，其迟到响应按照未知 seq 丢弃。
-
-### 8.3 写错误、读错误和协议错误
-
-这些错误表示连接本身不可继续使用：
-
-- 关闭 socket；
-- 停止读写循环；
-- 清空写队列；
-- 用相应错误完成所有 pending RPC；
-- 唤醒所有等待中的订阅操作。
-
-完成所有 pending 请求时，必须先把它们从 map 移出并取消各自的 timer，再调用完成处理器，避免完成处理器恢复协程后重入连接状态。
-
-### 8.4 服务端长时间不返回
-
-只要 client socket 仍然可读写，服务端长时间不返回不会被 TCP 自身识别为断线。它按照单请求超时处理：
-
-- 到达 `call_for()` 的期限后，该 seq 返回 `rpc_errc::request_timeout`。
-- 同连接上的其他 seq 继续正常收发。
-- server 后续返回的迟到响应被丢弃。
-- server 上已经开始的 handler 不会自动停止。
-
-当前协议没有“取消远端请求”消息，因此 client 超时只能停止本地等待，不能保证取消 server 的计算。如果未来需要释放服务端长任务，应单独设计包含目标 seq 的 cancel 消息，并由业务 handler 配合取消。
-
-为了避免调用方持续创建超长超时请求导致 pending map 无限制增长，实现应提供或预留最大在途请求数。达到上限时应在发送前拒绝新请求；该能力可作为独立配置加入，不影响本次 seq 分发模型。
-
-### 8.5 半包、慢包与写阻塞
-
-请求 timer 只能结束某个 seq，不能解决 TCP 流已经卡在半帧的问题。
-
-例如 client 已经读到一个响应 header，但 server 声明的 body 只发送了一部分后停止发送。此时单读循环无法跳过该 body 去读取后续响应，整条连接已经发生队头阻塞。因此需要连接级帧组装超时：
-
-- 尚未收到任何新帧字节时可以保持空闲读，不因为没有 publish 或 RPC 响应而关闭连接。
-- 一旦开始接收某个 header 或已经得到 header 并开始读取 body，就启动可配置的 `frame_read_timeout`。
-- 在期限内未完成整帧，关闭连接并以 `read_error` 或 `protocol_error` 完成全部 pending 请求。
-- 使用 `async_read_some` 加缓冲解析器可以区分“完全空闲”和“半帧卡住”；只对整个 `async_read(header)` 设置超时会误伤正常空闲连接。
-
-写方向也存在相同问题：peer 不读取时，当前 `async_write` 可能长时间不完成，并阻塞其后的所有请求。write pump 需要可配置的 `frame_write_timeout`：
-
-- queued 请求可以在自身超时后直接跳过。
-- 已经开始写的帧不能只取消一半后继续使用连接，否则 peer 会收到残缺帧。
-- 当前帧写超时或发生部分写错误时，必须关闭整条连接并结束所有 pending 请求。
-
-TCP 多路复用只能解决响应乱序关联，不能消除单条字节流的半帧队头阻塞。
-
-### 8.6 连接半开与连续超时
-
-peer 进程失联但 TCP 尚未报告错误时，每个请求会分别超时。连接在 `multiplex` 模式下可以暂时保留，但需要防止它永久处于假健康状态：
-
-- 记录连续请求超时数、最后一次成功响应时间和 `abandoned_seqs` 数量。
-- 达到可配置阈值后主动关闭连接，让上层决定是否重连。
-- TCP keepalive 或应用层 ping 可以辅助发现半开连接，但不能替代每请求 deadline。
-- 库本身不自动重试已经发出的 RPC，避免非幂等请求被重复执行。
-
-### 8.7 本地调用状态
-
-- 未连接、已经关闭或正在关闭时调用 RPC：立即返回 `socket_closed`，不分配 seq，不入队。
-- duration 小于等于 0：立即返回 `request_timeout`，不序列化、不发送请求。
-- 正在连接时调用 RPC：默认立即返回 `socket_closed`；如果以后支持等待连接完成，应做成明确配置，不能隐式无限等待。
-- 达到最大在途请求数或最大写队列字节数：发送前拒绝，不能先入队再等待内存释放。
-- 显式重连：旧连接所有 pending 请求返回 `socket_closed`，新连接不自动重试它们。
-
-现有 `rpc_errc` 没有表达过载、消息过大和本地取消的专用值。实现前应决定是新增并追加 `too_many_requests`、`message_too_large`、`request_cancelled`，还是通过独立的本地错误类型返回；不要把这些情况错误地伪装成 `request_timeout`。
-
-### 8.8 服务端 RPC 错误
-
-以下错误属于某一个请求，响应必须携带原请求 seq，且不能关闭健康连接：
-
-- `no_such_function`；
-- 请求参数反序列化失败；
-- handler 抛出标准或未知异常；
-- handler 返回值序列化失败；
-- 业务主动返回的错误。
-
-client 收到非 `ok` 错误后只返回错误码或错误正文，不再把正文反序列化为正常返回类型。未知的远端错误码保留为该请求的远端错误，以便新旧版本向前兼容；只要帧结构合法，就不应因此关闭连接。
-
-### 8.9 发布订阅异常
-
-订阅等待与 RPC deadline 语义不同：长时间没有 publish 是正常状态，不能自动视为请求超时。需要处理：
-
-- 连接关闭时唤醒所有订阅等待者。
-- 未知 topic 的 publish 按协议策略记录并丢弃，不能交给任意 RPC。
-- 慢订阅者需要有消息数和总字节数上限，并明确采用丢弃旧消息、丢弃新消息或关闭连接的策略。
-- 同一 topic 多个并发 `subscribe()` 等待者必须定义是一条消息唤醒一个等待者，还是广播给全部等待者。
-- 当前 server 每条连接只保存一个 `topic_id`，本次不能暗示已经支持多 topic；若保持现状，应明确限制一条连接只能订阅一个 topic。
-
-### 8.10 异常处理矩阵
-
-| 场景 | 影响范围 | 当前请求结果 | 是否关闭连接 | 其他 pending 请求 |
-| --- | --- | --- | --- | --- |
-| 单请求等待超时 | 单个 seq | `request_timeout` | 否 | 继续等待 |
-| 单个调用被取消 | 单个 seq | 取消 | 否 | 继续等待 |
-| 已记录在 abandoned 集合中的迟到响应 | 单个响应 | 丢弃 | 否 | 不受影响 |
-| 从未发出或重复的非零 seq | 整条连接 | `protocol_error` | 是 | 全部结束 |
-| socket 写错误 | 整条连接 | `write_error` | 是 | 全部结束 |
-| socket 读错误或 EOF | 整条连接 | `read_error` | 是 | 全部结束 |
-| 本地主动 close 或重连 | 整条连接 | `socket_closed` | 是 | 全部结束 |
-| header/body 半帧超时 | 整条连接 | `read_error` | 是 | 全部结束 |
-| 当前帧写入超时 | 整条连接 | `write_error` | 是 | 全部结束 |
-| magic、版本、类型、长度、附件错误 | 整条连接 | `protocol_error` | 是 | 全部结束 |
-| `seq=0` 且有多个 pending RPC | 整条连接 | `protocol_error` | 是 | 全部结束 |
-| 返回值反序列化失败 | 单个 seq | 保持现有异常语义 | 否 | 不受影响 |
-| server 返回业务/RPC 错误 | 单个 seq | 原错误码 | 否 | 不受影响 |
-| 未连接时调用 | 单个调用 | `socket_closed` | 已关闭 | 不受影响 |
-| 本地序列化或分配失败 | 单个调用 | 抛出异常 | 否 | 不受影响 |
-| pending/写队列超过上限 | 单个调用 | 过载错误 | 否 | 不受影响 |
-| 响应 body 超过上限或长度溢出 | 整条连接 | `protocol_error` | 是 | 全部结束 |
-
-### 8.11 完成优先级与 exactly-once
-
-响应、请求 timer、取消和连接关闭都可能尝试结束同一个 pending 请求。统一使用“先从 map 提取，提取成功者负责完成”的规则：
+v2 server 读完一整个请求帧后，构造独立请求对象：
 
 ```cpp
-auto node = pending_requests.extract(seq);
-if (node.empty()) {
-  return; // 已由另一条路径完成
+struct v2_request {
+  protocol_version version;
+  uint64_t seq_num;
+  uint32_t function_id;
+  std::string body;
+  shared_ptr<multiplex_server_session> session;
+};
+```
+
+`body` 必须由该对象独占，不能传递指向连接复用 buffer 的 `string_view`。
+
+```cpp
+while (!closed) {
+  auto request = co_await read_complete_v2_frame();
+  asio::co_spawn(executor,
+                 handle_v2_request(std::move(request)),
+                 guarded_completion_handler);
 }
-node.mapped().timer.cancel();
-post_completion(std::move(node.mapped()), result);
 ```
 
-同一 executor 保证操作串行；map 的所有权转移保证完成处理器只调用一次。边界时刻响应和 timeout 谁先进入 executor 队列，用户就观察到谁的结果，这是允许的竞态语义。
+read loop 不等待 `handle_v2_request()`。普通协程 handler 即使在内部等待 timer、数据库或其他 RPC，也不会阻止连接继续收包。
 
-### 8.12 重连
+### 6.2 handler context
 
-重连前必须先使旧连接上的所有 pending 操作失败，并取消旧读写操作。新连接启动新的读循环；旧连接的任何完成回调都不能操作新连接状态。
+现有 `thread_local tls_data` 不能作为 v2 coroutine-local context：多个 handler 在同一线程交错执行时会互相覆盖 version/seq/connection。
 
-由于连接生命周期操作也运行在同一 executor 上，可以使用普通递增的 connection generation 区分旧、新连接，不需要 atomic。
+v2 为每个请求显式创建 `rpc_context(session, version, seq)`：
 
-连接本身建议使用显式状态机：
+- 普通“返回结果”的 handler 保持原签名。
+- 需要延迟或手动响应的 v2 handler 通过第一个参数显式接收 `rpc_context`。
+- `route_multiplex()` 识别 context-aware handler，并把请求自己的 context 注入；context 不从请求 body 反序列化。
+- `rpc_context` 保存 version、seq、弱/强 session 引用以及共享的 response-once 原子状态。
+- v1 的默认构造 `rpc_context` 和 TLS 行为保留在 v1 路径，不拿来承载 v2 并发上下文。
 
-```text
-disconnected -> resolving -> connecting -> connected -> closing -> disconnected
+示例：
+
+```cpp
+asio::awaitable<int> normal_v2_handler(int value) {
+  co_return value;
+}
+
+void delayed_v2_handler(rpc_context ctx, int value) {
+  asio::co_spawn(ctx.get_executor(), delayed_response(std::move(ctx), value),
+                 asio::detached);
+}
 ```
 
-- DNS 超时返回 `resolve_timeout`；DNS 系统错误原样返回。
-- resolver 返回空 endpoint 列表时返回连接错误，不能直接解引用 `begin()`。
-- TCP connect 超时返回 `connection_timeout`；拒绝连接等系统错误原样返回。
-- `TCP_NODELAY` 等连接选项设置失败时关闭新 socket 并返回该系统错误，不能留下“已连接但初始化未完成”的状态。
-- 只有完成全部连接初始化后才启动读循环并发布 `connected` 状态。
-- 连接失败后必须回到 `disconnected`，允许下一次 `connect()` 使用全新的 socket。
+### 6.3 响应队列
 
-### 8.13 Server 主动关闭与空闲超时
+所有 v2 响应都先构造成完整 frame，再进入每连接唯一的 `response_queue`：
 
-server 停止、连接空闲回收或管理员主动关闭连接时，client 的读循环最终得到 EOF/连接重置，并以连接级错误结束所有 pending 请求。
+- response header 原样使用 request 的 `version` 和 `seq_num`。
+- 任意时刻只有一个 server `async_write`。
+- `response_queue` 默认最多 1024 项，并同时限制总字节数。
+- 队列已满时 `enqueue_response()` 立即返回 `rpc_errc::queue_full`，不等待 socket 可写。
+- 显式 `rpc_context::response()` 把 `queue_full` 返回给 handler。
+- 自动响应无法入队时记录错误并关闭该 v2 连接，避免 client 对一个已被丢弃的响应永久等待。
+- server socket 写失败时清空队列并关闭连接；对端 client 会由自己的 read loop 以 `read_error` 唤醒所有 pending。
 
-如果 server 在 handler 尚未完成时触发连接最大空闲时间：
+并发 handler 数量也设置上限。超过上限时不启动 handler，而是尝试给该 seq 返回 `queue_full`；如果连拒绝响应都无法入队，则关闭连接。
 
-- client 上所有 pending 请求结束；
-- handler 后续返回的普通或延迟响应写入失败；
-- server 必须保证 write completion 和 `rpc_context` 只看到关闭状态，不访问已释放对象。
+## 7. 超时、取消与一次完成
 
-是否把“正在执行 handler”算作连接活跃需要由 server 空闲策略明确规定。若目标是只清理真正空闲连接，应把 active request 数纳入判断；仅根据最后一次网络读写时间可能误杀长时间运行的 handler。
+响应、deadline、取消和连接关闭都可能竞争结束同一个请求。统一规则是：谁先在 client executor 上从 pending map 成功提取该 seq，谁负责完成；其他路径什么也不做。
 
-### 8.14 资源上限
+```cpp
+auto node = pending.extract(seq);
+if (node.empty()) {
+  return;
+}
 
-为避免正常接口被慢 peer 或恶意输入拖垮，至少需要以下可配置限制：
-
-| 限制 | Client | Server | 超限策略 |
-| --- | --- | --- | --- |
-| 最大请求/响应 body | 是 | 是 | 接收超限关闭连接；本地发送超限直接拒绝 |
-| 每连接最大 pending RPC 数 | 是 | 可选 | 发送前返回过载错误 |
-| 每连接写队列总字节数 | 是 | 是 | client 拒绝新请求；server 关闭慢连接 |
-| 最大 abandoned seq 数 | 是 | 否 | 关闭连接，防止迟到请求状态无限增长 |
-| 订阅缓存消息数/字节数 | 是 | 是 | 使用明确的丢弃或断开策略 |
-| 单帧组装时间 | 是 | 是 | 关闭半包连接 |
-| 单帧写入时间 | 是 | 是 | 关闭阻塞连接 |
-
-限制值应在入队或分配前检查。对来自网络的 `uint64_t` 长度先做上限和 `size_t` 溢出检查，再调用 `resize/reserve`，避免异常分配或进程内存耗尽。
-
-## 9. 关键时序
-
-```text
-client call(1) -- seq=1 --\
-client call(2) -- seq=2 ----> 单写队列 ---> server
-client call(3) -- seq=3 --/
-
-server response(3, seq=3) ---> client 单读循环 ---> pending[3] ---> call(3) 恢复
-server response(2, seq=2) ---> client 单读循环 ---> pending[2] ---> call(2) 恢复
-server response(1, seq=1) ---> client 单读循环 ---> pending[1] ---> call(1) 恢复
+node.mapped()->deadline.cancel();
+node.mapped()->complete(result); // complete 内部仍做一次性保护
 ```
 
-恢复顺序可以是 `3、2、1`，但每个调用拿到的值仍分别是 `1、2、3`。
+### 7.1 超时
 
-## 10. 测试方案
+- deadline 从外层 `send_call_for()` 启动请求时开始，包含写队列等待、socket 写入和服务端处理时间。
+- 超时只删除当前 seq，返回 `request_timeout`，不关闭健康的 v2 连接。
+- 未开始写的 frame 由 writer 跳过。
+- 已经写出的请求无法撤回；seq 放入有界 `abandoned_seqs`，迟到响应到达后丢弃。
 
-### 10.1 必须新增的协议级测试
+### 7.2 取消
 
-使用现有 `rpc_server`、`rpc_context` 和连接所属 executor 上的
-`steady_timer` 构造延迟响应：
+- sender 的等待协程收到 Asio cancellation 后，在 client executor 上尝试提取对应 pending。
+- 成功提取时返回 `request_cancelled`，并按超时相同方式处理 queued frame 或迟到响应。
+- 如果响应已经先完成，取消不覆盖已缓存的响应。
+- 首版不发送远端 cancel frame，因此 server handler可以继续运行。
 
-1. 测试主体写在一个 `asio::awaitable<void>` 协程函数中。
-2. 使用 `co_await (call(1) && call(2) && call(3))` 同时启动三个调用。
-3. handler 在创建 `rpc_context` 后立即返回，并分别延迟 300、200、100ms
-   响应，使响应顺序固定为 3、2、1。
-4. 验证三个调用分别得到自己的值，而不是按响应到达顺序错配。
-5. `TEST_CASE` 只负责在 client executor 上 `sync_wait()` 测试协程。
+### 7.3 连接错误和主动关闭
 
-测试不额外创建 `io_context`、阻塞 socket 或测试线程，避免测试本身引入与
-rest_rpc 实际运行模型不同的并发方式。
+- read error、write error、协议错误和主动 `close()` 都先移动整个 pending map，再逐个取消 deadline 和完成 sender。
+- `fail_all()` 不在遍历原 map 时恢复用户协程，避免重入修改容器。
+- 每个 state 的 completion 最多调用一次。
 
-### 10.2 Server seq 回传测试
+## 8. 重连和连接世代
 
-- 普通 handler 响应回传请求 seq。
-- `rpc_context` 延迟响应回传创建 context 时捕获的 seq。
-- 跨端序模式下 seq 转换正确。
+重连不能只替换旧状态里的 socket 成员。应创建全新的 shared session：
 
-### 10.3 生命周期测试
+1. 从 `rpc_client` 取下旧 session。
+2. 关闭旧 socket，以 `socket_closed` 完成旧 session 的全部 pending。
+3. 创建新的 socket 和新的 v1/v2 状态，generation 递增。
+4. 新连接从 `connection_mode::unset` 开始。
+5. 旧 reader、writer、deadline 和 handler 只捕获旧 session；即使迟到回调执行，也无法访问新 session 的 pending 或 socket。
 
-- 一个请求超时，其他在途请求仍能完成。
-- 请求在写队列中超时时，该请求帧不会继续发出。
-- 请求已经发出后超时时，不取消连接上的其他读写操作。
-- 超时请求的迟到响应不会交给后续请求。
-- 响应和 timer 同时就绪时，请求只完成一次。
-- `unknown` 模式超时后关闭连接，不把旧 server 的 seq 0 迟到响应交给新请求。
-- `legacy` 模式强制单请求在途，并在超时后关闭连接。
-- 合法迟到 seq 被丢弃；重复响应或从未分配的 seq 触发协议错误。
-- socket 读错误会结束所有 pending 请求。
-- socket 写错误会结束所有 pending 请求。
-- partial header、partial body 和 stalled write 超时后关闭连接。
-- 重连后 seq 分发不受旧读循环影响。
-- client 销毁时没有悬空回调或未恢复协程。
-- close、连接错误和 timeout 同时发生时，每个 pending completion 只调用一次。
+旧请求不自动迁移或重发到新连接。
 
-### 10.4 协议异常测试
+## 9. 资源上限与错误码
 
-- `body_len == 0` 的 RPC 响应。
-- `body_len` 超过配置上限。
-- `body_len` 从 `uint64_t` 转换为 `size_t` 会溢出。
-- `attach_length != 0`。
-- magic、version、serialize type 或 message type 非法。
-- publish/control header 声明非零 body 时，读循环不会发生下一帧错位。
-- header 完整但 body 不完整，连接级 frame timer 生效。
-- 非 `ok` RPC 错误正文不会按正常返回类型反序列化。
-- 未知的远端 RPC 错误码只影响对应请求，不破坏帧流。
+v2 首版提供以下每连接默认值，并允许在连接开始前配置：
 
-### 10.5 本地异常与资源测试
+| 资源 | 默认上限 | 达到上限的行为 |
+|---|---:|---|
+| client pending RPC | 1024 | 当前 sender 返回 `queue_full`，不发送 |
+| client request queue | 1024 项 | 当前 sender 返回 `queue_full`，不发送 |
+| client queued bytes | 64 MiB | 当前 sender 返回 `queue_full`，不发送 |
+| client abandoned seq | 4096 | 关闭连接，全部 pending 返回 `protocol_error` |
+| server active v2 handlers | 1024 | 给当前 seq 返回 `queue_full` |
+| server response queue | 1024 项 | enqueue 立即返回 `queue_full` |
+| server queued bytes | 64 MiB | enqueue 立即返回 `queue_full` |
+| v2 frame body | 16 MiB | `message_too_large` 或关闭恶意对端 |
 
-- 未连接、正在连接、closing 和已关闭状态调用 RPC。
-- duration 为 0 或负值时不发送请求。
-- 参数序列化抛异常后 pending map 和写队列为空。
-- 返回值反序列化抛异常后读循环仍可完成下一个响应。
-- pending 数、写队列字节数、abandoned seq 数达到上限。
-- seq 接近回绕边界时触发重连，不复用旧 seq。
-- `char`、`signed char`、`unsigned char` 单参数 codec 覆盖 0、边界值和负值；防止以后把 `std::to_string` 改为 `std::to_chars` 时引入编译或语义回归。
+新增错误码必须追加到 `rpc_errc` 末尾，不能改变现有数值：
 
-### 10.6 Server 与延迟响应测试
+```cpp
+queue_full,
+request_cancelled,
+protocol_mode_conflict,
+message_too_large,
+```
 
-- handler 参数反序列化、执行和返回值序列化分别失败，响应均携带原 seq。
-- 延迟响应在 client 已断开后执行，只返回连接错误且不崩溃。
-- 同一 `rpc_context` 被复制或重复调用时只允许一次响应。
-- handler 创建 `rpc_context` 后挂起，再由其他连接运行 handler，捕获的 connection 和 seq 不变化。
-- route 抛异常后 thread-local request scope 被清理，下一请求不继承 delay/seq。
-- server 空闲回收与长 handler 并发发生时，连接及 context 生命周期安全。
-- 慢 client 造成 server 写队列达到上限时关闭该连接，不无限增长内存。
+本地序列化异常、返回值反序列化异常和 `std::bad_alloc` 继续以 C++ 异常传播；协议和传输状态使用 `call_result.ec`。
 
-### 10.7 发布订阅测试
+## 10. 异常处理矩阵
 
-- 长时间没有 publish 时订阅保持等待，不按 RPC timeout 失败。
-- RPC 响应与 publish 消息交错到达时分别进入 seq map 和 topic queue。
-- 未知 topic、慢订阅者缓存超限以及连接关闭时的行为符合配置。
-- 当前单 topic 限制有明确测试；如果后续支持多 topic，再替换该限制测试。
+| 场景 | 当前请求 | 连接 | 其他 pending |
+|---|---|---|---|
+| timeout <= 0 | `request_timeout` | 不变 | 不受影响 |
+| 参数序列化失败 | 外层 await 抛异常 | 不变 | 不受影响 |
+| pending/发送队列满 | `queue_full` | 不变 | 不受影响 |
+| 单请求超时 | `request_timeout` | 保持 | 不受影响 |
+| 单请求取消 | `request_cancelled` | 保持 | 不受影响 |
+| 返回值反序列化失败 | sender 抛异常 | 保持 | 不受影响 |
+| 已超时/取消请求的迟到或重复 seq | 丢弃响应 | 保持 | 不受影响 |
+| v2 收到 v1/seq 0 响应 | `protocol_error` | 关闭 | 全部 `protocol_error` |
+| socket 读失败 | `read_error` | 关闭 | 全部 `read_error` |
+| socket 写失败 | `write_error` | 关闭 | 全部 `write_error` |
+| 主动 close/重连 | `socket_closed` | 关闭旧连接 | 全部 `socket_closed` |
+| server handler 业务异常 | 现有 function error 响应 | 保持 | 不受影响 |
+| server response queue 满 | 显式 `rpc_context::response()` 返回 `queue_full`；自动响应路径关闭连接 | 见左 | client pending 由断连唤醒 |
+| v1/v2 API 混用 | `protocol_mode_conflict` | 保持原模式 | 不受影响 |
 
-### 10.8 回归测试
+登记 pending 之后的 frame 入队、timer 启动或其他操作如果抛异常，必须用 scope guard 回滚 pending 和队列计数，然后重新抛出。任何 detached v2 handler 都必须带 completion callback，禁止异常逃出 detached coroutine。
 
-- 单请求 `call()` 和 `call_for()`。
-- void 及非 void 返回值。
-- 发布订阅。
-- 延迟响应。
-- 跨端序。
-- server 停止和 client 重连。
+## 11. 测试验收
 
-## 11. 验收标准
+### 11.1 v1 回归与隔离
 
-- 同一连接三个请求的 seq 为非零且互不相同。
-- 响应按 3、2、1 到达时，每个 `co_await` 与自己的 seq 正确匹配。
-- 任意时刻每个 socket 只有一个读操作和一个写操作。
-- 连接级状态没有 mutex，且仅由所属 `io_context` 线程访问。
-- 单请求超时不会中断其他在途请求。
-- 半帧或卡住的写操作不会永久毒化连接。
-- pending 请求在响应、超时、取消和关闭竞态下只完成一次。
-- 网络长度字段在分配内存前经过上限与溢出检查。
-- 旧 server 的 seq 0 迟到响应不会被错误匹配给新请求。
-- 所有异步操作只持有共享连接状态，不依赖已经析构的 client/server 栈对象。
-- 现有测试和新增复用测试全部通过。
+- v1 client 对旧 server 的请求/响应字节和行为不变。
+- 旧 client 可以调用新 server 的 v1 路径。
+- v1 `call/call_for/subscribe` 的现有测试全部不改语义地通过。
+- 同一连接先 v1 后 v2、先 v2 后 v1 都返回 `protocol_mode_conflict`，且不产生并发读。
+- v2 client 对不支持 v2 的 server 不降级，不把 seq 0 响应误配给 pending。
 
-## 12. 实现前需要确定的配置与 API
+### 11.2 API 灵活性
 
-以下项目不应留到编码过程中临时决定：
+- 先启动慢请求，再启动快请求，先 `co_await fast` 时必须在 slow 之前返回。
+- 上述测试不能使用 `operator&&`、collect-all 或 handler 内部 detached response 来制造假并发。
+- `send_calls()` 支持不同返回类型，并允许按任意顺序等待。
+- 响应先于第二层 `co_await` 到达时结果仍可正确取得。
 
-- 默认 `max_body_size`。
-- 默认最大 pending RPC 数和写队列字节数。
-- 默认 `frame_read_timeout` 与 `frame_write_timeout`。
-- abandoned seq 数达到上限时是否立即关闭连接。
-- 订阅缓存超限采用丢弃旧消息、丢弃新消息还是断开连接。
-- 是否新增 `too_many_requests`、`message_too_large`、`request_cancelled` 错误码。
-- 是否用 `version` 字段明确标识 multiplex peer，还是暂时采用 `unknown/multiplex/legacy` 推断。
-- 是否在本次范围内修复 `rpc_context` 的 thread-local 限制；若不修复，必须明确“第一次挂起前构造”的使用约束。
+### 11.3 v2 协议与并发
 
-这些配置确定后，异常路径才可以写成稳定测试，而不是依赖实现细节。
+- 同连接大量请求的 seq 唯一且递增。
+- pending 一定先于请求帧进入 writer 可见状态。
+- server 使用真正会 `co_await timer` 后再返回的普通 coroutine handler，证明慢 handler 不阻塞快 handler。
+- 不同 body 长度和内容并发时，每个 handler 只读取自己的 body。
+- server 乱序响应仍准确回到对应 sender。
+- response header 精确回传 request version 和 seq。
+
+### 11.4 异常与资源
+
+- 请求在 queued、writing、waiting_response 三种状态分别超时。
+- 请求在三种状态分别取消；迟到响应被丢弃且不污染下一调用。
+- 多个 pending 存在时注入 read error、write error 和主动 close，全部 sender 被唤醒且只完成一次。
+- 写队列中有多个 frame 时注入首帧/中间帧写失败，队列和 pending 最终为空。
+- 重连期间旧请求返回 `socket_closed`，旧回调和迟到响应不能完成新请求。
+- pending、请求队列、响应队列、字节数和 handler 数量达到边界时执行明确拒绝策略。
+- 参数序列化、frame 构造和返回值反序列化抛异常后，pending 与队列计数正确。
+- 重复/未知 seq 被丢弃；错误 version、seq 0、非法 body length 触发预期协议错误。
+
+新增的 v2 网络测试使用系统分配的临时端口，不修改 v1 既有测试的端口和语义。需要精确制造半写、写失败和迟到帧的场景时使用可注入 transport/fake socket，不依赖不稳定的时间竞争。
+
+## 12. 实施顺序
+
+1. 恢复并冻结 v1 client/server 路径；删除当前从 `connect/call/call_for` 进入的多路复用状态，并补齐 v1 回归测试。
+2. 增加显式 v1/v2 常量、连接模式和追加式错误码。
+3. 实现独立 `multiplex_client_session`、pending state、单 writer 和单 reader。
+4. 实现 `send_call()`/`send_call_for()` 两阶段接口及结果缓存。
+5. 实现热启动但非 collect-all 的 `send_calls()`。
+6. 实现独立 `multiplex_server_session`、完整请求对象和并发 handler。
+7. 为 v2 增加显式 `rpc_context` 注入，移除对 TLS 的并发依赖。
+8. 实现有界 response queue、client 资源上限、超时和取消。
+9. 实现整 session 重连隔离与 fail-all。
+10. 按第 11 节完成故障注入、边界和协议兼容测试。
+
+只有以下条件全部满足后才算多路复用完成：调用方无需 collect-all 即可独立等待；普通慢 coroutine handler 不阻塞快请求；所有队列有界；所有失败路径不会留下 pending；v1 现有行为不变。

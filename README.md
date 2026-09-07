@@ -74,6 +74,32 @@ int main(){
 }
 ```
 
+### 单连接并发调用（协议 V2）
+
+V2 用 `seq_num` 在同一条 TCP 连接上关联请求和响应。`send_call()` 的第一次 `co_await` 只启动请求并返回独立 sender，不等待响应；之后可以按任意顺序等待每个结果：
+
+```cpp
+auto slow = co_await client.send_call<slow_query>(1);
+auto fast = co_await client.send_call<fast_query>(2);
+
+// fast 和 slow 都已发送，这里先等待 fast，不会被 slow 阻塞。
+auto fast_result = co_await fast.wait();
+auto slow_result = co_await slow.wait();
+```
+
+也可以用 `send_calls()` 一次启动不同函数；它只负责启动，不会像 collect-all 一样等待全部完成：
+
+```cpp
+auto [slow, fast] = client.send_calls(
+    client.send_call<slow_query>(1),
+    client.send_call<fast_query>(2));
+
+auto fast_result = co_await fast.wait();
+auto slow_result = co_await slow.wait();
+```
+
+`async_result` 封装了 Asio 的 move-only `awaitable`，调用方不需要显式 `std::move`；每个结果仍然只能 `wait()` 一次。V1 的 `call/call_for/subscribe` 保持原接口；同一条连接不能混用 V1 和 V2，需要重新 `connect()` 后切换。
+
 ### 获取一个对象的rpc服务
 
 ```cpp

@@ -10,6 +10,9 @@
 #include <string_view>
 
 namespace rest_rpc {
+class rpc_context;
+struct multiplex_rpc_result;
+
 template <typename T>
 constexpr inline bool is_void_v =
     std::is_same_v<T, void> || std::is_same_v<T, asio::awaitable<void>>;
@@ -53,6 +56,7 @@ public:
   void remove_handler(std::string_view name) {
     uint32_t key = MD5::MD5Hash32(name.data(), (uint32_t)name.length());
     this->map_invokers_.erase(key);
+    this->multiplex_invokers_.erase(key);
     key2func_name_.erase(key);
   }
 
@@ -93,7 +97,13 @@ public:
     co_return route_result;
   }
 
+  asio::awaitable<multiplex_rpc_result>
+  route_multiplex(uint32_t key, std::string_view data, rpc_context &context);
+
 private:
+  template <typename Function>
+  static constexpr bool is_multiplex_context_handler();
+
   template <typename Function, typename Self = void>
   void register_handler_impl(uint32_t key, std::string_view name,
                              const Function &f, Self *self = nullptr) {
@@ -103,8 +113,21 @@ private:
 
     key2func_name_.emplace(key, name);
 
-    register_func_impl(key, f, self);
+    if constexpr (is_multiplex_context_handler<Function>()) {
+      register_multiplex_func_impl(key, f, self);
+    } else {
+      register_func_impl(key, f, self);
+    }
   }
+
+  template <typename Function, typename Self>
+  void register_multiplex_func_impl(uint32_t key, const Function &f,
+                                    Self *self);
+
+  template <typename R, typename Args, typename F, typename Self>
+  asio::awaitable<void>
+  handle_multiplex_context(std::string_view str, const F &f, rpc_result &ret,
+                           Self *self, rpc_context &context);
 
   template <typename Function, typename Self>
   void register_func_impl(uint32_t key, const Function &f, Self *self) {
@@ -254,6 +277,12 @@ private:
   std::unordered_map<uint32_t, std::function<asio::awaitable<void>(
                                    std::string_view, rpc_result &)>>
       map_invokers_;
+  std::unordered_map<uint32_t,
+                     std::function<asio::awaitable<void>(
+                         std::string_view, rpc_result &, rpc_context &)>>
+      multiplex_invokers_;
   std::unordered_map<uint32_t, std::string> key2func_name_;
 };
 } // namespace rest_rpc
+
+#include "rpc_router_multiplex.ipp"

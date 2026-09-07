@@ -21,6 +21,10 @@ enum class rpc_errc : std::int8_t {
   has_response,
   duplicate_topic,
   rpc_context_init_failed,
+  queue_full,
+  request_cancelled,
+  protocol_mode_conflict,
+  message_too_large,
 };
 
 class rpc_error_category : public std::error_category {
@@ -64,6 +68,14 @@ public:
     case rpc_errc::rpc_context_init_failed:
       return "the rpc context init failed, it must be created in rpc handler "
              "io thread, otherwise will init failed";
+    case rpc_errc::queue_full:
+      return "queue full";
+    case rpc_errc::request_cancelled:
+      return "request cancelled";
+    case rpc_errc::protocol_mode_conflict:
+      return "protocol mode conflict";
+    case rpc_errc::message_too_large:
+      return "message too large";
     default:
       return "unknown error";
     }

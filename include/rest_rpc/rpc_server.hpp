@@ -78,6 +78,12 @@ public:
 
   bool has_stopped() const { return has_stop_.load(std::memory_order_acquire); }
 
+  uint16_t port() const {
+    std::error_code ec;
+    auto endpoint = acceptor_.local_endpoint(ec);
+    return ec ? 0 : endpoint.port();
+  }
+
   template <typename Function, typename Self = void>
   void register_handler(std::string_view name, const Function &f,
                         Self *self = nullptr) {
@@ -96,6 +102,10 @@ public:
   void enable_tcp_no_delay(bool r) { tcp_no_delay_ = r; }
 
   void enable_cross_ending(bool r) { cross_ending_ = r; }
+
+  void set_multiplex_limits(multiplex_server_limits limits) {
+    multiplex_limits_ = limits;
+  }
 
   size_t connection_count() {
     std::scoped_lock lock(*conn_mtx_);
@@ -180,8 +190,9 @@ private:
       }
 
       REST_LOG_INFO << "new connction comming...";
-      auto conn = std::make_shared<rpc_connection>(std::move(socket), conn_id,
-                                                   router_, cross_ending_);
+      auto conn =
+          std::make_shared<rpc_connection>(std::move(socket), conn_id, router_,
+                                           cross_ending_, multiplex_limits_);
       if (need_check_) {
         conn->set_check_timeout(true);
       }
@@ -289,5 +300,6 @@ private:
   rpc_router router_;
   bool tcp_no_delay_ = true;
   bool cross_ending_ = false;
+  multiplex_server_limits multiplex_limits_;
 };
 } // namespace rest_rpc

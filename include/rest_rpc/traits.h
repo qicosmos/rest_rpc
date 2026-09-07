@@ -213,8 +213,7 @@ concept CharArray =
 
 template <typename T, typename...>
 inline constexpr bool is_basic_v =
-    std::is_fundamental_v<std::remove_cvref_t<T>> || string<T> ||
-    CharArray<T> || CharArrayRef<T>;
+    std::is_fundamental_v<T> || string<T> || CharArray<T> || CharArrayRef<T>;
 } // namespace util
 
 template <typename Function>
