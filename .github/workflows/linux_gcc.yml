@@ -4,11 +4,32 @@ on:
   push:
     branches:
       - master
+      - dbg/**
   pull_request:
     branches:
       - master
 
 jobs:
+  debug_asan:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure CMake
+        run: CXX=g++ CC=gcc cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+
+      - name: Build
+        run: cmake --build ${{github.workspace}}/build --config Debug -j 4
+
+      - name: Test
+        working-directory: ${{github.workspace}}/build
+        env:
+          ASAN_OPTIONS: "abort_on_error=1"
+          UBSAN_OPTIONS: "print_stacktrace=1"
+        run: ctest -C Debug -j 1 -V
+
   build_by_gcc:
     strategy:
       matrix:
