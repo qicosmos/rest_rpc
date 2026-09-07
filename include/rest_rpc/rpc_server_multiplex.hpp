@@ -118,7 +118,7 @@ private:
           if (result.suppress_response) {
             co_return;
           }
-          if (!self->enqueue_response(req.header, result.response)) {
+          if (!self->enqueue_response(req.header, result.ec, result.body)) {
             // An automatic response cannot report queue_full without another
             // response slot, so close the connection and wake all callers.
             self->stop();
@@ -154,8 +154,8 @@ private:
                   co_return make_error_code(rpc_errc::socket_closed);
                 }
 
-                rpc_result result(std::move(body));
-                if (!self->enqueue_response(request_header, result)) {
+                if (!self->enqueue_response(request_header, rpc_errc::ok,
+                                            body)) {
                   co_return make_error_code(rpc_errc::queue_full);
                 }
                 co_return std::error_code{};
@@ -165,13 +165,11 @@ private:
   }
 
   bool enqueue_error(const rest_rpc_header &request_header, rpc_errc ec) {
-    rpc_result result;
-    result.ec = ec;
-    return enqueue_response(request_header, result);
+    return enqueue_response(request_header, ec, {});
   }
 
   bool enqueue_response(const rest_rpc_header &request_header,
-                        const rpc_result &result) {
+                        rpc_errc response_ec, std::string_view response_body) {
     if (stopped_) {
       return false;
     }
@@ -182,7 +180,7 @@ private:
     response_header.msg_type = request_header.msg_type;
     response_header.function_id = request_header.function_id;
     response_header.seq_num = request_header.seq_num;
-    response_header.body_len = result.size() + 1;
+    response_header.body_len = response_body.size() + 1;
 
     const auto frame_size = sizeof(rest_rpc_header) + response_header.body_len;
     if (response_queue_.size() >= limits_.max_response_queue ||
@@ -200,11 +198,10 @@ private:
       response_frame frame;
       frame.bytes.resize(frame_size);
       std::memcpy(frame.bytes.data(), &wire_header, sizeof(wire_header));
-      frame.bytes[sizeof(rest_rpc_header)] = static_cast<char>(result.ec);
-      if (!result.empty()) {
-        auto data = result.data();
+      frame.bytes[sizeof(rest_rpc_header)] = static_cast<char>(response_ec);
+      if (!response_body.empty()) {
         std::memcpy(frame.bytes.data() + sizeof(rest_rpc_header) + 1,
-                    data.data(), data.size());
+                    response_body.data(), response_body.size());
       }
       response_queue_.push_back(std::move(frame));
       queued_bytes_ += frame_size;

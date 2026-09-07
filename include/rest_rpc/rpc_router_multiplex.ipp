@@ -5,7 +5,8 @@
 namespace rest_rpc {
 
 struct multiplex_rpc_result {
-  rpc_result response;
+  rpc_errc ec = rpc_errc::ok;
+  std::string body;
   bool suppress_response = false;
 };
 
@@ -26,27 +27,33 @@ rpc_router::route_multiplex(uint32_t key, std::string_view data,
                             rpc_context &context) {
   auto it = multiplex_invokers_.find(key);
   if (it == multiplex_invokers_.end()) {
-    co_return multiplex_rpc_result{co_await route(key, data), false};
+    auto response = co_await route(key, data);
+    co_return multiplex_rpc_result{response.ec, std::string(response.data()),
+                                   false};
   }
 
-  multiplex_rpc_result route_result{};
+  rpc_result response{};
+  bool suppress_response = false;
   try {
-    co_await it->second(data, route_result.response, context);
-    route_result.suppress_response = true;
+    co_await it->second(data, response, context);
+    suppress_response = true;
   } catch (const std::exception &ex) {
-    route_result.suppress_response = context.has_response();
-    route_result.response.result =
+    suppress_response = context.has_response();
+    response.result =
         std::string("exception occur when call").append(ex.what());
-    route_result.response.ec = rpc_errc::function_exception;
+    response.ec = rpc_errc::function_exception;
   } catch (...) {
-    route_result.suppress_response = context.has_response();
-    route_result.response.result =
-        std::string("unknown exception occur when call ")
-            .append(get_name_by_key(key));
-    route_result.response.ec = rpc_errc::function_unknown_exception;
+    suppress_response = context.has_response();
+    response.result = std::string("unknown exception occur when call ")
+                          .append(get_name_by_key(key));
+    response.ec = rpc_errc::function_unknown_exception;
   }
 
-  co_return route_result;
+  // A multiplexed response outlives this routing coroutine. Always make the
+  // payload owning before returning so a string_view into coroutine-local
+  // storage cannot escape and be copied by the server after frame teardown.
+  co_return multiplex_rpc_result{response.ec, std::string(response.data()),
+                                 suppress_response};
 }
 
 template <typename Function, typename Self>
