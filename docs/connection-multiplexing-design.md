@@ -21,7 +21,7 @@
 - 请求和响应严格按 `seq_num` 关联，允许响应乱序。
 - 调用方可以先启动多个请求，再单独 `co_await` 任意一个结果，不强制 collect-all。
 - v2 server 读完一帧后立即继续读下一帧，不等待当前 handler 完成。
-- 超时、取消、断连、写失败和重连都只完成每个请求一次。
+- 超时、断连、写失败和重连都只完成每个请求一次。
 - pending、请求写队列、服务端并发请求和响应队列都有上限。
 - v2 的实现、状态和测试与 v1 隔离。
 
@@ -30,7 +30,7 @@
 - 不在 v1 连接上提供多路复用。
 - 不自动把 v1 调用升级为 v2。
 - 不自动重试失败的 RPC；是否可重试取决于业务幂等性。
-- 本次不设计取消远端 handler 的协议。取消只停止 client 本地等待；已经到达 server 的任务可以继续执行。
+- 不提供单请求主动取消接口或远端 cancel 协议。外层协程结束等待后，请求仍由响应、超时或连接关闭回收。
 - v2 首版不与 v1 的发布订阅混用；需要 v2 发布订阅时单独定义协议和接口。
 
 ## 3. v1 与 v2 隔离
@@ -167,7 +167,7 @@ auto slow_result = co_await slow.wait();
 1. 把每个外层 `send_call()` awaitable 立即 `co_spawn` 到 client executor。
 2. 为每个启动操作创建独立的 start state。
 3. 返回一组扁平化的 `async_result<R>`；每个结果只等待自己的启动过程和 RPC 响应。
-4. 一个请求失败、超时或被取消，不取消其他请求。
+4. 一个请求失败或超时，不影响其他请求。
 5. 某个启动阶段抛出的异常保存到对应 start state，并在 `co_await` 该结果时重新抛出。
 
 `send_calls()` 不等待所有响应，也不要求按参数顺序等待结果。
@@ -178,7 +178,7 @@ auto slow_result = co_await slow.wait();
 - 每个 sender 只能调用并 `co_await wait()` 一次。
 - sender 暂时不被等待时，请求仍继续执行，响应会被缓存。
 - sender 被丢弃时，请求仍由 deadline 管理；响应、超时或连接关闭后状态会自动释放。
-- 需要主动取消时，通过等待协程的 Asio cancellation slot 取消；首版不额外增加远端 cancel 消息。
+- 等待协程收到 Asio cancellation 时传播 `operation_aborted` 异常，不删除 pending，也不取消请求的 deadline。
 
 ## 5. v2 Client 内部设计
 
@@ -190,7 +190,6 @@ struct multiplex_client_session {
   strand<any_io_executor> executor;
   uint64_t next_seq_num;
   unordered_map<uint64_t, shared_ptr<pending_request>> pending;
-  unordered_set<uint64_t> abandoned_seqs;
   deque<outgoing_frame> write_queue;
   size_t queued_bytes;
   bool writing;
@@ -207,17 +206,8 @@ struct multiplex_client_session {
 ### 5.2 pending state
 
 ```cpp
-enum class request_state {
-  queued,
-  writing,
-  waiting_response,
-  completed,
-};
-
 struct pending_request {
   uint64_t seq_num;
-  uint64_t generation;
-  request_state state;
   steady_timer deadline;
   steady_timer completion_notify;
   optional<raw_response> response;
@@ -226,7 +216,7 @@ struct pending_request {
 };
 ```
 
-deadline 与 completion notification 必须分开：即使调用方晚些时候才 `co_await` sender，请求也应按原始 deadline 超时并从 pending 中删除。
+deadline 与 completion notification 分别保存：即使调用方晚些时候才 `co_await` sender，请求也应按原始 deadline 超时并从 pending 中删除。deadline 使用 `async_wait` 回调直接调用 `finish()`，不为每个请求启动额外的 deadline 协程。无需维护发送过程枚举；`completed` 用于 sender 判断缓存结果是否就绪。
 
 ### 5.3 启动顺序
 
@@ -242,17 +232,17 @@ deadline 与 completion notification 必须分开：即使调用方晚些时候�
 8. 创建 pending state 和 deadline operation。
 9. 先执行 `pending.emplace(seq, state)`。
 10. 再把 frame 加入唯一 write queue。
-11. 启动独立 deadline watcher。
+11. 注册独立 deadline 回调。
 12. 返回只等待该 state 的第二层 `async_result<R>`。
 
-必须先登记 pending 再把帧暴露给 writer。frame 构造、内存分配等所有可能抛异常的操作应尽量在 pending 登记前完成；登记后的任何异常必须通过 scope guard 把 pending 提取并完成，不能遗留孤儿项。
+必须先登记 pending 再把帧暴露给 writer。frame 构造、内存分配等所有可能抛异常的操作应尽量在 pending 登记前完成；登记后的异常移除 pending 和未发送帧，再重新抛出原始异常。此时 sender 尚未返回，pending 析构会停止 deadline。
 
 ### 5.4 唯一 writer
 
 - 每条 v2 连接最多一个 `async_write`。
 - 新请求只追加完整 frame，不直接写 socket。
-- writer 取出队首前再次检查 pending 是否仍存在；排队期间已超时或取消的请求直接跳过。
-- 写成功后把 pending 状态从 `writing` 改为 `waiting_response`。
+- writer 取出队首前再次检查 pending 是否仍存在；排队期间已超时的请求直接跳过。
+- writer 持有正在写出的 frame，直到整帧写完；单请求超时不撤回该 frame。
 - 当前帧写失败时关闭连接，并以 `write_error` 完成全部 pending；队列中剩余 frame 一并清空。
 
 ### 5.5 唯一 reader
@@ -262,8 +252,7 @@ deadline 与 completion notification 必须分开：即使调用方晚些时候�
 - 分配 body 前校验 magic、version、serialize type、msg type、seq、body length 和 attachment length。
 - 收到响应后按 seq 从 pending map 中提取节点；只有提取成功者可以完成 state。
 - pending 命中：取消 deadline，缓存 raw response，唤醒该 sender。
-- seq 位于 `abandoned_seqs`：这是超时或取消后的迟到响应，删除记录并丢弃。
-- seq 两处都不存在：属于重复响应或对端发送的未知响应，直接丢弃，绝不误配给其他 pending。
+- pending 未命中：迟到、重复或未知响应直接丢弃。同一 session 不复用 seq，无需额外保存已完成请求的序号。
 
 返回值反序列化在 sender 恢复后执行。反序列化异常只由当前 sender 抛出，不能终止 read loop，也不能关闭连接。
 
@@ -335,9 +324,9 @@ void delayed_v2_handler(rpc_context ctx, int value) {
 
 并发 handler 数量也设置上限。超过上限时不启动 handler，而是尝试给该 seq 返回 `queue_full`；如果连拒绝响应都无法入队，则关闭连接。
 
-## 7. 超时、取消与一次完成
+## 7. 超时、关闭与一次完成
 
-响应、deadline、取消和连接关闭都可能竞争结束同一个请求。统一规则是：谁先在 client executor 上从 pending map 成功提取该 seq，谁负责完成；其他路径什么也不做。
+响应和 deadline 统一进入 `finish(seq, ec, body)`。谁先在 client executor 上从 pending map 成功提取该 seq，谁负责完成；其他路径什么也不做。连接关闭先取走整个 pending map，再批量完成。
 
 ```cpp
 auto node = pending.extract(seq);
@@ -345,23 +334,25 @@ if (node.empty()) {
   return;
 }
 
-node.mapped()->deadline.cancel();
-node.mapped()->complete(result); // complete 内部仍做一次性保护
+if (ec == request_timeout) {
+  erase_queued(seq); // 删除未发送帧并扣减 queued_bytes
+}
+node.mapped()->complete(ec, std::move(body)); // 取消 deadline 并唤醒 sender
 ```
 
 ### 7.1 超时
 
 - deadline 从外层 `send_call_for()` 启动请求时开始，包含写队列等待、socket 写入和服务端处理时间。
 - 超时只删除当前 seq，返回 `request_timeout`，不关闭健康的 v2 连接。
-- 未开始写的 frame 由 writer 跳过。
-- 已经写出的请求无法撤回；seq 放入有界 `abandoned_seqs`，迟到响应到达后丢弃。
+- 未开始写的 frame 立即通过 `erase_queued()` 删除，释放队列条目和字节额度。
+- 已经开始写出的 frame 继续写完；迟到响应到达后因 pending 不存在而被丢弃。
 
-### 7.2 取消
+### 7.2 等待协程结束
 
-- sender 的等待协程收到 Asio cancellation 后，在 client executor 上尝试提取对应 pending。
-- 成功提取时返回 `request_cancelled`，并按超时相同方式处理 queued frame 或迟到响应。
-- 如果响应已经先完成，取消不覆盖已缓存的响应。
-- 首版不发送远端 cancel frame，因此 server handler可以继续运行。
+- 外层 Asio 协程停止等待时，传播 `operation_aborted` 异常，不转换成 RPC 错误码。
+- pending、发送队列和 deadline 保持原有生命周期，由响应、超时或连接关闭回收。
+- 如果结果已就绪，则返回已缓存的结果。
+- 不提供单请求取消处理，server handler 可以继续运行。
 
 ### 7.3 连接错误和主动关闭
 
@@ -390,17 +381,18 @@ v2 首版提供以下每连接默认值，并允许在连接开始前配置：
 | client pending RPC | 1024 | 当前 sender 返回 `queue_full`，不发送 |
 | client request queue | 1024 项 | 当前 sender 返回 `queue_full`，不发送 |
 | client queued bytes | 64 MiB | 当前 sender 返回 `queue_full`，不发送 |
-| client abandoned seq | 4096 | 关闭连接，全部 pending 返回 `protocol_error` |
 | server active v2 handlers | 1024 | 给当前 seq 返回 `queue_full` |
 | server response queue | 1024 项 | enqueue 立即返回 `queue_full` |
 | server queued bytes | 64 MiB | enqueue 立即返回 `queue_full` |
 | v2 frame body | 16 MiB | `message_too_large` 或关闭恶意对端 |
 
+`max_abandoned` 字段仅为源码兼容保留，不再生效；超时数量不会触发关闭连接。
+
 新增错误码必须追加到 `rpc_errc` 末尾，不能改变现有数值：
 
 ```cpp
 queue_full,
-request_cancelled,
+request_cancelled, // 仅保留兼容，不再由本地请求处理产生
 protocol_mode_conflict,
 message_too_large,
 ```
@@ -415,9 +407,9 @@ message_too_large,
 | 参数序列化失败 | 外层 await 抛异常 | 不变 | 不受影响 |
 | pending/发送队列满 | `queue_full` | 不变 | 不受影响 |
 | 单请求超时 | `request_timeout` | 保持 | 不受影响 |
-| 单请求取消 | `request_cancelled` | 保持 | 不受影响 |
+| 外层协程停止等待 | Asio `operation_aborted` 异常 | 保持，pending 继续等待响应或超时 | 不受影响 |
 | 返回值反序列化失败 | sender 抛异常 | 保持 | 不受影响 |
-| 已超时/取消请求的迟到或重复 seq | 丢弃响应 | 保持 | 不受影响 |
+| 已超时请求的迟到或重复 seq | 丢弃响应 | 保持 | 不受影响 |
 | v2 收到 v1/seq 0 响应 | `protocol_error` | 关闭 | 全部 `protocol_error` |
 | socket 读失败 | `read_error` | 关闭 | 全部 `read_error` |
 | socket 写失败 | `write_error` | 关闭 | 全部 `write_error` |
@@ -457,7 +449,7 @@ message_too_large,
 ### 11.4 异常与资源
 
 - 请求在 queued、writing、waiting_response 三种状态分别超时。
-- 请求在三种状态分别取消；迟到响应被丢弃且不污染下一调用。
+- 外层等待被取消后，pending 仍占用额度，随后由响应或超时回收，不影响下一调用。
 - 多个 pending 存在时注入 read error、write error 和主动 close，全部 sender 被唤醒且只完成一次。
 - 写队列中有多个 frame 时注入首帧/中间帧写失败，队列和 pending 最终为空。
 - 重连期间旧请求返回 `socket_closed`，旧回调和迟到响应不能完成新请求。
@@ -476,7 +468,7 @@ message_too_large,
 5. 实现热启动但非 collect-all 的 `send_calls()`。
 6. 实现独立 `multiplex_server_session`、完整请求对象和并发 handler。
 7. 为 v2 增加显式 `rpc_context` 注入，移除对 TLS 的并发依赖。
-8. 实现有界 response queue、client 资源上限、超时和取消。
+8. 实现有界 response queue、client 资源上限和超时回收。
 9. 实现整 session 重连隔离与 fail-all。
 10. 按第 11 节完成故障注入、边界和协议兼容测试。
 

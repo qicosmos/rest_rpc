@@ -22,7 +22,7 @@ enum class rpc_errc : std::int8_t {
   duplicate_topic,
   rpc_context_init_failed,
   queue_full,
-  request_cancelled,
+  request_cancelled, // Reserved for compatibility; no longer produced locally.
   protocol_mode_conflict,
   message_too_large,
 };

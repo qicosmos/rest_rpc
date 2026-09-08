@@ -15,13 +15,10 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace rest_rpc::detail {
 
 struct multiplex_pending_response {
-  enum class state { queued, writing, waiting_response, completed };
-
   explicit multiplex_pending_response(asio::any_io_executor executor,
                                       uint64_t id)
       : ready(executor), deadline(executor), seq_num(id) {
@@ -34,7 +31,6 @@ struct multiplex_pending_response {
     }
 
     completed = true;
-    request_state = state::completed;
     ec = error;
     body = std::move(response_body);
     deadline.cancel();
@@ -46,7 +42,6 @@ struct multiplex_pending_response {
   uint64_t seq_num;
   rpc_errc ec = rpc_errc::ok;
   std::string body;
-  state request_state = state::queued;
   bool completed = false;
 };
 
@@ -125,37 +120,17 @@ public:
     // The pending entry must be visible before the complete frame is queued.
     pending_.emplace(seq, pending);
     try {
-      queued_bytes_ += frame_size;
       write_queue_.push_back(std::move(frame));
-    } catch (...) {
-      pending_.erase(seq);
-      queued_bytes_ -= frame_size;
-      throw;
-    }
-
-    try {
+      queued_bytes_ += frame_size;
       start_deadline(pending, timeout);
       start_read_loop();
       start_write_loop();
     } catch (...) {
       pending_.erase(seq);
-      auto frame_it = std::find_if(
-          write_queue_.begin(), write_queue_.end(),
-          [seq](const write_frame &queued) { return queued.seq_num == seq; });
-      if (frame_it != write_queue_.end()) {
-        queued_bytes_ -= frame_it->bytes.size();
-        write_queue_.erase(frame_it);
-      }
-      pending->complete(rpc_errc::request_cancelled);
+      erase_queued(seq);
       throw;
     }
     co_return pending;
-  }
-
-  asio::awaitable<void>
-  cancel_request(uint64_t seq_num, rpc_errc ec = rpc_errc::request_cancelled) {
-    co_await asio::dispatch(get_executor(), asio::use_awaitable);
-    complete_one(seq_num, ec);
   }
 
   asio::awaitable<void> shutdown(rpc_errc ec = rpc_errc::socket_closed) {
@@ -222,17 +197,12 @@ private:
   void start_deadline(const pending_ptr &pending,
                       std::chrono::steady_clock::duration timeout) {
     pending->deadline.expires_after(timeout);
-    auto self = this->shared_from_this();
-    asio::co_spawn(
-        get_executor(),
-        [self = std::move(self), pending]() -> asio::awaitable<void> {
-          auto [ec] = co_await pending->deadline.async_wait(
-              asio::as_tuple(asio::use_awaitable));
-          if (!ec) {
-            self->complete_one(pending->seq_num, rpc_errc::request_timeout);
-          }
-        },
-        asio::detached);
+    pending->deadline.async_wait([self = this->shared_from_this(),
+                                  seq = pending->seq_num](std::error_code ec) {
+      if (!ec) {
+        self->finish(seq, rpc_errc::request_timeout);
+      }
+    });
   }
 
   static asio::awaitable<void>
@@ -241,12 +211,9 @@ private:
       auto frame = std::move(self->write_queue_.front());
       self->write_queue_.pop_front();
       self->queued_bytes_ -= frame.bytes.size();
-      auto pending_it = self->pending_.find(frame.seq_num);
-      if (pending_it == self->pending_.end()) {
+      if (!self->pending_.contains(frame.seq_num)) {
         continue;
       }
-      pending_it->second->request_state =
-          multiplex_pending_response::state::writing;
       auto [ec, size] = co_await asio::async_write(
           self->transport_->impl_, asio::buffer(frame.bytes),
           asio::as_tuple(asio::use_awaitable));
@@ -255,11 +222,6 @@ private:
         self->write_started_ = false;
         self->stop(rpc_errc::write_error);
         co_return;
-      }
-      pending_it = self->pending_.find(frame.seq_num);
-      if (pending_it != self->pending_.end()) {
-        pending_it->second->request_state =
-            multiplex_pending_response::state::waiting_response;
       }
     }
     self->write_started_ = false;
@@ -312,52 +274,35 @@ private:
         co_return;
       }
 
-      auto it = self->pending_.find(header.seq_num);
-      if (it == self->pending_.end()) {
-        // Timed-out and cancelled requests can receive one late response.
-        // Unknown or duplicate sequence numbers are ignored as well: they
-        // must never be matched to another pending request.
-        self->abandoned_seqs_.erase(header.seq_num);
-        continue;
-      }
-
-      auto pending = std::move(it->second);
-      self->pending_.erase(it);
       auto response_ec =
           static_cast<rpc_errc>(static_cast<int8_t>(body.front()));
       body.erase(body.begin());
-      pending->complete(response_ec, std::move(body));
+      self->finish(header.seq_num, response_ec, std::move(body));
     }
   }
 
-  void complete_one(uint64_t seq_num, rpc_errc ec) {
-    auto it = pending_.find(seq_num);
-    if (it == pending_.end()) {
+  void finish(uint64_t seq_num, rpc_errc ec, std::string body = {}) {
+    auto node = pending_.extract(seq_num);
+    if (node.empty()) {
+      // Sequence numbers are never reused within a session. Unknown, late and
+      // duplicate responses can all be discarded without tracking old requests.
       return;
     }
-    auto pending = std::move(it->second);
-    pending_.erase(it);
-    if ((ec == rpc_errc::request_timeout ||
-         ec == rpc_errc::request_cancelled) &&
-        pending->request_state != multiplex_pending_response::state::queued) {
-      if (!remember_abandoned(seq_num)) {
-        pending->complete(ec);
-        return;
-      }
+    if (ec == rpc_errc::request_timeout) {
+      erase_queued(seq_num);
     }
-    pending->complete(ec);
+    node.mapped()->complete(ec, std::move(body));
   }
 
-  bool remember_abandoned(uint64_t seq_num) {
-    if (abandoned_seqs_.contains(seq_num)) {
-      return true;
+  void erase_queued(uint64_t seq_num) {
+    auto it = std::find_if(write_queue_.begin(), write_queue_.end(),
+                           [seq_num](const write_frame &frame) {
+                             return frame.seq_num == seq_num;
+                           });
+    if (it != write_queue_.end()) {
+      queued_bytes_ -= it->bytes.size();
+      write_queue_.erase(it);
     }
-    if (abandoned_seqs_.size() >= limits_.max_abandoned) {
-      stop(rpc_errc::protocol_error);
-      return false;
-    }
-    abandoned_seqs_.insert(seq_num);
-    return true;
   }
 
   void stop(rpc_errc ec) {
@@ -368,7 +313,6 @@ private:
     read_started_ = false;
     write_started_ = false;
     write_queue_.clear();
-    abandoned_seqs_.clear();
     queued_bytes_ = 0;
 
     auto pending = std::move(pending_);
@@ -398,7 +342,6 @@ private:
   multiplex_client_limits limits_;
   asio::strand<asio::any_io_executor> executor_;
   std::unordered_map<uint64_t, pending_ptr> pending_;
-  std::unordered_set<uint64_t> abandoned_seqs_;
   std::deque<write_frame> write_queue_;
 };
 

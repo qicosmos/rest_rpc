@@ -33,8 +33,10 @@ class failing_write_stream {
 public:
   using executor_type = asio::any_io_executor;
 
-  failing_write_stream(executor_type executor, size_t successful_writes)
-      : executor_(std::move(executor)), successful_writes_(successful_writes) {}
+  failing_write_stream(executor_type executor, size_t successful_writes,
+                       bool hold_writes = false)
+      : executor_(std::move(executor)), successful_writes_(successful_writes),
+        hold_writes_(hold_writes) {}
 
   executor_type get_executor() const { return executor_; }
 
@@ -49,19 +51,26 @@ public:
     return asio::async_initiate<CompletionToken, void(std::error_code, size_t)>(
         [this, size, fail](auto handler) mutable {
           auto timer = std::make_shared<asio::steady_timer>(executor_);
-          timer->expires_after(std::chrono::milliseconds(100));
-          timer->async_wait([timer, size, fail, handler = std::move(handler)](
-                                std::error_code ec) mutable {
-            if (ec) {
-              std::move(handler)(ec, 0);
-            } else if (fail) {
-              std::move(handler)(
-                  asio::error::make_error_code(asio::error::connection_reset),
-                  0);
-            } else {
-              std::move(handler)({}, size);
-            }
-          });
+          write_timer_ = timer;
+          if (hold_writes_) {
+            timer->expires_at(std::chrono::steady_clock::time_point::max());
+          } else {
+            timer->expires_after(std::chrono::milliseconds(100));
+          }
+          auto executor = asio::get_associated_executor(handler, executor_);
+          timer->async_wait(asio::bind_executor(
+              executor, [timer, size, fail, handler = std::move(handler)](
+                            std::error_code ec) mutable {
+                if (ec) {
+                  std::move(handler)(ec, 0);
+                } else if (fail) {
+                  std::move(handler)(asio::error::make_error_code(
+                                         asio::error::connection_reset),
+                                     0);
+                } else {
+                  std::move(handler)({}, size);
+                }
+              }));
         },
         token);
   }
@@ -72,14 +81,15 @@ public:
         [this](auto handler) mutable {
           read_timer_ = std::make_shared<asio::steady_timer>(executor_);
           read_timer_->expires_after(std::chrono::seconds(5));
-          read_timer_->async_wait(
-              [timer = read_timer_,
-               handler = std::move(handler)](std::error_code ec) mutable {
+          auto executor = asio::get_associated_executor(handler, executor_);
+          read_timer_->async_wait(asio::bind_executor(
+              executor, [timer = read_timer_, handler = std::move(handler)](
+                            std::error_code ec) mutable {
                 if (!ec) {
                   ec = asio::error::make_error_code(asio::error::eof);
                 }
                 std::move(handler)(ec, 0);
-              });
+              }));
         },
         token);
   }
@@ -89,6 +99,9 @@ public:
   }
 
   void close(std::error_code &ec) {
+    if (write_timer_) {
+      write_timer_->cancel();
+    }
     if (read_timer_) {
       read_timer_->cancel();
     }
@@ -98,13 +111,15 @@ public:
 private:
   executor_type executor_;
   size_t successful_writes_;
+  bool hold_writes_;
+  std::shared_ptr<asio::steady_timer> write_timer_;
   std::shared_ptr<asio::steady_timer> read_timer_;
 };
 
 struct failing_write_transport {
   failing_write_transport(asio::any_io_executor executor,
-                          size_t successful_writes)
-      : impl_(std::move(executor), successful_writes) {}
+                          size_t successful_writes, bool hold_writes = false)
+      : impl_(std::move(executor), successful_writes, hold_writes) {}
 
   auto get_executor() const { return impl_.get_executor(); }
 
@@ -453,11 +468,17 @@ TEST_CASE("test protocol v2 close and reconnect isolation") {
   sync_wait(get_global_executor(), test_v2_close_and_reconnect(server.port()));
 }
 
-asio::awaitable<void> test_v2_cancellation(uint16_t port) {
+asio::awaitable<void> test_v2_cancelled_wait(uint16_t port, bool timeout) {
   rpc_client client;
+  multiplex_client_limits limits;
+  limits.max_pending = 1;
+  client.set_multiplex_limits(limits);
   auto ec = co_await client.connect("127.0.0.1", std::to_string(port));
   REQUIRE_FALSE(ec);
-  auto sender = co_await client.send_call<v2_delay>(200, 1);
+  auto sender = co_await client.send_call_for<v2_delay>(
+      timeout ? std::chrono::milliseconds(100)
+              : std::chrono::milliseconds(5000),
+      200, 1);
 
   struct cancellation_result {
     explicit cancellation_result(asio::any_io_executor executor)
@@ -491,24 +512,41 @@ asio::awaitable<void> test_v2_cancellation(uint16_t port) {
         co_await state->ready.async_wait(asio::as_tuple(asio::use_awaitable));
     (void)wait_ec;
   }
-  CHECK_FALSE(state->exception);
+  REQUIRE(state->exception);
   REQUIRE(state->result.has_value());
-  CHECK(state->result->ec == rpc_errc::request_cancelled);
+  try {
+    std::rethrow_exception(state->exception);
+  } catch (const std::system_error &ex) {
+    CHECK(ex.code() == asio::error::operation_aborted);
+  }
+
+  // The RPC still occupies its pending slot after its waiter has stopped.
+  auto rejected = co_await client.send_call<v2_delay>(1, 2);
+  auto rejected_result = co_await rejected.wait();
+  CHECK(rejected_result.ec == rpc_errc::queue_full);
 
   asio::steady_timer late_timer(executor);
-  late_timer.expires_after(std::chrono::milliseconds(250));
+  late_timer.expires_after(std::chrono::milliseconds(timeout ? 120 : 250));
   co_await late_timer.async_wait(asio::use_awaitable);
   auto next = co_await client.send_call<v2_delay>(1, 2);
   auto next_result = co_await next.wait();
   CHECK(next_result.ec == rpc_errc::ok);
   CHECK(next_result.value == 2);
+  if (timeout) {
+    // Allow the old server handler to finish before destroying the server.
+    late_timer.expires_after(std::chrono::milliseconds(150));
+    co_await late_timer.async_wait(asio::use_awaitable);
+  }
 }
 
-TEST_CASE("test protocol v2 cancellation") {
+TEST_CASE("test protocol v2 cancelled wait leaves RPC cleanup to response or "
+          "timeout") {
   rpc_server server("127.0.0.1", "0");
   server.register_handler<v2_delay>();
   REQUIRE_FALSE(server.async_start());
-  sync_wait(get_global_executor(), test_v2_cancellation(server.port()));
+  sync_wait(get_global_executor(),
+            test_v2_cancelled_wait(server.port(), false));
+  sync_wait(get_global_executor(), test_v2_cancelled_wait(server.port(), true));
 }
 
 asio::awaitable<void> test_v2_cross_ending(uint16_t port) {
@@ -553,7 +591,7 @@ asio::awaitable<void> test_v2_write_failure(size_t successful_writes) {
   for (auto &request : pending) {
     auto result = co_await asio::co_spawn(
         session->get_executor(),
-        rest_rpc::detail::wait_multiplex_result<void>(request, session),
+        rest_rpc::detail::wait_multiplex_result<void>(request),
         asio::use_awaitable);
     CHECK(result.ec == rpc_errc::write_error);
   }
@@ -563,6 +601,87 @@ asio::awaitable<void> test_v2_write_failure(size_t successful_writes) {
 TEST_CASE("test protocol v2 write failure completes queued requests") {
   sync_wait(get_global_executor(), test_v2_write_failure(0));
   sync_wait(get_global_executor(), test_v2_write_failure(1));
+}
+
+using test_client_session =
+    rest_rpc::detail::multiplex_client_session<failing_write_transport>;
+
+asio::awaitable<void>
+test_v2_reclaim_queued_request(std::shared_ptr<test_client_session> session) {
+  rest_rpc_header header{};
+  auto writing = co_await session->start_request(header, "first",
+                                                 std::chrono::seconds(30));
+  auto queued = co_await session->start_request(header, "queue",
+                                                std::chrono::milliseconds(10));
+  auto rejected = co_await session->start_request(header, "extra",
+                                                  std::chrono::seconds(30));
+  CHECK(rejected->ec == rpc_errc::queue_full);
+
+  co_await queued->ready.async_wait(asio::as_tuple(asio::use_awaitable));
+  CHECK(queued->ec == rpc_errc::request_timeout);
+  CHECK_FALSE(writing->completed);
+
+  auto replacement = co_await session->start_request(header, "fresh",
+                                                     std::chrono::seconds(30));
+  CHECK_FALSE(replacement->completed);
+  co_await session->shutdown();
+  CHECK(writing->ec == rpc_errc::socket_closed);
+  CHECK(replacement->ec == rpc_errc::socket_closed);
+  CHECK(queued->ec == rpc_errc::request_timeout);
+}
+
+TEST_CASE("test protocol v2 timeout reclaims queue limits") {
+  for (bool limit_bytes : {false, true}) {
+    CAPTURE(limit_bytes);
+    asio::io_context io;
+    auto transport =
+        std::make_shared<failing_write_transport>(io.get_executor(), 1, true);
+    multiplex_client_limits limits;
+    if (limit_bytes) {
+      limits.max_queued_bytes = sizeof(rest_rpc_header) + 5;
+    } else {
+      limits.max_write_queue = 1;
+    }
+    auto session =
+        std::make_shared<test_client_session>(transport, false, limits);
+    auto result = asio::co_spawn(session->get_executor(),
+                                 test_v2_reclaim_queued_request(session),
+                                 asio::use_future);
+    io.run();
+    result.get();
+  }
+}
+
+asio::awaitable<void> test_v2_timeout_isolation(uint16_t port) {
+  rpc_client client;
+  multiplex_client_limits limits;
+  limits.max_abandoned = 0;
+  client.set_multiplex_limits(limits);
+  auto ec = co_await client.connect("127.0.0.1", std::to_string(port));
+  REQUIRE_FALSE(ec);
+  auto expired = co_await client.send_call_for<v2_delay>(
+      std::chrono::milliseconds(20), 150, 1);
+  auto other = co_await client.send_call<v2_delay>(50, 2);
+  auto expired_result = co_await expired.wait();
+  CHECK(expired_result.ec == rpc_errc::request_timeout);
+  auto other_result = co_await other.wait();
+  CHECK(other_result.ec == rpc_errc::ok);
+  CHECK(other_result.value == 2);
+
+  asio::steady_timer timer(co_await asio::this_coro::executor);
+  timer.expires_after(std::chrono::milliseconds(200));
+  co_await timer.async_wait(asio::use_awaitable);
+  auto next = co_await client.send_call<v2_delay>(1, 3);
+  auto next_result = co_await next.wait();
+  CHECK(next_result.ec == rpc_errc::ok);
+  CHECK(next_result.value == 3);
+}
+
+TEST_CASE("test protocol v2 timeout ignores abandoned sequence limit") {
+  rpc_server server("127.0.0.1", "0");
+  server.register_handler<v2_delay>();
+  REQUIRE_FALSE(server.async_start());
+  sync_wait(get_global_executor(), test_v2_timeout_isolation(server.port()));
 }
 
 DOCTEST_MSVC_SUPPRESS_WARNING_WITH_PUSH(4007)
