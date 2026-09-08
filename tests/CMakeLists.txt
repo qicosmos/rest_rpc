@@ -13,4 +13,8 @@ add_executable(test_rest_rpc test_rest_rpc.cpp)
 
 add_test(NAME ${project_name} COMMAND test_rest_rpc)
 
+add_executable(test_rest_rpc_multiplex test_rest_rpc_multiplex.cpp)
+
+add_test(NAME test_rest_rpc_multiplex COMMAND test_rest_rpc_multiplex)
+
 add_executable(bench bench.cpp)

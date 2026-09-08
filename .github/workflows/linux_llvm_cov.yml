@@ -1,10 +1,14 @@
 name: Ubuntu 22.04 (llvm cov)
 
 on:
-  pull_request_target:
+  pull_request:
     branches:
       - master
       - cpp20
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   build:
@@ -55,6 +59,7 @@ jobs:
           echo "\`\`\`" >> tmp.log
 
       - name: Create Comment
+        if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
         uses: peter-evans/create-or-update-comment@v2
         with:
           issue-number: ${{ github.event.pull_request.number }}

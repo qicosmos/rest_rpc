@@ -20,6 +20,9 @@ inline uint64_t ntohll(uint64_t value) {
 
 namespace rest_rpc {
 inline constexpr uint8_t REST_MAGIC_NUM = 39;
+inline constexpr uint8_t REST_RPC_PROTOCOL_V1 = 0;
+inline constexpr uint8_t REST_RPC_PROTOCOL_V2 = 1;
+inline constexpr uint8_t REST_RPC_SERIALIZE_TYPE = 0;
 struct rest_rpc_header {
   uint8_t magic = REST_MAGIC_NUM;
   uint8_t version;

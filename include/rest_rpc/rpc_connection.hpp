@@ -1,6 +1,8 @@
 #pragma once
 #include "logger.hpp"
 #include "rest_rpc_protocol.hpp"
+#include "rpc_context.hpp"
+#include "rpc_multiplex_config.hpp"
 #include "rpc_router.hpp"
 #include "string_resize.hpp"
 #include "use_asio.hpp"
@@ -29,34 +31,18 @@ inline auto &get_context() {
   return instance;
 }
 
-class rpc_context {
-public:
-  rpc_context();
-
-  auto get_executor();
-
-  template <auto func, typename... Args>
-  asio::awaitable<std::error_code> response_s(Args &&...args);
-
-  template <typename... Args>
-  asio::awaitable<std::error_code> response(Args &&...args);
-
-private:
-  asio::any_io_executor executor_;
-  std::shared_ptr<rpc_connection> conn_ = nullptr;
-  bool has_response_ = false;
-};
-
 class rpc_connection : public std::enable_shared_from_this<rpc_connection> {
 public:
   rpc_connection(tcp_socket socket, uint64_t conn_id, rpc_router &router,
-                 bool &cross_ending)
+                 bool &cross_ending,
+                 multiplex_server_limits multiplex_limits = {})
       : socket_(std::move(socket)), conn_id_(conn_id), router_(router),
-        cross_ending_(cross_ending) {}
+        cross_ending_(cross_ending), multiplex_limits_(multiplex_limits) {}
 
   asio::awaitable<void> start() {
     rest_rpc_header header;
     auto self = this->shared_from_this();
+    bool first_frame = true;
     while (true) {
       std::error_code ec;
       size_t size;
@@ -80,8 +66,21 @@ public:
 
       if (header.magic != REST_MAGIC_NUM) {
         REST_LOG_ERROR << "protocol error";
+        close();
         break;
       }
+
+      if (first_frame && header.version == REST_RPC_PROTOCOL_V2) {
+        co_await start_multiplex(header);
+        co_return;
+      }
+
+      if (header.version != REST_RPC_PROTOCOL_V1) {
+        REST_LOG_ERROR << "unsupported protocol version";
+        close();
+        break;
+      }
+      first_frame = false;
 
       if (header.msg_type == 1) { // pub sub
         topic_id_ = header.function_id;
@@ -188,6 +187,8 @@ public:
   void set_check_timeout(bool r) { checkout_timeout_ = r; }
 
 private:
+  asio::awaitable<void> start_multiplex(rest_rpc_header header);
+
   tcp_socket socket_;
   uint64_t conn_id_;
   std::string body_;
@@ -198,6 +199,7 @@ private:
   bool checkout_timeout_ = false;
   rpc_router &router_;
   bool cross_ending_;
+  multiplex_server_limits multiplex_limits_;
   std::atomic<uint32_t> topic_id_;
 };
 
@@ -208,39 +210,19 @@ auto tls_data::get_executor() {
   return conn_->get_executor();
 }
 
-auto rpc_context::get_executor() { return executor_; }
-
 rpc_context::rpc_context() {
   executor_ = get_context().get_executor();
-  conn_ = get_context().get_conn();
+  auto connection = get_context().get_conn();
+  if (connection) {
+    responder_ = [connection = std::move(connection)](
+                     std::string body) -> asio::awaitable<std::error_code> {
+      rpc_result result(std::move(body));
+      co_return co_await connection->response(result);
+    };
+  }
   get_context().set_delay(true);
 }
 
-// zero or one arguments
-template <auto func, typename... Args>
-asio::awaitable<std::error_code> rpc_context::response_s(Args &&...args) {
-  using args_tuple =
-      typename util::function_traits<decltype(func)>::return_type;
-  static_assert(
-      std::is_constructible_v<args_tuple, Args...>,
-      "rpc function return type and response arguments are not match");
-
-  return response(std::forward<Args>(args)...);
-}
-
-template <typename... Args>
-asio::awaitable<std::error_code> rpc_context::response(Args &&...args) {
-  if (has_response_) {
-    co_return make_error_code(rpc_errc::has_response);
-  }
-  if (!conn_) {
-    REST_LOG_ERROR << "rpc context init failed";
-    co_return make_error_code(rpc_errc::rpc_context_init_failed);
-  }
-
-  rpc_result result(rpc_codec::pack_args(std::forward<Args>(args)...));
-  has_response_ = true;
-  co_return co_await conn_->response(result);
-}
-
 } // namespace rest_rpc
+
+#include "rpc_connection_multiplex.ipp"
