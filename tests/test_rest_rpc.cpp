@@ -537,3 +537,35 @@ TEST_CASE("test_server_duplicate_registration_key") {
   auto result = client.call<std::string>("delay_echo", "test_delay_echo");
   CHECK_EQ(result, "test_delay_echo");
 }
+TEST_CASE("test_client_stop_deadlock") {
+  rpc_server server(9000, std::thread::hardware_concurrency());
+  server.async_run();
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+  {
+      rpc_client client("127.0.0.1", 9000);
+      client.enable_auto_reconnect(true);
+      client.enable_auto_heartbeat(true);
+      bool connected = client.connect();
+      CHECK(connected);
+
+      client.close();
+      CHECK_FALSE(client.has_connected());
+	  std::cout << "client closed." << std::endl;
+      client.stop();
+      std::cout << "client stopped." << std::endl;
+  }
+
+  {
+	  rpc_client client("127.0.0.1", 9000);
+	  bool connected = client.connect();
+	  CHECK(connected);
+
+	  client.close();
+	  CHECK_FALSE(client.has_connected());
+	  std::cout << "client closed." << std::endl;
+	  client.stop();
+	  std::cout << "client stopped." << std::endl;
+  }
+  std::cout << "client destroyed." << std::endl;
+}
