@@ -94,6 +94,35 @@ TEST_CASE("test_client_reconnect") {
   }
 }
 
+TEST_CASE("test_client_stop") {
+  rpc_server server("127.0.0.1", 9000, 1);
+  server.register_handler("echo", echo);
+  REQUIRE_FALSE(server.async_run());
+
+  rpc_client client("127.0.0.1", 9000);
+  REQUIRE(client.connect());
+
+  SUBCASE("with heartbeat") {
+    client.enable_auto_heartbeat();
+    client.close();
+  }
+  SUBCASE("without heartbeat") { client.close(); }
+  SUBCASE("from an I/O callback") {
+    client.async_call<std::string>(
+        "echo",
+        [&client](asio::error_code ec, std::string) {
+          CHECK_FALSE(ec);
+          client.stop();
+        },
+        std::string("test"));
+    client.run();
+  }
+
+  client.stop();
+  client.stop();
+  CHECK_FALSE(client.has_connected());
+}
+
 TEST_CASE("test_client_default_constructor") {
   rpc_server server(9000, std::thread::hardware_concurrency());
   dummy d;
