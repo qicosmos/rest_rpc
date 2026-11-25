@@ -96,20 +96,14 @@ public:
     thd_ = std::make_shared<std::thread>([this] { ios_.run(); });
   }
 
-  ~rpc_client() {
-    std::promise<void> promise;
-    asio::post(ios_, [this, &promise] {
-      close();
-      stop_client_ = true;
-      //      std::error_code ec;
-      deadline_.cancel();
-      promise.set_value();
-    });
-    promise.get_future().wait();
-    stop();
-  }
+  ~rpc_client() { stop(); }
 
   void run() {
+    if (ios_.get_executor().running_in_this_thread()) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(join_mtx_);
     if (thd_ != nullptr && thd_->joinable()) {
       thd_->join();
     }
@@ -332,13 +326,20 @@ public:
   }
 
   void stop() {
-    if (thd_ != nullptr) {
-      work_.reset();
-      if (thd_->joinable()) {
-        thd_->join();
-      }
-      thd_ = nullptr;
+    if (!ios_.stopped()) {
+      asio::post(ios_, [this] {
+        if (stop_client_) {
+          return;
+        }
+        stop_client_ = true;
+        enable_reconnect_ = false;
+        deadline_.cancel();
+        close();
+        work_.reset();
+      });
     }
+
+    run();
   }
 
   template <typename Func> void subscribe(std::string key, Func f) {
@@ -844,6 +845,7 @@ private:
   std::function<void(asio::ssl::context &)> ssl_context_callback_;
 #endif
   asio::executor_work_guard<asio::io_context::executor_type> work_;
+  std::mutex join_mtx_;
   std::shared_ptr<std::thread> thd_ = nullptr;
 
   std::string host_;
